@@ -1,11 +1,22 @@
 'use strict';
 
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const { html } = require('./html');
 const D = require('./dates');
 const { formatMoney } = require('./money');
 const { formatHours } = require('./billing');
 
 const SITE_NAME = 'BetterTennis';
+
+// Verzija CSS/JS fajlova (hash sadržaja): nakon svake izmjene preglednik učitava novu verziju
+// umjesto stare iz keša.
+const ASSET_VERSION = (() => {
+  const hash = crypto.createHash('sha1');
+  for (const f of ['style.css', 'app.js']) hash.update(fs.readFileSync(path.join(__dirname, '..', 'public', f)));
+  return hash.digest('hex').slice(0, 10);
+})();
 
 function layout(req, { title, body, wide = false }) {
   const user = req.user;
@@ -48,8 +59,8 @@ function layout(req, { title, body, wide = false }) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${title ? `${title} · ${SITE_NAME}` : SITE_NAME}</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="/static/app.js" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=${ASSET_VERSION}">
+  <script src="/static/app.js?v=${ASSET_VERSION}" defer></script>
   <link rel="icon" type="image/png" href="/static/img/favicon.png">
   <link rel="apple-touch-icon" href="/static/img/logo-mark.png">
   <meta name="theme-color" content="#11304c">

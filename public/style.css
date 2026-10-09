@@ -79,8 +79,9 @@ main.container { flex: 1; padding-top: 24px; padding-bottom: 48px; }
   .brand-mark { background: #fff; border-radius: 10px; padding: 3px; }
   .logo-full { background: #fff; border-radius: 16px; padding: 12px; }
 }
-.hero-logo { width: 150px; margin: 0 0 18px; }
-.login-logo { width: 120px; margin: 0 auto 14px; }
+.hero-logo { width: 96px; height: auto; margin: 0 0 16px; }
+.login-logo { width: 88px; height: auto; margin: 0 auto 16px; }
+.card.narrow > h1 { text-align: center; }
 .main-nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
 .main-nav a { padding: 6px 10px; border-radius: 8px; color: var(--muted); text-decoration: none; font-weight: 500; }
 .main-nav a:hover { background: var(--primary-soft); color: var(--text); }
@@ -235,7 +236,7 @@ tr.is-selected td { background: var(--primary-soft); }
 }
 
 /* ---------- Landing ---------- */
-.hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 32px; align-items: center; padding: 24px 0 36px; }
+.hero { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; padding: 24px 0 36px; }
 .eyebrow { text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.8rem; font-weight: 700; color: var(--brand-green); margin: 0 0 8px; }
 .hero h1 { font-size: clamp(1.8rem, 4.5vw, 2.8rem); }
 .lead { font-size: 1.1rem; color: var(--muted); margin-bottom: 22px; }
