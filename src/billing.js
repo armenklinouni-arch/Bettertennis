@@ -63,6 +63,8 @@ function monthlyStatement(db, user, month) {
     adjustmentsTotal,
     total: fee + lessonsTotal + adjustmentsTotal,
     paid: !!(payment && payment.paid),
+    // Član vidi obračun tek kad ga admin odobri; do tada piše „Obračun u pripremi“.
+    released: !!(payment && payment.released),
     paidAt: payment && payment.paid ? payment.paid_at : null,
   };
 }
@@ -74,11 +76,18 @@ function setPaid(db, userId, month, paid) {
   ).run(userId, month, paid ? 1 : 0, paid ? todayISO() : null);
 }
 
+function setReleased(db, userId, month, released) {
+  db.prepare(
+    `INSERT INTO payments (user_id, month, released) VALUES (?, ?, ?)
+     ON CONFLICT(user_id, month) DO UPDATE SET released = excluded.released`
+  ).run(userId, month, released ? 1 : 0);
+}
+
 function formatHours(hours) {
   return `${hours.toLocaleString('bs-BA', { maximumFractionDigits: 2 })} h`;
 }
 
 module.exports = {
-  monthlyStatement, setPaid, formatHours, billingMode, memberMonthRange,
+  monthlyStatement, setPaid, setReleased, formatHours, billingMode, memberMonthRange,
   BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,
 };

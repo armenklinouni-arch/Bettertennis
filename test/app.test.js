@@ -193,6 +193,17 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   assert.match(week.text, /Lea Neu/);
   assert.match(week.text, /Ponedjeljak, 05\.10\.2026\./);
 
+  // Obračun ist zuerst „u pripremi“ – Mitglied sieht keinen Betrag
+  const pending = await member.request('/mitglied/abrechnung?monat=2026-10');
+  assert.match(pending.text, /Obračun u pripremi/);
+  assert.doesNotMatch(pending.text, /195,50/);
+  assert.doesNotMatch(pending.text, /Ballmaschine/);
+  const pendingWeek = await member.request('/mitglied?woche=2026-10-07');
+  assert.match(pendingWeek.text, /Obračun u pripremi/);
+  // Admin gibt den Monat frei
+  const rel = await admin.post(`/admin/abrechnung/${lea.id}/odobri`, { month: '2026-10', released: '1' }, '/admin/abrechnung?monat=2026-10');
+  assert.equal(rel.status, 302);
+
   const bill = await member.request('/mitglied/abrechnung?monat=2026-10');
   assert.match(bill.text, /195,50/);
   assert.match(bill.text, /Ballmaschine/);
@@ -262,6 +273,12 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   const manualBill = await member.request('/mitglied/abrechnung?monat=2026-10');
   assert.match(manualBill.text, /15,50/); // 10 KM Grundgebühr + 5,50 KM Posten
   assert.match(manualBill.text, /Ručni obračun/);
+  // Admin kann den Obračun wieder „u pripremu“ setzen und erneut freigeben
+  await admin.post(`/admin/abrechnung/${lea.id}/odobri`, { month: '2026-10', released: '0' }, '/admin/abrechnung?monat=2026-10');
+  assert.match((await member.request('/mitglied/abrechnung?monat=2026-10')).text, /Obračun u pripremi/);
+  await admin.post('/admin/abrechnung/odobri-sve', { month: '2026-10', released: '1' }, '/admin/abrechnung?monat=2026-10');
+  assert.match((await member.request('/mitglied/abrechnung?monat=2026-10')).text, /15,50/); // noch manuell
+
   // Prikaz bez obračuna: termini sichtbar, aber nicht berechnet
   db.prepare("UPDATE users SET billing_mode = 'display' WHERE id = ?").run(lea.id);
   const displayBill = await member.request('/mitglied/abrechnung?monat=2026-10');

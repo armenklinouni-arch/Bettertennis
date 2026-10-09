@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS payments (
   month   TEXT NOT NULL,
   paid    INTEGER NOT NULL DEFAULT 0,
   paid_at TEXT,
+  released INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, month)
 );
 
@@ -136,6 +137,7 @@ const NEW_COLUMNS = [
   ['lessons', 'group_id', 'TEXT'],
   ['lessons', 'trainer_id', 'INTEGER REFERENCES trainers(id) ON DELETE SET NULL'],
   ['trainers', 'password_hash', 'TEXT'],
+  ['payments', 'released', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 
 function addMissingColumns(db) {

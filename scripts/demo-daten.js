@@ -72,7 +72,8 @@ if (!db.prepare('SELECT COUNT(*) AS n FROM news').get().n) {
     .run('Jesenji klupski turnir', 'Dragi članovi,\n\nu subotu organizujemo jesenji klupski turnir za sve nivoe. Prijave do četvrtka kod trenera.\n\nVidimo se na terenu!');
   for (const u of db.prepare("SELECT id FROM users WHERE role = 'member'").all()) {
     db.prepare('INSERT INTO news_recipients (news_id, user_id) VALUES (?, ?)').run(newsId, u.id);
-    db.prepare('INSERT OR IGNORE INTO payments (user_id, month, paid, paid_at) VALUES (?, ?, 1, ?)')
+    // Prošli mjesec: odobren i plaćen; tekući mjesec ostaje „u pripremi“ dok ga admin ne odobri.
+    db.prepare('INSERT OR IGNORE INTO payments (user_id, month, paid, paid_at, released) VALUES (?, ?, 1, ?, 1)')
       .run(u.id, D.addMonths(D.monthOf(D.todayISO()), -1), D.todayISO());
   }
 }

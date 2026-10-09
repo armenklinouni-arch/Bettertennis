@@ -47,11 +47,17 @@ module.exports = function memberRoutes(db) {
           <p class="muted">Tvoji treninzi ove sedmice: ${lessons.filter((l) => !l.cancelled).length}
             (${formatHours(weekMinutes / 60)})</p>
         </div>
-        <a class="summary-tile" href="/mitglied/abrechnung?monat=${month}">
-          <span class="label">Očekivani iznos za ${D.monthLabel(month)}</span>
-          <span class="value">${formatMoney(statement.total)}</span>
-          <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount}`} · ${paymentBadge(statement)}</span>
-        </a>
+        ${statement.released
+          ? html`<a class="summary-tile" href="/mitglied/abrechnung?monat=${month}">
+              <span class="label">Iznos za ${D.monthLabel(month)}</span>
+              <span class="value">${formatMoney(statement.total)}</span>
+              <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount}`} · ${paymentBadge(statement)}</span>
+            </a>`
+          : html`<a class="summary-tile" href="/mitglied/abrechnung?monat=${month}">
+              <span class="label">Iznos za ${D.monthLabel(month)}</span>
+              <span class="value pending">Obračun u pripremi</span>
+              <span class="hint">Iznos će biti vidljiv kad ga škola odobri.</span>
+            </a>`}
       </div>
       ${req.unreadNews
         ? html`<a class="notice notice-link" href="/mitglied/aktuelnosti">📬 Imaš nepročitane aktuelnosti: <strong>${req.unreadNews}</strong> – otvori sandučić →</a>`
@@ -90,13 +96,19 @@ module.exports = function memberRoutes(db) {
         </div>
       </div>
       ${monthNav('/mitglied/abrechnung', month, '', { min, max })}
-      <div class="summary-tile big">
-        <span class="label">${statement.paid ? 'Iznos za mjesec' : 'Za platiti na kraju mjeseca'} · ${paymentBadge(statement)}</span>
-        <span class="value">${formatMoney(statement.total)}</span>
-        <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}`}${
-          req.user.hourly_rate_cents ? ` · ${formatMoney(req.user.hourly_rate_cents)} po satu` : ''}</span>
-      </div>
-      ${statementTable(statement)}
+      ${statement.released
+        ? html`<div class="summary-tile big">
+            <span class="label">${statement.paid ? 'Iznos za mjesec' : 'Za platiti na kraju mjeseca'} · ${paymentBadge(statement)}</span>
+            <span class="value">${formatMoney(statement.total)}</span>
+            <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}`}${
+              req.user.hourly_rate_cents ? ` · ${formatMoney(req.user.hourly_rate_cents)} po satu` : ''}</span>
+          </div>
+          ${statementTable(statement)}`
+        : html`<div class="summary-tile big pending-tile">
+            <span class="label">${D.monthLabel(month)}</span>
+            <span class="value pending">Obračun u pripremi</span>
+            <span class="hint">Obračun za ovaj mjesec još se priprema. Iznos i stavke bit će vidljivi kad ih škola odobri.</span>
+          </div>`}
       <section class="card">
         <h2>Pregled plaćanja</h2>
         <p class="muted small">Prikazan je tekući mjesec i ${MEMBER_MONTHS_BACK} mjeseca unazad.</p>
@@ -106,8 +118,8 @@ module.exports = function memberRoutes(db) {
             <tbody>${history.map((h) => html`
               <tr${h.month === month ? html` class="is-selected"` : ''}>
                 <td><a href="/mitglied/abrechnung?monat=${h.month}">${D.monthLabel(h.month)}</a></td>
-                <td class="num">${formatMoney(h.total)}</td>
-                <td>${paymentBadge(h)}</td>
+                <td class="num">${h.released ? formatMoney(h.total) : '–'}</td>
+                <td>${h.released ? paymentBadge(h) : html`<span class="tag tag-pending">Obračun u pripremi</span>`}</td>
               </tr>`)}</tbody>
           </table>
         </div>

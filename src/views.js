@@ -218,6 +218,13 @@ function statementTable(statement, { adminDelete, req } = {}) {
   </div>`;
 }
 
+// Da li član vidi obračun za mjesec (odobrio admin) ili je još u pripremi.
+function releaseBadge(statement) {
+  return statement.released
+    ? html`<span class="tag tag-done">Odobreno za člana</span>`
+    : html`<span class="tag tag-pending">U pripremi</span>`;
+}
+
 // Plaćeno / nije plaćeno – samo informativno.
 function paymentBadge(statement) {
   if (!statement.paid && statement.total === 0) return html`<span class="tag">Nema obaveze</span>`;
@@ -243,6 +250,6 @@ function monthNav(baseUrl, month, extraQuery = '', { min = null, max = null } = 
 }
 
 module.exports = {
-  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, lessonTimeRange, lessonTags,
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, lessonTimeRange, lessonTags,
   lessonKindLabel, lessonStatusLabel, LESSON_KINDS, LESSON_STATUSES, SITE_NAME,
 };

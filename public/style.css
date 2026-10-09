@@ -178,6 +178,10 @@ tr.is-inactive td { color: var(--muted); }
 .tag-kind.is-group { background: color-mix(in srgb, var(--accent) 45%, var(--surface)); }
 .tag-done { background: var(--success-soft); color: var(--primary); }
 .tag-cancelled { background: var(--danger-soft); color: var(--danger); }
+.tag-pending { background: color-mix(in srgb, var(--accent) 40%, var(--surface)); color: var(--text); }
+.summary-tile .value.pending { font-size: 1.25rem; color: var(--muted); }
+.summary-tile.big .value.pending { font-size: 1.6rem; }
+.summary-tile.big.pending-tile { background: var(--surface); border: 1px dashed var(--border); }
 .lesson-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 0.8rem; }
 .lesson-actions form { margin: 0; }
 .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--primary); text-decoration: underline; cursor: pointer; }

@@ -28,7 +28,8 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      - **Status**: neue Termine sind automatisch „Realizovan“; mit einem Klick auf „Otkazan“
        umstellbar (abgesagte Termine werden nicht berechnet)
    - **Beträge**: Monatsübersicht aller Mitglieder, Detailansicht pro Mitglied, Zusatzposten
-     und Gutschriften (negative Beträge), Status **Plaćeno / Nije plaćeno** pro Monat
+     und Gutschriften (negative Beträge), **Freigabe pro Monat** („Odobri za člana“; vorher sieht das
+     Mitglied nur „Obračun u pripremi“, Freigabe jederzeit rücknehmbar), Status **Plaćeno / Nije plaćeno** pro Monat
      (Mitglieder sehen den aktuellen Monat und 3 Monate zurück)
    - **Aktuelnosti**: Neuigkeiten (Turniere, Aktivitäten …) an alle oder ausgewählte Mitglieder
      schicken; Mitglieder sehen sie in ihrem Postfach mit Zähler für ungelesene Nachrichten
