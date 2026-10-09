@@ -18,3 +18,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (img.complete && img.naturalWidth === 0) markPhotoFailed(img);
   });
 });
+
+// Aktuelnosti: odabir pojedinog člana automatski uključuje opciju „Samo odabrani članovi“.
+document.addEventListener('change', (event) => {
+  const box = event.target;
+  if (box.name !== 'member_ids' || !box.checked) return;
+  const some = box.form && box.form.querySelector('input[name="audience"][value="some"]');
+  if (some) some.checked = true;
+});

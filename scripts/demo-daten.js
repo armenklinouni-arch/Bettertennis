@@ -52,9 +52,21 @@ if (emir && lejla && !hasGroup) {
   }
 }
 
+// Primjer aktuelnosti za sve članove i status plaćanja za prošli mjesec.
+if (!db.prepare('SELECT COUNT(*) AS n FROM news').get().n) {
+  const { lastInsertRowid: newsId } = db
+    .prepare('INSERT INTO news (title, body) VALUES (?, ?)')
+    .run('Jesenji klupski turnir', 'Dragi članovi,\n\nu subotu organizujemo jesenji klupski turnir za sve nivoe. Prijave do četvrtka kod trenera.\n\nVidimo se na terenu!');
+  for (const u of db.prepare("SELECT id FROM users WHERE role = 'member'").all()) {
+    db.prepare('INSERT INTO news_recipients (news_id, user_id) VALUES (?, ?)').run(newsId, u.id);
+    db.prepare('INSERT OR IGNORE INTO payments (user_id, month, paid, paid_at) VALUES (?, ?, 1, ?)')
+      .run(u.id, D.addMonths(D.monthOf(D.todayISO()), -1), D.todayISO());
+  }
+}
+
 if (!db.prepare('SELECT COUNT(*) AS n FROM leads').get().n) {
   db.prepare("INSERT INTO leads (name, email, phone, level, availability, message) VALUES ('Adnan Mehić', 'adnan@example.ba', '061 123 456', 'Početnik', 'ponedjeljkom i srijedom navečer', 'Želio bih početi igrati tenis.')").run();
-  db.prepare("INSERT INTO leads (name, email, level, availability) VALUES ('Selma Hadžić', 'selma@example.ba', 'Povratnik', 'vikendom prijepodne')").run();
+  db.prepare("INSERT INTO leads (name, email, phone, level, availability) VALUES ('Selma Hadžić', 'selma@example.ba', '062 987 654', 'Povratnik', 'vikendom prijepodne')").run();
 }
 
 console.log('Demo podaci kreirani. Prijave članova: amina@example.ba, emir@example.ba, lejla@example.ba – lozinka: tennis123');

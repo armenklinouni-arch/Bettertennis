@@ -5,9 +5,11 @@ const express = require('express');
 const { html } = require('../html');
 const D = require('../dates');
 const { formatMoney, centsToInput, parseMoney, lessonPrice, CURRENCY_SYMBOL } = require('../money');
-const { monthlyStatement, formatHours } = require('../billing');
 const {
-  layout, csrfField, errorList, weekView, statementTable, monthNav, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES,
+  monthlyStatement, setPaid, formatHours, BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,
+} = require('../billing');
+const {
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES,
 } = require('../views');
 const { requireAdmin, hashPassword } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
@@ -16,10 +18,6 @@ const LEAD_STATUSES = ['novo', 'kontaktiran', 'probni trening', 'član', 'odbije
 const DURATIONS = [30, 45, 60, 90, 120];
 const MAX_REPEAT_WEEKS = 52;
 const GROUP_SIZE = 2;
-const BILLING_MODES = {
-  schedule: 'Prema rasporedu (realizovani treninzi se automatski obračunavaju)',
-  manual: 'Ručni unos (bez rasporeda – iznos unosiš kao stavke)',
-};
 
 function toId(v) {
   const n = Number(v);
@@ -173,7 +171,7 @@ module.exports = function adminRoutes(db) {
               <td>${m.email}${m.phone ? html`<br>${m.phone}` : ''}</td>
               <td class="num">${formatMoney(m.hourly_rate_cents)}</td>
               <td class="num">${formatMoney(m.monthly_fee_cents)}</td>
-              <td class="num">${formatMoney(st.total)}<br><span class="small muted">${st.manual ? 'ručni obračun' : `Termini: ${st.lessonCount}`}</span></td>
+              <td class="num">${formatMoney(st.total)}<br><span class="small muted">${st.manual ? BILLING_MODE_SHORT.manual : `Termini: ${st.lessonCount}`}</span> ${paymentBadge(st)}</td>
               <td>${m.active ? 'aktivan' : 'neaktivan'}</td>
               <td class="actions">
                 <a class="btn btn-ghost btn-sm" href="/admin/mitglieder/${m.id}">Uredi</a>
@@ -244,7 +242,7 @@ module.exports = function adminRoutes(db) {
       monthly_fee: str(body.monthly_fee, 20),
       notes: str(body.notes, 2000),
       active: body.active === '1',
-      billing_mode: body.billing_mode === 'manual' ? 'manual' : 'schedule',
+      billing_mode: BILLING_MODES[body.billing_mode] ? body.billing_mode : 'schedule',
     };
     const errors = [];
     if (!values.name) errors.push('Nedostaje ime.');
@@ -651,11 +649,24 @@ module.exports = function adminRoutes(db) {
   });
 
   // ---------------------------------------------------------------- Iznosi
+  function paidToggle(req, member, st, back) {
+    return html`
+      <form method="post" action="/admin/abrechnung/${member.id}/placeno" class="inline-form">
+        ${csrfField(req)}
+        <input type="hidden" name="month" value="${st.month}">
+        <input type="hidden" name="paid" value="${st.paid ? '0' : '1'}">
+        <input type="hidden" name="back" value="${back}">
+        <button class="btn btn-sm ${st.paid ? 'btn-ghost' : 'btn-primary'}" type="submit">${st.paid ? 'Označi: nije plaćeno' : 'Označi: plaćeno'}</button>
+      </form>`;
+  }
+
   router.get('/abrechnung', (req, res) => {
     const month = D.isValidMonth(req.query.monat) ? req.query.monat : D.monthOf(D.todayISO());
     const rows = allMembers.all().map((m) => ({ member: m, st: monthlyStatement(db, m, month) }))
       .filter((r) => r.member.active || r.st.total !== 0);
     const sum = rows.reduce((s, r) => s + r.st.total, 0);
+    const open = rows.filter((r) => !r.st.paid).reduce((s, r) => s + r.st.total, 0);
+    const back = `/admin/abrechnung?monat=${month}`;
 
     res.send(String(layout(req, {
       title: 'Iznosi',
@@ -664,22 +675,27 @@ module.exports = function adminRoutes(db) {
       <div class="page-head"><h1>Mjesečni iznosi</h1></div>
       ${monthNav('/admin/abrechnung', month)}
       <div class="table-wrap"><table>
-        <thead><tr><th>Član</th><th class="num">Termini</th><th class="num">Sati</th><th class="num">Članarina</th><th class="num">Treninzi</th><th class="num">Stavke</th><th class="num">Ukupno</th><th></th></tr></thead>
+        <thead><tr><th>Član</th><th class="num">Termini</th><th class="num">Sati</th><th class="num">Članarina</th><th class="num">Treninzi</th><th class="num">Stavke</th><th class="num">Ukupno</th><th>Plaćanje</th><th></th></tr></thead>
         <tbody>${rows.length === 0
-          ? html`<tr><td colspan="8" class="empty">Nema članova.</td></tr>`
+          ? html`<tr><td colspan="9" class="empty">Nema članova.</td></tr>`
           : rows.map(({ member: m, st }) => html`<tr class="${m.active ? '' : 'is-inactive'}">
-            <td><strong>${m.name}</strong>${st.manual ? html` <span class="tag">ručni obračun</span>` : ''}</td>
+            <td><strong>${m.name}</strong>${st.mode !== 'schedule' ? html` <span class="tag">${BILLING_MODE_SHORT[st.mode]}</span>` : ''}</td>
             <td class="num">${st.manual ? '–' : st.lessonCount}</td>
             <td class="num">${formatHours(st.hours)}</td>
             <td class="num">${formatMoney(st.fee)}</td>
-            <td class="num">${formatMoney(st.lessonsTotal)}</td>
+            <td class="num">${st.billLessons ? formatMoney(st.lessonsTotal) : '–'}</td>
             <td class="num">${formatMoney(st.adjustmentsTotal)}</td>
             <td class="num"><strong>${formatMoney(st.total)}</strong></td>
-            <td class="actions"><a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}">Detalji</a></td>
+            <td>${paymentBadge(st)}</td>
+            <td class="actions">${paidToggle(req, m, st, back)}<a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}">Detalji</a></td>
           </tr>`)}</tbody>
-        <tfoot><tr class="total"><td colspan="6">Ukupno ${D.monthLabel(month)}</td><td class="num">${formatMoney(sum)}</td><td></td></tr></tfoot>
+        <tfoot>
+          <tr class="total"><td colspan="6">Ukupno ${D.monthLabel(month)}</td><td class="num">${formatMoney(sum)}</td><td colspan="2"></td></tr>
+          <tr><td colspan="6">Od toga još nije plaćeno</td><td class="num">${formatMoney(open)}</td><td colspan="2"></td></tr>
+        </tfoot>
       </table></div>
-      <p class="muted small">Iznosi se članovima prikazuju samo informativno. Plaćanje se ne obrađuje kroz aplikaciju.</p>`,
+      <p class="muted small">Iznosi i status plaćanja se članovima prikazuju samo informativno (tekući mjesec i ${MEMBER_MONTHS_BACK} mjeseca unazad).
+        Plaćanje se ne obrađuje kroz aplikaciju.</p>`,
     })));
   });
 
@@ -697,12 +713,15 @@ module.exports = function adminRoutes(db) {
       </div>
       ${monthNav(`/admin/abrechnung/${member.id}`, month)}
       <div class="summary-tile big">
-        <span class="label">Ukupno ${D.monthLabel(month)} (ovako vidi član)</span>
+        <span class="label">Ukupno ${D.monthLabel(month)} (ovako vidi član) · ${paymentBadge(st)}</span>
         <span class="value">${formatMoney(st.total)}</span>
-        <span class="hint">${formatMoney(member.hourly_rate_cents)} po satu · članarina ${formatMoney(member.monthly_fee_cents)}</span>
+        <span class="hint">${formatMoney(member.hourly_rate_cents)} po satu · članarina ${formatMoney(member.monthly_fee_cents)} · ${BILLING_MODE_SHORT[st.mode]}</span>
       </div>
-      ${st.manual ? html`<p class="notice">Ovaj član ima <strong>ručni obračun</strong>: treninzi iz rasporeda se ne obračunavaju.
+      <div class="btn-row payment-row">${paidToggle(req, member, st, `/admin/abrechnung/${member.id}?monat=${month}`)}</div>
+      ${st.mode === 'manual' ? html`<p class="notice">Ovaj član ima <strong>ručni obračun</strong>: treninzi iz rasporeda se ne prikazuju i ne obračunavaju.
         Iznos za mjesec unesi ispod kao stavku. Način obračuna mijenjaš kod <a href="/admin/mitglieder/${member.id}">člana</a>.</p>` : ''}
+      ${st.mode === 'display' ? html`<p class="notice">Ovaj član ima <strong>raspored s prikazom, bez obračuna</strong>: termini se prikazuju,
+        ali se ne naplaćuju. Iznos unesi ispod kao stavku. Način obračuna mijenjaš kod <a href="/admin/mitglieder/${member.id}">člana</a>.</p>` : ''}
       ${statementTable(st, { adminDelete: true, req })}
       <section class="card">
         <h2>Dodaj stavku</h2>
@@ -717,6 +736,17 @@ module.exports = function adminRoutes(db) {
         </form>
       </section>`,
     })));
+  });
+
+  router.post('/abrechnung/:id/placeno', (req, res) => {
+    const member = getMember.get(toId(req.params.id));
+    if (!member) return notFound(res, 'član');
+    if (!D.isValidMonth(req.body.month)) return res.status(400).send('Neispravan mjesec.');
+    const paid = req.body.paid === '1';
+    setPaid(db, member.id, req.body.month, paid);
+    res.flash('success', `${member.name}, ${D.monthLabel(req.body.month)}: ${paid ? 'plaćeno' : 'nije plaćeno'}.`);
+    const back = typeof req.body.back === 'string' && req.body.back.startsWith('/admin/abrechnung') ? req.body.back : '/admin/abrechnung';
+    res.redirect(back);
   });
 
   router.post('/abrechnung/:id/posten', (req, res) => {
@@ -741,6 +771,105 @@ module.exports = function adminRoutes(db) {
     db.prepare('DELETE FROM adjustments WHERE id = ?').run(adj.id);
     res.flash('success', 'Stavka je obrisana.');
     res.redirect(`/admin/abrechnung/${adj.user_id}?monat=${adj.month}`);
+  });
+
+  // ---------------------------------------------------------------- Aktuelnosti
+  // Aktuelnosti su interni „sandučić“: admin šalje novost odabranim ili svim aktivnim članovima,
+  // a članovi je vide u svom profilu (bez slanja e-maila).
+  function newsPage(req, { values = {}, errors = [] } = {}) {
+    const members = activeMembers.all();
+    const items = db.prepare(
+      `SELECT n.*, COUNT(r.user_id) AS recipients, COUNT(r.read_at) AS readers
+         FROM news n LEFT JOIN news_recipients r ON r.news_id = n.id
+        GROUP BY n.id ORDER BY n.created_at DESC, n.id DESC`
+    ).all();
+    const selected = new Set((values.member_ids || []).map(String));
+    return layout(req, {
+      title: 'Aktuelnosti',
+      body: html`
+      <div class="page-head"><div>
+        <h1>Aktuelnosti</h1>
+        <p class="muted">Pošalji članovima novosti – turniri, aktivnosti, obavještenja. Članovi ih vide u svom sandučiću.</p>
+      </div></div>
+      <section class="card">
+        <h2>Nova aktuelnost</h2>
+        ${errorList(errors)}
+        <form method="post" action="/admin/aktuelnosti" class="stack">
+          ${csrfField(req)}
+          <label>Naslov *<input name="title" required maxlength="150" value="${values.title || ''}" placeholder="npr. Jesenji klupski turnir 18.10."></label>
+          <label>Tekst *<textarea name="body" required rows="6" maxlength="5000">${values.body || ''}</textarea></label>
+          <fieldset class="recipients">
+            <legend>Primaoci</legend>
+            <label class="check"><input type="radio" name="audience" value="all"${values.audience !== 'some' ? ' checked' : ''}>
+              <span>Svi aktivni članovi (${members.length})</span></label>
+            <label class="check"><input type="radio" name="audience" value="some"${values.audience === 'some' ? ' checked' : ''}>
+              <span>Samo odabrani članovi:</span></label>
+            <div class="recipient-list">
+              ${members.map((m) => html`<label class="check"><input type="checkbox" name="member_ids" value="${m.id}"${selected.has(String(m.id)) ? ' checked' : ''}><span>${m.name}</span></label>`)}
+            </div>
+          </fieldset>
+          <div><button class="btn btn-primary" type="submit">Pošalji aktuelnost</button></div>
+        </form>
+      </section>
+      <section class="card">
+        <h2>Poslane aktuelnosti</h2>
+        ${items.length === 0
+          ? html`<p class="muted">Još nije poslana nijedna aktuelnost.</p>`
+          : html`<ul class="list">${items.map((n) => html`
+            <li class="news-row">
+              <div>
+                <strong>${n.title}</strong> <span class="muted small">· ${D.formatDate(n.created_at.slice(0, 10))} · pročitalo ${n.readers} od ${n.recipients}</span>
+                <div class="pre muted small">${n.body.length > 200 ? `${n.body.slice(0, 200)}…` : n.body}</div>
+              </div>
+              <form method="post" action="/admin/aktuelnosti/${n.id}/loeschen" data-confirm="Obrisati aktuelnost „${n.title}“? Nestat će i iz sandučića članova.">
+                ${csrfField(req)}<button class="btn btn-danger btn-sm" type="submit">Obriši</button>
+              </form>
+            </li>`)}</ul>`}
+      </section>`,
+    });
+  }
+
+  router.get('/aktuelnosti', (req, res) => {
+    res.send(String(newsPage(req)));
+  });
+
+  router.post('/aktuelnosti', (req, res) => {
+    const rawIds = req.body.member_ids;
+    const values = {
+      title: str(req.body.title, 150),
+      body: str(req.body.body, 5000),
+      audience: req.body.audience === 'some' ? 'some' : 'all',
+      member_ids: (Array.isArray(rawIds) ? rawIds : rawIds ? [rawIds] : []).map(toId).filter(Boolean),
+    };
+    const errors = [];
+    if (!values.title) errors.push('Naslov je obavezan.');
+    if (!values.body) errors.push('Tekst je obavezan.');
+    const recipients = values.audience === 'all'
+      ? activeMembers.all()
+      : values.member_ids.map((id) => getMember.get(id)).filter(Boolean);
+    if (recipients.length === 0) errors.push('Odaberi barem jednog primaoca.');
+    if (errors.length) {
+      res.status(400);
+      return res.send(String(newsPage(req, { values, errors })));
+    }
+    const addRecipient = db.prepare('INSERT OR IGNORE INTO news_recipients (news_id, user_id) VALUES (?, ?)');
+    db.exec('BEGIN');
+    try {
+      const { lastInsertRowid: newsId } = db.prepare('INSERT INTO news (title, body) VALUES (?, ?)').run(values.title, values.body);
+      for (const m of recipients) addRecipient.run(newsId, m.id);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    res.flash('success', `Aktuelnost je poslana (primaoci: ${recipients.length}).`);
+    res.redirect('/admin/aktuelnosti');
+  });
+
+  router.post('/aktuelnosti/:id/loeschen', (req, res) => {
+    db.prepare('DELETE FROM news WHERE id = ?').run(toId(req.params.id));
+    res.flash('success', 'Aktuelnost je obrisana.');
+    res.redirect('/admin/aktuelnosti');
   });
 
   return router;

@@ -12,6 +12,12 @@ const LEVELS = ['Početnik', 'Povratnik', 'Napredni', 'Takmičar'];
 // Izvor: https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc (Aleksandr Galichkin)
 const HERO_PHOTO_SRC = 'https://unsplash.com/photos/msx3rGYfOEc/download?w=1200';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Broj telefona: dozvoljeni su brojevi, razmaci i + / ( ) - . ; najmanje 6 cifara.
+const PHONE_RE = /^\+?[0-9\s/().-]+$/;
+
+function isValidPhone(phone) {
+  return PHONE_RE.test(phone) && phone.replace(/\D/g, '').length >= 6;
+}
 
 function str(v, max = 500) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
@@ -73,8 +79,8 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
           <label>E-mail *
             <input name="email" type="email" required maxlength="200" autocomplete="email" value="${values.email || ''}">
           </label>
-          <label>Telefon
-            <input name="phone" type="tel" maxlength="50" autocomplete="tel" value="${values.phone || ''}">
+          <label>Broj telefona *
+            <input name="phone" type="tel" required maxlength="50" autocomplete="tel" placeholder="npr. 061 123 456" value="${values.phone || ''}">
           </label>
           <label>Nivo znanja
             <select name="level">
@@ -121,6 +127,8 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
     const errors = [];
     if (!values.name) errors.push('Molimo upiši svoje ime.');
     if (!EMAIL_RE.test(values.email)) errors.push('Molimo upiši ispravnu e-mail adresu.');
+    if (!values.phone) errors.push('Molimo upiši broj telefona.');
+    else if (!isValidPhone(values.phone)) errors.push('Molimo upiši ispravan broj telefona.');
     if (!values.consent) errors.push('Molimo potvrdi saglasnost za kontakt.');
     if (errors.length) {
       res.status(400);
@@ -129,7 +137,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
 
     db.prepare(
       'INSERT INTO leads (name, email, phone, level, availability, message) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(values.name, values.email, values.phone || null, values.level, values.availability || null, values.message || null);
+    ).run(values.name, values.email, values.phone, values.level, values.availability || null, values.message || null);
     res.redirect('/danke');
   });
 

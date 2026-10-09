@@ -2,7 +2,7 @@
 
 process.env.TZ = 'Europe/Berlin';
 
-const { test, before, after } = require('node:test');
+const { test, before, after, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const { openDatabase, ensureAdmin } = require('../src/db');
 const { createApp } = require('../src/app');
@@ -15,6 +15,8 @@ let base;
 let db;
 
 before(async () => {
+  // Fester Testzeitpunkt, damit „aktueller Monat“ und „3 Monate zurück“ nicht vom echten Datum abhängen.
+  mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-09T10:00:00') });
   db = openDatabase(':memory:');
   ensureAdmin(db, { email: 'admin@test.de', password: 'adminpass123' });
   const app = createApp(db, { secret: 'test-secret' });
@@ -95,8 +97,15 @@ test('Interessent kann sich auf der Startseite eintragen', async () => {
   const bad = await c.post('/anmeldung', { name: '', email: 'x' });
   assert.equal(bad.status, 400);
 
+  // Broj telefona je obavezan
+  const noPhone = await c.post('/anmeldung', { name: 'Bez Telefona', email: 'bez@example.de', consent: '1' });
+  assert.equal(noPhone.status, 400);
+  assert.match(noPhone.text, /Molimo upiši broj telefona/);
+  const badPhone = await c.post('/anmeldung', { name: 'Bez Telefona', email: 'bez@example.de', phone: 'abc', consent: '1' });
+  assert.equal(badPhone.status, 400);
+
   const ok = await c.post('/anmeldung', {
-    name: 'Lea Neu', email: 'lea@example.de', level: 'Početnik', availability: 'Di ab 17 Uhr', consent: '1',
+    name: 'Lea Neu', email: 'lea@example.de', phone: '061 123 456', level: 'Početnik', availability: 'Di ab 17 Uhr', consent: '1',
   });
   assert.equal(ok.status, 302);
   assert.equal(ok.location, '/danke');
@@ -108,7 +117,7 @@ test('Interessent kann sich auf der Startseite eintragen', async () => {
 
 test('POST ohne gültiges CSRF-Token wird abgelehnt', async () => {
   const c = client();
-  const r = await c.request('/anmeldung', { method: 'POST', form: { name: 'X', email: 'x@y.de', consent: '1', _csrf: 'falsch' } });
+  const r = await c.request('/anmeldung', { method: 'POST', form: { name: 'X', email: 'x@y.de', phone: '061 123 456', consent: '1', _csrf: 'falsch' } });
   assert.equal(r.status, 403);
 });
 
@@ -222,7 +231,51 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   const manualBill = await member.request('/mitglied/abrechnung?monat=2026-10');
   assert.match(manualBill.text, /15,50/); // 10 KM Grundgebühr + 5,50 KM Posten
   assert.match(manualBill.text, /Ručni obračun/);
+  // Prikaz bez obračuna: termini sichtbar, aber nicht berechnet
+  db.prepare("UPDATE users SET billing_mode = 'display' WHERE id = ?").run(lea.id);
+  const displayBill = await member.request('/mitglied/abrechnung?monat=2026-10');
+  assert.match(displayBill.text, /15,50/);
+  assert.match(displayBill.text, /samo prikaz, bez obračuna/);
+  assert.match(displayBill.text, /17:30–19:00/);
   db.prepare("UPDATE users SET billing_mode = 'schedule' WHERE id = ?").run(lea.id);
+
+  // Admin kann Abrechnungsart „display“ über das Formular setzen
+  await admin.post(`/admin/mitglieder/${lea.id}`, {
+    name: 'Lea Neu', email: 'lea@example.de', hourly_rate: '40,00', monthly_fee: '10', active: '1', billing_mode: 'display',
+  }, `/admin/mitglieder/${lea.id}`);
+  assert.equal(db.prepare('SELECT billing_mode FROM users WHERE id = ?').get(lea.id).billing_mode, 'display');
+  db.prepare("UPDATE users SET billing_mode = 'schedule' WHERE id = ?").run(lea.id);
+
+  // Plaćeno / nije plaćeno: standardmäßig offen, Admin markiert als bezahlt
+  let billNow = await member.request('/mitglied/abrechnung?monat=2026-10');
+  assert.match(billNow.text, /Nije plaćeno/);
+  const paidRes = await admin.post(`/admin/abrechnung/${lea.id}/placeno`, { month: '2026-10', paid: '1' }, '/admin/abrechnung?monat=2026-10');
+  assert.equal(paidRes.status, 302);
+  billNow = await member.request('/mitglied/abrechnung?monat=2026-10');
+  assert.match(billNow.text, /tag-done">Plaćeno/);
+
+  // Mitglieder sehen nur 3 Monate zurück (ältere Anfragen werden begrenzt)
+  const old = await member.request('/mitglied/abrechnung?monat=2026-01');
+  assert.match(old.text, /<strong>Juli 2026<\/strong>/);
+  assert.doesNotMatch(old.text, /monat=2026-06/);
+
+  // Aktuelnosti: nur an Lea; Lea sieht sie ungelesen, Max nicht
+  const sent = await admin.post('/admin/aktuelnosti', {
+    title: 'Klupski turnir', body: 'Turnir u subotu u 10 h.', audience: 'some', member_ids: String(lea.id),
+  }, '/admin/aktuelnosti');
+  assert.equal(sent.status, 302);
+  const inbox = await member.request('/mitglied/aktuelnosti');
+  assert.match(inbox.text, /Klupski turnir/);
+  assert.match(inbox.text, /class="count"[^>]*>1</);
+  const newsId = db.prepare('SELECT id FROM news WHERE title = ?').get('Klupski turnir').id;
+  const article = await member.request(`/mitglied/aktuelnosti/${newsId}`);
+  assert.match(article.text, /Turnir u subotu u 10 h\./);
+  assert.ok(db.prepare('SELECT read_at FROM news_recipients WHERE news_id = ? AND user_id = ?').get(newsId, lea.id).read_at);
+  const maxClient = client();
+  await maxClient.login('max@test.de', 'memberpass1');
+  const maxInbox = await maxClient.request('/mitglied/aktuelnosti');
+  assert.doesNotMatch(maxInbox.text, /Klupski turnir/);
+  assert.equal((await maxClient.request(`/mitglied/aktuelnosti/${newsId}`)).status, 404);
 
   // Deaktiviertes Mitglied kann sich nicht mehr einloggen
   db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(lea.id);
@@ -232,7 +285,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
 
 test('Eingaben werden HTML-escaped', async () => {
   const c = client();
-  await c.post('/anmeldung', { name: '<script>alert(1)</script>', email: 'xss@example.de', consent: '1' });
+  await c.post('/anmeldung', { name: '<script>alert(1)</script>', email: 'xss@example.de', phone: '061 000 000', consent: '1' });
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
   const page = await admin.request('/admin/interessenten');

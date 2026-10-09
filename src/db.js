@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
   hourly_rate_cents INTEGER NOT NULL DEFAULT 0,
   monthly_fee_cents INTEGER NOT NULL DEFAULT 0,
   active            INTEGER NOT NULL DEFAULT 1,
-  billing_mode      TEXT NOT NULL DEFAULT 'schedule' CHECK (billing_mode IN ('schedule', 'manual')),
+  billing_mode      TEXT NOT NULL DEFAULT 'schedule',
   notes             TEXT,
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -54,6 +54,29 @@ CREATE TABLE IF NOT EXISTS adjustments (
 );
 CREATE INDEX IF NOT EXISTS adjustments_user_month ON adjustments (user_id, month);
 
+CREATE TABLE IF NOT EXISTS payments (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  month   TEXT NOT NULL,
+  paid    INTEGER NOT NULL DEFAULT 0,
+  paid_at TEXT,
+  PRIMARY KEY (user_id, month)
+);
+
+CREATE TABLE IF NOT EXISTS news (
+  id         INTEGER PRIMARY KEY,
+  title      TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS news_recipients (
+  news_id INTEGER NOT NULL REFERENCES news(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  read_at TEXT,
+  PRIMARY KEY (news_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS news_recipients_user ON news_recipients (user_id, read_at);
+
 CREATE TABLE IF NOT EXISTS leads (
   id                INTEGER PRIMARY KEY,
   name              TEXT NOT NULL,
@@ -74,6 +97,7 @@ function openDatabase(file) {
   db.exec('PRAGMA foreign_keys = ON;');
   if (file !== ':memory:') db.exec('PRAGMA journal_mode = WAL;');
   addMissingColumns(db);
+  relaxBillingModeCheck(db);
   db.exec(SCHEMA);
   db.exec('CREATE INDEX IF NOT EXISTS lessons_group ON lessons (group_id);');
   migrateLeadStatuses(db);
@@ -93,6 +117,30 @@ function addMissingColumns(db) {
     if (columns.length > 0 && !columns.some((c) => c.name === column)) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     }
+  }
+}
+
+// Jedna ranija verzija je u tabeli users imala CHECK koji dozvoljava samo 'schedule' i 'manual'.
+// SQLite ne može mijenjati CHECK, pa tabelu jednom ponovo kreiramo bez njega (podaci ostaju).
+function relaxBillingModeCheck(db) {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get();
+  if (!row || !row.sql.includes('CHECK (billing_mode')) return;
+  const newSql = row.sql
+    .replace(/CREATE TABLE "?users"?/, 'CREATE TABLE users_new')
+    .replace(/\s*CHECK \(billing_mode IN \([^)]*\)\)/, '');
+  db.exec('PRAGMA foreign_keys = OFF;');
+  db.exec('BEGIN');
+  try {
+    db.exec(newSql);
+    db.exec('INSERT INTO users_new SELECT * FROM users;');
+    db.exec('DROP TABLE users;');
+    db.exec('ALTER TABLE users_new RENAME TO users;');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON;');
   }
 }
 

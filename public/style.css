@@ -182,6 +182,27 @@ tr.is-inactive td { color: var(--muted); }
 .lesson-actions form { margin: 0; }
 .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--primary); text-decoration: underline; cursor: pointer; }
 .notice { padding: 10px 14px; border-radius: 10px; background: var(--primary-soft); margin-bottom: 16px; }
+a.notice-link { display: block; color: var(--text); text-decoration: none; }
+a.notice-link:hover { outline: 1px solid var(--primary); }
+.count { display: inline-block; min-width: 1.4em; padding: 0 6px; border-radius: 999px; background: var(--clay); color: #fff; font-size: 0.75rem; text-align: center; line-height: 1.5; }
+.inline-form { display: inline-block; margin: 0; }
+.payment-row { margin-bottom: 16px; }
+tr.is-selected td { background: var(--primary-soft); }
+.inbox { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+.inbox li + li { border-top: 1px solid var(--border); }
+.inbox a { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 14px 18px; color: var(--text); text-decoration: none; }
+.inbox a:hover { background: var(--primary-soft); }
+.inbox-title { font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.inbox li.is-unread .inbox-title { font-weight: 700; }
+.inbox-date { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+.inbox-preview { grid-column: 1 / -1; color: var(--muted); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--clay); flex-shrink: 0; }
+.news-article { margin-top: 14px; }
+.news-row { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.news-row form { margin: 0; flex-shrink: 0; }
+.recipients { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; display: grid; gap: 8px; }
+.recipients legend { font-weight: 500; padding: 0 4px; }
+.recipient-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 14px; padding-left: 26px; }
 .lesson.is-cancelled { border-left-color: var(--muted); opacity: 0.75; }
 .lesson.is-cancelled .lesson-time { text-decoration: line-through; }
 .lesson-edit { font-size: 0.8rem; }

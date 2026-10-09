@@ -25,11 +25,13 @@ function layout(req, { title, body, wide = false }) {
       ${navLink('/admin/interessenten', 'Zainteresovani')}
       ${navLink('/admin/mitglieder', 'Članovi')}
       ${navLink('/admin/termine', 'Termini')}
-      ${navLink('/admin/abrechnung', 'Iznosi')}`;
+      ${navLink('/admin/abrechnung', 'Iznosi')}
+      ${navLink('/admin/aktuelnosti', 'Aktuelnosti')}`;
   } else {
     nav = html`
       ${navLink('/mitglied', 'Sedmični raspored', true)}
       ${navLink('/mitglied/abrechnung', 'Mjesečni iznos')}
+      ${navLink('/mitglied/aktuelnosti', html`Aktuelnosti${req.unreadNews ? html` <span class="count" aria-label="nepročitano">${req.unreadNews}</span>` : ''}`)}
       ${navLink('/mitglied/passwort', 'Lozinka')}`;
   }
 
@@ -45,7 +47,7 @@ function layout(req, { title, body, wide = false }) {
 </head>
 <body>
   <header class="site-header">
-    <div class="container header-inner${wide ? ' wide' : ''}">
+    <div class="container header-inner${wide || (user && user.role === 'admin') ? ' wide' : ''}">
       <a class="brand" href="${user ? (user.role === 'admin' ? '/admin' : '/mitglied') : '/'}">
         <span class="ball" aria-hidden="true"></span>${SITE_NAME}
       </a>
@@ -170,7 +172,7 @@ function statementTable(statement, { adminDelete, req } = {}) {
       <tr class="${l.cancelled ? 'is-cancelled' : ''}">
         <td>${lessonKindLabel(l)} ${D.formatDateLong(l.date)}, ${lessonTimeRange(l)} h${l.court ? ` · Teren ${l.court}` : ''}</td>
         <td>${lessonStatusLabel(l)} · ${l.duration_min} min</td>
-        <td class="num">${l.cancelled ? formatMoney(0) : formatMoney(l.price_cents)}</td>
+        <td class="num">${!statement.billLessons ? '–' : l.cancelled ? formatMoney(0) : formatMoney(l.price_cents)}</td>
         ${adminDelete ? html`<td></td>` : ''}
       </tr>`);
   }
@@ -198,25 +200,42 @@ function statementTable(statement, { adminDelete, req } = {}) {
       <thead><tr><th>Stavka</th><th>Detalji</th><th class="num">Iznos</th>${adminDelete ? html`<th></th>` : ''}</tr></thead>
       <tbody>${rows}</tbody>
       <tfoot>
-        ${statement.manual
+        ${statement.mode === 'manual'
           ? html`<tr><td>Treninzi</td><td>Ručni obračun – vidi stavke</td><td class="num"></td>${adminDelete ? html`<td></td>` : ''}</tr>`
-          : html`<tr><td>Realizovani treninzi</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}</td><td class="num">${formatMoney(statement.lessonsTotal)}</td>${adminDelete ? html`<td></td>` : ''}</tr>`}
+          : statement.mode === 'display'
+            ? html`<tr><td>Realizovani treninzi</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)} · samo prikaz, bez obračuna</td><td class="num">–</td>${adminDelete ? html`<td></td>` : ''}</tr>`
+            : html`<tr><td>Realizovani treninzi</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}</td><td class="num">${formatMoney(statement.lessonsTotal)}</td>${adminDelete ? html`<td></td>` : ''}</tr>`}
         <tr class="total"><td>Ukupno ${D.monthLabel(statement.month)}</td><td></td><td class="num">${formatMoney(statement.total)}</td>${adminDelete ? html`<td></td>` : ''}</tr>
       </tfoot>
     </table>
   </div>`;
 }
 
-function monthNav(baseUrl, month, extraQuery = '') {
+// Plaćeno / nije plaćeno – samo informativno.
+function paymentBadge(statement) {
+  if (!statement.paid && statement.total === 0) return html`<span class="tag">Nema obaveze</span>`;
+  return statement.paid
+    ? html`<span class="tag tag-done">Plaćeno${statement.paidAt ? ` (${D.formatDate(statement.paidAt)})` : ''}</span>`
+    : html`<span class="tag tag-cancelled">Nije plaćeno</span>`;
+}
+
+// options.min / options.max (YYYY-MM) ograničavaju navigaciju (npr. članovi vide samo 3 mjeseca unazad).
+function monthNav(baseUrl, month, extraQuery = '', { min = null, max = null } = {}) {
+  const prev = D.addMonths(month, -1);
+  const next = D.addMonths(month, 1);
   return html`
   <div class="month-nav">
-    <a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${D.addMonths(month, -1)}${extraQuery}">‹ ${D.monthLabel(D.addMonths(month, -1))}</a>
+    ${min && prev < min
+      ? html`<span></span>`
+      : html`<a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${prev}${extraQuery}">‹ ${D.monthLabel(prev)}</a>`}
     <strong>${D.monthLabel(month)}</strong>
-    <a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${D.addMonths(month, 1)}${extraQuery}">${D.monthLabel(D.addMonths(month, 1))} ›</a>
+    ${max && next > max
+      ? html`<span></span>`
+      : html`<a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${next}${extraQuery}">${D.monthLabel(next)} ›</a>`}
   </div>`;
 }
 
 module.exports = {
-  layout, csrfField, errorList, weekView, statementTable, monthNav, lessonTimeRange, lessonTags,
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, lessonTimeRange, lessonTags,
   lessonKindLabel, lessonStatusLabel, LESSON_KINDS, LESSON_STATUSES, SITE_NAME,
 };

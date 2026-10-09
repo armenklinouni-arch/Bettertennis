@@ -4,8 +4,10 @@ const express = require('express');
 const { html } = require('../html');
 const D = require('../dates');
 const { formatMoney } = require('../money');
-const { monthlyStatement, formatHours } = require('../billing');
-const { layout, csrfField, errorList, weekView, statementTable, monthNav, lessonTimeRange, lessonKindLabel } = require('../views');
+const { monthlyStatement, formatHours, memberMonthRange, MEMBER_MONTHS_BACK } = require('../billing');
+const {
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, lessonTimeRange, lessonKindLabel,
+} = require('../views');
 const { requireLogin, hashPassword, verifyPassword } = require('../auth');
 
 module.exports = function memberRoutes(db) {
@@ -46,9 +48,12 @@ module.exports = function memberRoutes(db) {
         <a class="summary-tile" href="/mitglied/abrechnung?monat=${month}">
           <span class="label">Očekivani iznos za ${D.monthLabel(month)}</span>
           <span class="value">${formatMoney(statement.total)}</span>
-          <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount}`} · samo informativno</span>
+          <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount}`} · ${paymentBadge(statement)}</span>
         </a>
       </div>
+      ${req.unreadNews
+        ? html`<a class="notice notice-link" href="/mitglied/aktuelnosti">📬 Imaš nepročitane aktuelnosti: <strong>${req.unreadNews}</strong> – otvori sandučić →</a>`
+        : ''}
       ${weekView({ monday, lessons, baseUrl: '/mitglied', today })}
       <section class="card">
         <h2>Sljedeći termini</h2>
@@ -62,10 +67,16 @@ module.exports = function memberRoutes(db) {
     })));
   });
 
-  // Mjesečni iznos (samo informativno, bez funkcije plaćanja)
+  // Mjesečni iznos (samo informativno, bez funkcije plaćanja).
+  // Članovi vide samo tekući mjesec i tri mjeseca unazad.
   router.get('/abrechnung', (req, res) => {
-    const month = D.isValidMonth(req.query.monat) ? req.query.monat : D.monthOf(D.todayISO());
+    const { min, max } = memberMonthRange();
+    let month = D.isValidMonth(req.query.monat) ? req.query.monat : max;
+    if (month < min) month = min;
+    if (month > max) month = max;
     const statement = monthlyStatement(db, req.user, month);
+    const history = [];
+    for (let m = max; m >= min; m = D.addMonths(m, -1)) history.push(monthlyStatement(db, req.user, m));
     res.send(String(layout(req, {
       title: 'Mjesečni iznos',
       body: html`
@@ -76,14 +87,81 @@ module.exports = function memberRoutes(db) {
             plaćanje se vrši kako je dogovoreno s tvojom teniskom školom.</p>
         </div>
       </div>
-      ${monthNav('/mitglied/abrechnung', month)}
+      ${monthNav('/mitglied/abrechnung', month, '', { min, max })}
       <div class="summary-tile big">
-        <span class="label">Za platiti na kraju mjeseca</span>
+        <span class="label">${statement.paid ? 'Iznos za mjesec' : 'Za platiti na kraju mjeseca'} · ${paymentBadge(statement)}</span>
         <span class="value">${formatMoney(statement.total)}</span>
         <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}`}${
           req.user.hourly_rate_cents ? ` · ${formatMoney(req.user.hourly_rate_cents)} po satu` : ''}</span>
       </div>
-      ${statementTable(statement)}`,
+      ${statementTable(statement)}
+      <section class="card">
+        <h2>Pregled plaćanja</h2>
+        <p class="muted small">Prikazan je tekući mjesec i ${MEMBER_MONTHS_BACK} mjeseca unazad.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Mjesec</th><th class="num">Iznos</th><th>Status</th></tr></thead>
+            <tbody>${history.map((h) => html`
+              <tr${h.month === month ? html` class="is-selected"` : ''}>
+                <td><a href="/mitglied/abrechnung?monat=${h.month}">${D.monthLabel(h.month)}</a></td>
+                <td class="num">${formatMoney(h.total)}</td>
+                <td>${paymentBadge(h)}</td>
+              </tr>`)}</tbody>
+          </table>
+        </div>
+      </section>`,
+    })));
+  });
+
+  // ---------------------------------------------------------------- Aktuelnosti (sandučić)
+  const myNews = db.prepare(
+    `SELECT n.*, r.read_at FROM news n JOIN news_recipients r ON r.news_id = n.id
+      WHERE r.user_id = ? ORDER BY n.created_at DESC, n.id DESC`
+  );
+  const oneNews = db.prepare(
+    `SELECT n.*, r.read_at FROM news n JOIN news_recipients r ON r.news_id = n.id
+      WHERE r.user_id = ? AND n.id = ?`
+  );
+
+  router.get('/aktuelnosti', (req, res) => {
+    const items = myNews.all(req.user.id);
+    res.send(String(layout(req, {
+      title: 'Aktuelnosti',
+      body: html`
+      <div class="page-head"><div>
+        <h1>Aktuelnosti</h1>
+        <p class="muted">Novosti iz teniske škole: turniri, aktivnosti i obavještenja.</p>
+      </div></div>
+      ${items.length === 0
+        ? html`<p class="card muted">Sandučić je prazan – još nema aktuelnosti.</p>`
+        : html`<ul class="inbox">${items.map((n) => html`
+            <li class="${n.read_at ? '' : 'is-unread'}">
+              <a href="/mitglied/aktuelnosti/${n.id}">
+                <span class="inbox-title">${n.read_at ? '' : html`<span class="dot" aria-label="nepročitano"></span>`}${n.title}</span>
+                <span class="inbox-date">${D.formatDate(n.created_at.slice(0, 10))}</span>
+                <span class="inbox-preview">${n.body.length > 140 ? `${n.body.slice(0, 140)}…` : n.body}</span>
+              </a>
+            </li>`)}</ul>`}`,
+    })));
+  });
+
+  router.get('/aktuelnosti/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const item = Number.isInteger(id) ? oneNews.get(req.user.id, id) : null;
+    if (!item) return res.status(404).send('Nije pronađeno: aktuelnost.');
+    if (!item.read_at) {
+      db.prepare("UPDATE news_recipients SET read_at = datetime('now') WHERE news_id = ? AND user_id = ?").run(item.id, req.user.id);
+      req.unreadNews = Math.max(0, req.unreadNews - 1);
+    }
+    res.send(String(layout(req, {
+      title: item.title,
+      body: html`
+      <a class="btn btn-ghost btn-sm" href="/mitglied/aktuelnosti">← Nazad na aktuelnosti</a>
+      <article class="card news-article">
+        <p class="muted small">${D.formatDateLong(item.created_at.slice(0, 10))}</p>
+        <h1>${item.title}</h1>
+        <div class="pre">${item.body}</div>
+      </article>`,
     })));
   });
 

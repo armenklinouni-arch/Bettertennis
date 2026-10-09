@@ -4,7 +4,7 @@ Webanwendung für eine Tennisschule. **Die Oberfläche ist auf Bosnisch** (latei
 diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
 
 1. **Startseite** – Interessenten tragen sich unverbindlich für Tennisstunden ein
-   (Name, E-Mail, Telefon, Spielstärke, Wunschzeiten, Nachricht).
+   (Name, E-Mail, Telefon – Pflichtfeld –, Spielstärke, Wunschzeiten, Nachricht).
 2. **Mitgliederbereich** (Login) – Wochenübersicht **Montag bis Sonntag** mit Name, Datum und
    Uhrzeit jeder gebuchten Trainingseinheit (Wochen vor/zurück blätterbar) sowie der
    **Monatsbetrag**, der am Monatsende fällig wird – nur zur Information, keine Bezahlfunktion.
@@ -13,8 +13,9 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      mit einem Klick als Mitglied anlegen, löschen
    - **Mitglieder**: anlegen, bearbeiten, Passwort setzen, aktiv/inaktiv, löschen;
      Stundenpreis, optionale monatliche Grundgebühr und **Abrechnungsart**:
-     „Prema rasporedu“ (Termine werden automatisch berechnet) oder „Ručni unos“
-     (Termine zählen nicht, der Betrag wird nur manuell als Posten eingetragen)
+     - „Prema rasporedu“: Termine werden automatisch berechnet
+     - „Raspored s prikazom, bez obračuna“: Termine werden in der Abrechnung angezeigt, aber nicht berechnet
+     - „Ručni unos“: Termine erscheinen nicht, der Betrag wird nur manuell als Posten eingetragen
    - **Termine**: Wochenplan aller Mitglieder, Termine anlegen (einmalig oder wöchentlich
      für 4–52 Wochen), bearbeiten, löschen
      - **Individualni trening** (1 Mitglied) oder **Grupni trening** (2 Mitglieder). Jedes
@@ -22,7 +23,11 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      - **Status**: neue Termine sind automatisch „Realizovan“; mit einem Klick auf „Otkazan“
        umstellbar (abgesagte Termine werden nicht berechnet)
    - **Beträge**: Monatsübersicht aller Mitglieder, Detailansicht pro Mitglied, Zusatzposten
-     und Gutschriften (negative Beträge)
+     und Gutschriften (negative Beträge), Status **Plaćeno / Nije plaćeno** pro Monat
+     (Mitglieder sehen den aktuellen Monat und 3 Monate zurück)
+   - **Aktuelnosti**: Neuigkeiten (Turniere, Aktivitäten …) an alle oder ausgewählte Mitglieder
+     schicken; Mitglieder sehen sie in ihrem Postfach mit Zähler für ungelesene Nachrichten
+     (kein E-Mail-Versand)
 
 Monatsbetrag = Grundgebühr + Preise aller „Realizovan“-Termine des Monats + Zusatzposten
 (bei manueller Abrechnung nur Grundgebühr + Zusatzposten). Der Terminpreis wird beim Anlegen aus dem

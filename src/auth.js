@@ -111,8 +111,11 @@ function sessionMiddleware({ secret, secure }) {
 // Učitava prijavljenog korisnika (samo aktivni računi).
 function loadUser(db) {
   const stmt = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1');
+  const unread = db.prepare('SELECT COUNT(*) AS n FROM news_recipients WHERE user_id = ? AND read_at IS NULL');
   return (req, res, next) => {
     req.user = req.session.uid ? stmt.get(req.session.uid) || null : null;
+    // Broj nepročitanih aktuelnosti za oznaku u navigaciji.
+    req.unreadNews = req.user && req.user.role === 'member' ? unread.get(req.user.id).n : 0;
     next();
   };
 }
