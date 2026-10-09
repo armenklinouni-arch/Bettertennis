@@ -367,11 +367,17 @@ test('Trainer: anlegen, Terminen zuordnen, Bericht mit Einzel/Gruppe, Zusatzzahl
   assert.match(detail.text, /Ana, Ben, Cem/);
   assert.match(detail.text, /Nagrada/);
 
-  // Mitglied sieht den Trainer im Wochenplan
+  // Mitglied darf den Trainer NICHT sehen (Wochenplan, Monatsbetrag)
   const ana = client();
   await ana.login('ana@trainer-test.de', 'memberpass1');
   const week = await ana.request('/mitglied?woche=2026-11-02');
-  assert.match(week.text, /Trener: Trener Test/);
+  assert.match(week.text, /10:00–11:00/);
+  assert.doesNotMatch(week.text, /Trener Test|Trener:/);
+  const anaBill = await ana.request('/mitglied/abrechnung?monat=2026-10');
+  assert.doesNotMatch(anaBill.text, /Trener Test/);
+  // Admin sieht den Trainer weiterhin
+  const adminWeek = await admin.request('/admin/termine?woche=2026-11-02');
+  assert.match(adminWeek.text, /Trener: Trener Test/);
 
   // Trainer löschen: Termine bleiben, ohne Trainer
   await admin.post(`/admin/treneri/${trainer.id}/loeschen`, {}, `/admin/treneri/${trainer.id}/uredi`);

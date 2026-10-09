@@ -15,8 +15,9 @@ module.exports = function memberRoutes(db) {
   router.use(requireLogin);
 
   const weekLessons = db.prepare(
-    `SELECT l.*, u.name AS member_name, t.name AS trainer_name FROM lessons l
-       JOIN users u ON u.id = l.user_id LEFT JOIN trainers t ON t.id = l.trainer_id
+    // Namjerno bez imena trenera: članovi ne smiju vidjeti koji trener radi s njima.
+    `SELECT l.*, u.name AS member_name FROM lessons l
+       JOIN users u ON u.id = l.user_id
       WHERE l.user_id = ? AND l.date BETWEEN ? AND ?
       ORDER BY l.date, l.start_time`
   );

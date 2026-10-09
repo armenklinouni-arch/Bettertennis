@@ -24,7 +24,7 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      für 4–52 Wochen), bearbeiten, löschen
      - **Individualni trening** (1 Mitglied) oder **Grupni trening** (2–8 Mitglieder). Jedes
        Mitglied sieht im eigenen Plan nur sich selbst, nicht die anderen Gruppenmitglieder.
-     - Jedem Termin kann ein **Trainer** zugeordnet werden (auch für Mitglieder im Wochenplan sichtbar)
+     - Jedem Termin kann ein **Trainer** zugeordnet werden (nur für den Admin sichtbar, Mitglieder sehen den Trainer nicht)
      - **Status**: neue Termine sind automatisch „Realizovan“; mit einem Klick auf „Otkazan“
        umstellbar (abgesagte Termine werden nicht berechnet)
    - **Beträge**: Monatsübersicht aller Mitglieder, Detailansicht pro Mitglied, Zusatzposten
