@@ -450,3 +450,38 @@ test('Trainer-Konto: sieht nur eigene Stunden, Gruppen und Spieler; Rollen sind 
   assert.equal((await client().login('mirza@portal-test.de', 'trener1234')).status, 401);
   assert.equal((await t.request('/trener')).status, 302);
 });
+
+test('Stalne grupe: anlegen, im Terminformular auswählbar, bearbeiten, löschen', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const ids = ['Goran', 'Hana', 'Ilma'].map((n) => db.prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)')
+    .run(n, `${n.toLowerCase()}@grupe-test.de`, hashPassword('memberpass1')).lastInsertRowid);
+
+  const tooSmall = await admin.post('/admin/grupe', { name: 'Grupa X', member_ids: String(ids[0]) }, '/admin/grupe');
+  assert.equal(tooSmall.status, 400);
+
+  const ok = await admin.post('/admin/grupe', { name: 'Grupa 1', member_ids: ids.map(String), notes: 'srijedom' }, '/admin/grupe');
+  assert.equal(ok.status, 302);
+  const group = db.prepare("SELECT * FROM training_groups WHERE name = 'Grupa 1'").get();
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM training_group_members WHERE group_id = ?').get(group.id).n, 3);
+
+  const dupName = await admin.post('/admin/grupe', { name: 'grupa 1', member_ids: ids.map(String) }, '/admin/grupe');
+  assert.equal(dupName.status, 400);
+
+  // Im Terminformular steht die Gruppe mit ihren Mitgliedern (für die automatische Auswahl)
+  const termine = await admin.request('/admin/termine');
+  assert.match(termine.text, new RegExp(`value="${group.id}" data-members="${ids.join(',')}">Grupa 1: Goran, Hana, Ilma`));
+
+  // Bearbeiten: ein Mitglied entfernen
+  await admin.post(`/admin/grupe/${group.id}`, { name: 'Grupa 1', member_ids: [String(ids[0]), String(ids[1])] }, `/admin/grupe/${group.id}`);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM training_group_members WHERE group_id = ?').get(group.id).n, 2);
+
+  // Mitglieder- und Trainerseiten kennen keine Gruppenverwaltung
+  const member = client();
+  await member.login('goran@grupe-test.de', 'memberpass1');
+  assert.equal((await member.request('/admin/grupe')).status, 403);
+
+  await admin.post(`/admin/grupe/${group.id}/loeschen`, {}, '/admin/grupe');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM training_groups').get().n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM training_group_members').get().n, 0);
+});

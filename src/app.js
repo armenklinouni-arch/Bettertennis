@@ -9,6 +9,7 @@ const memberRoutes = require('./routes/member');
 const adminRoutes = require('./routes/admin');
 const trainerRoutes = require('./routes/trainers');
 const trainerPortalRoutes = require('./routes/trainer-portal');
+const groupRoutes = require('./routes/groups');
 
 function createApp(db, { secret, secureCookies = false, trustProxy = false } = {}) {
   const app = express();
@@ -36,6 +37,7 @@ function createApp(db, { secret, secureCookies = false, trustProxy = false } = {
   app.use('/mitglied', memberRoutes(db));
   app.use('/trener', trainerPortalRoutes(db));
   app.use('/admin/treneri', trainerRoutes(db));
+  app.use('/admin/grupe', groupRoutes(db));
   app.use('/admin', adminRoutes(db));
 
   app.use((req, res) => {

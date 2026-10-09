@@ -52,6 +52,19 @@ if (emir && lejla && !hasGroup) {
   }
 }
 
+// Stalne grupe za lakše planiranje termina.
+if (!db.prepare('SELECT COUNT(*) AS n FROM training_groups').get().n) {
+  const byEmail = (e) => db.prepare('SELECT id FROM users WHERE email = ?').get(e).id;
+  const groups = [
+    ['Grupa 1', 'nedjeljom 10 h', ['emir@example.ba', 'lejla@example.ba']],
+    ['Grupa 2', 'početnici', ['amina@example.ba', 'emir@example.ba', 'lejla@example.ba']],
+  ];
+  for (const [name, notes, emails] of groups) {
+    const { lastInsertRowid: gid } = db.prepare('INSERT INTO training_groups (name, notes) VALUES (?, ?)').run(name, notes);
+    for (const e of emails) db.prepare('INSERT INTO training_group_members (group_id, user_id) VALUES (?, ?)').run(gid, byEmail(e));
+  }
+}
+
 // Dva trenera; termini se naizmjenično dodjeljuju (grupe uvijek prvom treneru).
 if (!db.prepare('SELECT COUNT(*) AS n FROM trainers').get().n) {
   const insertTrainer = db.prepare(

@@ -13,6 +13,7 @@ const {
 } = require('../views');
 const { requireAdmin, hashPassword } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
+const { listGroupsWithMembers } = require('./groups');
 
 const LEAD_STATUSES = ['novo', 'kontaktiran', 'probni trening', 'član', 'odbijen'];
 const DURATIONS = [30, 45, 60, 90, 120];
@@ -397,6 +398,21 @@ module.exports = function adminRoutes(db) {
     return trainers.map((t) => html`<option value="${t.id}"${String(selected) === String(t.id) ? ' selected' : ''}>${t.name}</option>`);
   }
 
+  // Izbor stalne grupe: JavaScript (public/app.js) označi njene članove u formularu.
+  function groupPicker() {
+    const groups = listGroupsWithMembers(db, { activeOnly: true }).filter((g) => g.members.length > 0);
+    if (groups.length === 0) {
+      return html`<p class="muted small span-2">Savjet: stalne grupe igrača možeš unaprijed kreirati pod <a href="/admin/grupe">Grupe</a>.</p>`;
+    }
+    return html`
+      <label class="span-2">Stalna grupa (automatski označi članove)
+        <select name="preset_group" class="group-preset">
+          <option value="">– bez stalne grupe –</option>
+          ${groups.map((g) => html`<option value="${g.id}" data-members="${g.members.map((m) => m.id).join(',')}">${g.name}: ${g.members.map((m) => m.name).join(', ')}</option>`)}
+        </select>
+      </label>`;
+  }
+
   function lessonFields(req, v, members, { withStatus = false } = {}) {
     const memberOptions = (selected) =>
       members.map((m) => html`<option value="${m.id}"${String(selected) === String(m.id) ? ' selected' : ''}>${m.name} (${formatMoney(m.hourly_rate_cents)}/h)</option>`);
@@ -413,6 +429,7 @@ module.exports = function adminRoutes(db) {
             </select>
           </label>`
         : html`<p class="muted small form-hint">Novi termin automatski dobija status „${LESSON_STATUSES.done}“. Status možeš kasnije promijeniti u „${LESSON_STATUSES.cancelled}“.</p>`}
+      ${groupPicker()}
       <label>Trener
         <select name="trainer_id">
           <option value="">– bez trenera –</option>

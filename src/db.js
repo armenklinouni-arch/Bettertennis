@@ -78,6 +78,19 @@ CREATE TABLE IF NOT EXISTS trainer_bonuses (
 );
 CREATE INDEX IF NOT EXISTS trainer_bonuses_month ON trainer_bonuses (trainer_id, month);
 
+CREATE TABLE IF NOT EXISTS training_groups (
+  id         INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL,
+  notes      TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS training_group_members (
+  group_id INTEGER NOT NULL REFERENCES training_groups(id) ON DELETE CASCADE,
+  user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (group_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS payments (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   month   TEXT NOT NULL,

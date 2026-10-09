@@ -24,6 +24,7 @@ function layout(req, { title, body, wide = false }) {
       ${navLink('/admin', 'Pregled', true)}
       ${navLink('/admin/interessenten', 'Zainteresovani')}
       ${navLink('/admin/mitglieder', 'Članovi')}
+      ${navLink('/admin/grupe', 'Grupe')}
       ${navLink('/admin/treneri', 'Treneri')}
       ${navLink('/admin/termine', 'Termini')}
       ${navLink('/admin/abrechnung', 'Iznosi')}

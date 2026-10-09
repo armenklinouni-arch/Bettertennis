@@ -34,3 +34,21 @@ document.addEventListener('change', (event) => {
   const kind = box.form && box.form.querySelector('select[name="kind"]');
   if (kind) kind.value = 'group';
 });
+
+// Termini: izbor stalne grupe automatski označi njene članove
+// (prvi član ide u polje „Član“, ostali se označe u listi) i bira „Grupni trening“.
+document.addEventListener('change', (event) => {
+  const select = event.target;
+  if (!select.classList || !select.classList.contains('group-preset')) return;
+  const form = select.form;
+  const option = select.selectedOptions[0];
+  const ids = option && option.dataset.members ? option.dataset.members.split(',') : [];
+  if (ids.length === 0) return;
+  const first = form.querySelector('select[name="user_id"]');
+  if (first) first.value = ids[0];
+  form.querySelectorAll('.group-members input[name="member_ids"]').forEach((box) => {
+    box.checked = ids.slice(1).includes(box.value);
+  });
+  const kind = form.querySelector('select[name="kind"]');
+  if (kind) kind.value = 'group';
+});
