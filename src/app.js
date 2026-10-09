@@ -10,6 +10,7 @@ const adminRoutes = require('./routes/admin');
 const trainerRoutes = require('./routes/trainers');
 const trainerPortalRoutes = require('./routes/trainer-portal');
 const groupRoutes = require('./routes/groups');
+const financeRoutes = require('./routes/finance');
 
 function createApp(db, { secret, secureCookies = false, trustProxy = false } = {}) {
   const app = express();
@@ -38,6 +39,7 @@ function createApp(db, { secret, secureCookies = false, trustProxy = false } = {
   app.use('/trener', trainerPortalRoutes(db));
   app.use('/admin/treneri', trainerRoutes(db));
   app.use('/admin/grupe', groupRoutes(db));
+  app.use('/admin/finansije', financeRoutes(db));
   app.use('/admin', adminRoutes(db));
 
   app.use((req, res) => {

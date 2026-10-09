@@ -78,6 +78,18 @@ if (!db.prepare('SELECT COUNT(*) AS n FROM trainers').get().n) {
     .run(t1, D.monthOf(D.todayISO()));
 }
 
+// Primjer prihoda i rashoda za tekući mjesec.
+if (!db.prepare('SELECT COUNT(*) AS n FROM finance_entries').get().n) {
+  const month = D.monthOf(D.todayISO());
+  const add = db.prepare('INSERT INTO finance_entries (month, type, category, description, amount_cents) VALUES (?, ?, ?, ?, ?)');
+  add.run(month, 'income', 'Profit od turnira', 'Jesenji klupski turnir', 45000);
+  add.run(month, 'expense', 'Najam terena', 'Teren 1–3', 60000);
+  add.run(month, 'expense', 'Loptice', '4 kartona', 12000);
+  add.run(month, 'expense', 'Struja', 'Rasvjeta', 8500);
+  add.run(month, 'expense', 'Voda', null, 2500);
+  add.run(month, 'expense', 'Gorivo', 'Prevoz na turnir', 6000);
+}
+
 // Primjer aktuelnosti za sve članove i status plaćanja za prošli mjesec.
 if (!db.prepare('SELECT COUNT(*) AS n FROM news').get().n) {
   const { lastInsertRowid: newsId } = db

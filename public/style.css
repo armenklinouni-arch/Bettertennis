@@ -13,6 +13,7 @@
   --primary-soft: #eaf4de;
   --accent: #7fbf35;
   --brand-text: #11304c;
+  --positive: #3f8a12;
   --clay: #c8643b;
   --danger: #b3261e;
   --danger-soft: #fbe9e7;
@@ -34,6 +35,7 @@
     --on-primary: #0b1a2a;
     --primary-soft: #1d3326;
     --brand-text: #e6edf3;
+    --positive: #8fd14f;
     --danger: #f2867d;
     --danger-soft: #3a2220;
     --success-soft: #1d3326;
@@ -195,6 +197,10 @@ tr.is-inactive td { color: var(--muted); }
 .tag-kind.is-group { background: color-mix(in srgb, var(--accent) 45%, var(--surface)); }
 .tag-done { background: var(--success-soft); color: var(--primary); }
 .tag-cancelled { background: var(--danger-soft); color: var(--danger); }
+.positive, .summary-tile .value.positive { color: var(--positive); }
+.negative, .summary-tile .value.negative { color: var(--danger); }
+tr.auto-row td { background: color-mix(in srgb, var(--primary-soft) 60%, transparent); }
+.finance-form { margin-top: 8px; }
 .tag-pending { background: color-mix(in srgb, var(--accent) 40%, var(--surface)); color: var(--text); }
 .summary-tile .value.pending { font-size: 1.25rem; color: var(--muted); }
 .summary-tile.big .value.pending { font-size: 1.6rem; }

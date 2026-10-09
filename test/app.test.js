@@ -500,3 +500,49 @@ test('Stalne grupe: anlegen, im Terminformular auswählbar, bearbeiten, löschen
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM training_groups').get().n, 0);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM training_group_members').get().n, 0);
 });
+
+test('Finansije: prihodi (uplate članova + ručno), rashodi (treneri + ručno), rezultat', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const month = '2027-01';
+  const m1 = db.prepare('INSERT INTO users (name, email, password_hash, hourly_rate_cents) VALUES (?, ?, ?, 5000)')
+    .run('Jasmin', 'jasmin@fin-test.de', hashPassword('memberpass1')).lastInsertRowid;
+  const t = db.prepare("INSERT INTO trainers (name, rate_individual_cents, rate_group_cents) VALUES ('Fin Trener', 2000, 3000)").run().lastInsertRowid;
+  // 2 × 60 min à 50 KM = 100 KM Mitgliedsbetrag; Trainer 2 × 20 KM = 40 KM
+  for (const d of ['2027-01-05', '2027-01-12']) {
+    db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents, trainer_id) VALUES (?, ?, '10:00', 60, 5000, ?)").run(m1, d, t);
+  }
+  let page = await admin.request(`/admin/finansije?monat=${month}`);
+  assert.equal(page.status, 200);
+  const { financeMonth } = require('../src/routes/finance');
+  assert.equal(financeMonth(db, month).memberPaid, 0); // noch nicht bezahlt
+
+  await admin.post(`/admin/abrechnung/${m1}/placeno`, { month, paid: '1' }, `/admin/abrechnung?monat=${month}`);
+  await admin.post('/admin/finansije', { month, type: 'income', category: 'Profit od turnira', amount: '300', description: 'Zimski turnir' }, `/admin/finansije?monat=${month}`);
+  await admin.post('/admin/finansije', { month, type: 'expense', category: 'Najam terena', amount: '150' }, `/admin/finansije?monat=${month}`);
+  await admin.post('/admin/finansije', { month, type: 'expense', category: 'Loptice', amount: '45,50' }, `/admin/finansije?monat=${month}`);
+  // ungültige Kategorie / Betrag werden abgelehnt
+  await admin.post('/admin/finansije', { month, type: 'expense', category: 'Erfunden', amount: '10' }, `/admin/finansije?monat=${month}`);
+  await admin.post('/admin/finansije', { month, type: 'expense', category: 'Struja', amount: '-5' }, `/admin/finansije?monat=${month}`);
+
+  const f = financeMonth(db, month);
+  assert.equal(f.memberPaid, 10000);
+  assert.equal(f.income, 10000 + 30000);
+  assert.equal(f.trainerPay, 4000);
+  assert.equal(f.expense, 4000 + 15000 + 4550);
+  assert.equal(f.result, 40000 - 23550);
+
+  page = await admin.request(`/admin/finansije?monat=${month}`);
+  assert.match(page.text, /Zimski turnir/);
+  assert.match(page.text, /164,50\sKM/);
+  assert.match(page.text, /Pregled godine 2027/);
+
+  const entry = db.prepare("SELECT id FROM finance_entries WHERE category = 'Loptice'").get();
+  await admin.post(`/admin/finansije/${entry.id}/loeschen`, {}, `/admin/finansije?monat=${month}`);
+  assert.equal(financeMonth(db, month).expense, 4000 + 15000);
+
+  // Nur Admin
+  const member = client();
+  await member.login('jasmin@fin-test.de', 'memberpass1');
+  assert.equal((await member.request('/admin/finansije')).status, 403);
+});

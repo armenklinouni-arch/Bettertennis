@@ -39,6 +39,7 @@ function layout(req, { title, body, wide = false }) {
       ${navLink('/admin/treneri', 'Treneri')}
       ${navLink('/admin/termine', 'Termini')}
       ${navLink('/admin/abrechnung', 'Iznosi')}
+      ${navLink('/admin/finansije', 'Finansije')}
       ${navLink('/admin/aktuelnosti', 'Aktuelnosti')}`;
   } else if (user.role === 'trainer') {
     nav = html`

@@ -34,6 +34,11 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      und Gutschriften (negative Beträge), **Freigabe pro Monat** („Odobri za člana“; vorher sieht das
      Mitglied nur „Obračun u pripremi“, Freigabe jederzeit rücknehmbar), Status **Plaćeno / Nije plaćeno** pro Monat
      (Mitglieder sehen den aktuellen Monat und 3 Monate zurück)
+   - **Finansije** (Prihodi i rashodi): pro Monat Einnahmen (automatisch: bezahlte Mitgliederbeträge;
+     manuell: Turniergewinn, Camps, Sponsoren, Platzvermietung, Verkauf, Sonstiges) und Ausgaben
+     (automatisch: Trainerauszahlungen; manuell: Platzmiete, Bälle, Strom, Wasser, Requisiten, Benzin,
+     Platzpflege, Versicherung, Marketing, Verbandsgebühren, Buchhaltung, Investitionen, Sonstiges).
+     Ergebnis (Gewinn/Verlust), Ausgaben nach Kategorien und Jahresübersicht.
    - **Aktuelnosti**: Neuigkeiten (Turniere, Aktivitäten …) an alle oder ausgewählte Mitglieder
      schicken; Mitglieder sehen sie in ihrem Postfach mit Zähler für ungelesene Nachrichten
      (kein E-Mail-Versand)

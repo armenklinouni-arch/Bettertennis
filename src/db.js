@@ -91,6 +91,17 @@ CREATE TABLE IF NOT EXISTS training_group_members (
   PRIMARY KEY (group_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS finance_entries (
+  id           INTEGER PRIMARY KEY,
+  month        TEXT NOT NULL,
+  type         TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+  category     TEXT NOT NULL,
+  description  TEXT,
+  amount_cents INTEGER NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS finance_entries_month ON finance_entries (month);
+
 CREATE TABLE IF NOT EXISTS payments (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   month   TEXT NOT NULL,
