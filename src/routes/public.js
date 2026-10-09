@@ -9,8 +9,9 @@ const { verifyPassword, DUMMY_HASH, homeFor } = require('../auth');
 const LEVELS = ['Početnik', 'Povratnik', 'Napredni', 'Takmičar'];
 
 // Fotografija teniskog terena s Unsplasha (Unsplash licenca, besplatno za korištenje, navođenje autora nije obavezno).
-// Izvor: https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc (Aleksandr Galichkin)
-const HERO_PHOTO_SRC = 'https://unsplash.com/photos/msx3rGYfOEc/download?w=1200';
+// Izvor: https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc (Aleksandr Galichkin).
+// Slika je spremljena lokalno, pa se prikazuje i bez interneta.
+const HERO_PHOTO_SRC = '/static/img/tennisplatz.jpg';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Broj telefona: dozvoljeni su brojevi, razmaci i + / ( ) - . ; najmanje 6 cifara.
 const PHONE_RE = /^\+?[0-9\s/().-]+$/;
@@ -48,7 +49,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
         <figure class="hero-art">
           <div class="court" aria-hidden="true"><span></span></div>
           <img class="hero-photo" src="${HERO_PHOTO_SRC}" alt="Teniski teren od šljake s bijelim linijama"
-            width="1200" height="1600" loading="eager" referrerpolicy="no-referrer">
+            width="366" height="488" loading="eager">
         </figure>
       </section>
 

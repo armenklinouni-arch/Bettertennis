@@ -109,7 +109,7 @@ test/app.test.js
 
 Foto auf der Startseite: [Aleksandr Galichkin auf Unsplash](https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc)
 (Unsplash-Lizenz, kostenlos nutzbar, Namensnennung nicht erforderlich – daher auf der Seite ohne Bildnachweis).
-Es wird direkt von Unsplash geladen; ohne Internetverbindung erscheint stattdessen der gezeichnete Tennisplatz.
+Das Foto liegt lokal unter `public/img/tennisplatz.jpg` und erscheint daher auch ohne Internetverbindung.
 
 Sicherheit: Passwörter mit scrypt gehasht, HMAC-signierte HttpOnly-Cookies, CSRF-Token auf allen
 Formularen, Content-Security-Policy, Begrenzung fehlgeschlagener Logins, alle Ausgaben HTML-escaped.

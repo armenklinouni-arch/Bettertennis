@@ -87,9 +87,12 @@ test('Datums- und Geldhilfen', () => {
   assert.equal(formatMoney(4550).replace(/\s/g, ' '), '45,50 KM');
 });
 
-test('Content-Security-Policy erlaubt Bilder von Unsplash', async () => {
+test('Startseitenfoto wird lokal ausgeliefert (keine externen Bilder)', async () => {
   const res = await fetch(base + '/');
-  assert.match(res.headers.get('content-security-policy'), /img-src 'self' data: https:\/\/unsplash\.com https:\/\/images\.unsplash\.com/);
+  assert.match(res.headers.get('content-security-policy'), /img-src 'self' data:;/);
+  const img = await fetch(base + '/static/img/tennisplatz.jpg');
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get('content-type'), 'image/jpeg');
 });
 
 test('Interessent kann sich auf der Startseite eintragen', async () => {
@@ -98,7 +101,7 @@ test('Interessent kann sich auf der Startseite eintragen', async () => {
   assert.equal(home.status, 200);
   assert.match(home.text, /Zanimaju te časovi tenisa/);
   assert.match(home.text, /<html lang="bs">/);
-  assert.match(home.text, /class="hero-photo" src="https:\/\/unsplash\.com\/photos\//);
+  assert.match(home.text, /class="hero-photo" src="\/static\/img\/tennisplatz\.jpg"/);
   assert.doesNotMatch(home.text, /figcaption/);
   assert.match(home.text, /certificirani ITF treneri/);
   assert.doesNotMatch(home.text, /Transparentni/);
