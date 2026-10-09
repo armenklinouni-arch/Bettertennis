@@ -8,12 +8,9 @@ const { verifyPassword, DUMMY_HASH } = require('../auth');
 
 const LEVELS = ['Početnik', 'Povratnik', 'Napredni', 'Takmičar'];
 
-// Fotografija teniskog terena s Unsplasha (Unsplash licenca, besplatno za korištenje).
-const HERO_PHOTO = {
-  src: 'https://unsplash.com/photos/msx3rGYfOEc/download?w=1200',
-  page: 'https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc',
-  author: 'Aleksandr Galichkin',
-};
+// Fotografija teniskog terena s Unsplasha (Unsplash licenca, besplatno za korištenje, navođenje autora nije obavezno).
+// Izvor: https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc (Aleksandr Galichkin)
+const HERO_PHOTO_SRC = 'https://unsplash.com/photos/msx3rGYfOEc/download?w=1200';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function str(v, max = 500) {
@@ -43,24 +40,24 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
         </div>
         <figure class="hero-art">
           <div class="court" aria-hidden="true"><span></span></div>
-          <img class="hero-photo" src="${HERO_PHOTO.src}" alt="Teniski teren od šljake s bijelim linijama"
+          <img class="hero-photo" src="${HERO_PHOTO_SRC}" alt="Teniski teren od šljake s bijelim linijama"
             width="1200" height="1600" loading="eager" referrerpolicy="no-referrer">
-          <figcaption>Foto: <a href="${HERO_PHOTO.page}" target="_blank" rel="noopener">${HERO_PHOTO.author}</a> / Unsplash</figcaption>
         </figure>
       </section>
 
       <section class="features">
         <div class="feature card">
           <h3>Za svaki nivo</h3>
-          <p>Od prvog udarca do pripreme za turnir – trening se prilagođava tvom nivou igre.</p>
+          <p>Treninzi su prilagođeni svim nivoima – od početnika do naprednih igrača. Nudimo grupne i individualne treninge,
+            video analizu i konsultacije.</p>
         </div>
         <div class="feature card">
-          <h3>Stalni sedmični raspored</h3>
+          <h3>Sedmični raspored</h3>
           <p>Kao član u svom profilu vidiš sve termine treninga od ponedjeljka do nedjelje.</p>
         </div>
         <div class="feature card">
-          <h3>Transparentni troškovi</h3>
-          <p>U svakom trenutku vidiš koliki iznos za tvoje časove dospijeva na kraju mjeseca.</p>
+          <h3>Treneri</h3>
+          <p>Svi naši treneri su certificirani ITF treneri sa dugogodišnjim iskustvom.</p>
         </div>
       </section>
 

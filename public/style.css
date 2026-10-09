@@ -173,7 +173,15 @@ tr.is-inactive td { color: var(--muted); }
 .lesson-time { font-weight: 700; font-variant-numeric: tabular-nums; }
 .lesson-name { font-weight: 500; }
 .lesson-meta, .lesson-note { color: var(--muted); font-size: 0.8rem; }
-.lesson-tag { display: inline-block; margin-top: 4px; font-size: 0.75rem; background: var(--danger-soft); color: var(--danger); padding: 1px 6px; border-radius: 6px; }
+.lesson-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tag { display: inline-block; font-size: 0.72rem; padding: 1px 6px; border-radius: 6px; background: var(--border); color: var(--text); white-space: nowrap; }
+.tag-kind.is-group { background: color-mix(in srgb, var(--accent) 45%, var(--surface)); }
+.tag-done { background: var(--success-soft); color: var(--primary); }
+.tag-cancelled { background: var(--danger-soft); color: var(--danger); }
+.lesson-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 0.8rem; }
+.lesson-actions form { margin: 0; }
+.link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--primary); text-decoration: underline; cursor: pointer; }
+.notice { padding: 10px 14px; border-radius: 10px; background: var(--primary-soft); margin-bottom: 16px; }
 .lesson.is-cancelled { border-left-color: var(--muted); opacity: 0.75; }
 .lesson.is-cancelled .lesson-time { text-decoration: line-through; }
 .lesson-edit { font-size: 0.8rem; }
@@ -197,9 +205,8 @@ tr.is-inactive td { color: var(--muted); }
 .court::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 4px dashed rgba(255,255,255,0.9); }
 .court span { position: absolute; width: 34px; height: 34px; border-radius: 50%; background: var(--accent); top: 28%; left: 58%; box-shadow: 0 6px 10px rgba(0,0,0,0.25); }
 .hero-photo { position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: 3 / 4; height: auto; object-fit: cover; border-radius: 16px; border: 6px solid #fff; box-shadow: var(--shadow); background: var(--clay); }
-.hero-art figcaption { margin-top: 6px; font-size: 0.75rem; color: var(--muted); text-align: right; }
-.hero-art figcaption a { color: inherit; }
-.hero-art.photo-failed .hero-photo, .hero-art.photo-failed figcaption { display: none; }
+.hero-art.photo-failed .hero-photo { display: none; }
+.form-hint { align-self: end; margin: 0 0 10px; }
 .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 12px; }
 .feature h3 { color: var(--primary); }
 .feature p { margin: 0; color: var(--muted); }

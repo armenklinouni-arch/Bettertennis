@@ -3,9 +3,9 @@
 const express = require('express');
 const { html } = require('../html');
 const D = require('../dates');
-const { formatEUR } = require('../money');
+const { formatMoney } = require('../money');
 const { monthlyStatement, formatHours } = require('../billing');
-const { layout, csrfField, errorList, weekView, statementTable, monthNav, lessonTimeRange } = require('../views');
+const { layout, csrfField, errorList, weekView, statementTable, monthNav, lessonTimeRange, lessonKindLabel } = require('../views');
 const { requireLogin, hashPassword, verifyPassword } = require('../auth');
 
 module.exports = function memberRoutes(db) {
@@ -45,8 +45,8 @@ module.exports = function memberRoutes(db) {
         </div>
         <a class="summary-tile" href="/mitglied/abrechnung?monat=${month}">
           <span class="label">Očekivani iznos za ${D.monthLabel(month)}</span>
-          <span class="value">${formatEUR(statement.total)}</span>
-          <span class="hint">Termini: ${statement.lessonCount} · samo informativno</span>
+          <span class="value">${formatMoney(statement.total)}</span>
+          <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount}`} · samo informativno</span>
         </a>
       </div>
       ${weekView({ monday, lessons, baseUrl: '/mitglied', today })}
@@ -56,7 +56,7 @@ module.exports = function memberRoutes(db) {
           ? html`<p class="muted">Trenutno nema planiranih termina.</p>`
           : html`<ul class="list">${upcoming.map(
               (l) => html`<li><strong>${D.formatDateLong(l.date)}</strong> · ${lessonTimeRange(l)} h
-                ${l.court ? html`· Teren ${l.court}` : ''} — ${req.user.name}</li>`
+                ${l.court ? html`· Teren ${l.court}` : ''} · ${lessonKindLabel(l)} — ${req.user.name}</li>`
             )}</ul>`}
       </section>`,
     })));
@@ -79,9 +79,9 @@ module.exports = function memberRoutes(db) {
       ${monthNav('/mitglied/abrechnung', month)}
       <div class="summary-tile big">
         <span class="label">Za platiti na kraju mjeseca</span>
-        <span class="value">${formatEUR(statement.total)}</span>
-        <span class="hint">Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}${
-          req.user.hourly_rate_cents ? ` · ${formatEUR(req.user.hourly_rate_cents)} po satu` : ''}</span>
+        <span class="value">${formatMoney(statement.total)}</span>
+        <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}`}${
+          req.user.hourly_rate_cents ? ` · ${formatMoney(req.user.hourly_rate_cents)} po satu` : ''}</span>
       </div>
       ${statementTable(statement)}`,
     })));

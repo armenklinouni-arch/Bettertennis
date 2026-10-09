@@ -8,7 +8,7 @@ const { openDatabase, ensureAdmin } = require('../src/db');
 const { createApp } = require('../src/app');
 const { hashPassword } = require('../src/auth');
 const D = require('../src/dates');
-const { parseEUR, formatEUR } = require('../src/money');
+const { parseMoney, formatMoney } = require('../src/money');
 
 let server;
 let base;
@@ -67,13 +67,13 @@ test('Datums- und Geldhilfen', () => {
   assert.equal(D.addMinutes('17:30', 90), '19:00');
   assert.deepEqual(D.monthRange('2028-02'), { first: '2028-02-01', last: '2028-02-29' });
   assert.equal(D.isValidDate('2026-02-30'), false);
-  assert.equal(parseEUR('45,50'), 4550);
-  assert.equal(parseEUR('1.234,5'), 123450);
-  assert.equal(parseEUR('-10'), -1000);
-  assert.equal(parseEUR('abc'), null);
-  assert.equal(parseEUR('45,50 KM'), 4550);
+  assert.equal(parseMoney('45,50'), 4550);
+  assert.equal(parseMoney('1.234,5'), 123450);
+  assert.equal(parseMoney('-10'), -1000);
+  assert.equal(parseMoney('abc'), null);
+  assert.equal(parseMoney('45,50 KM'), 4550);
   assert.equal(D.formatDateLong('2026-10-05'), 'Ponedjeljak, 05.10.2026.');
-  assert.equal(formatEUR(4550).replace(/\s/g, ' '), '45,50 €');
+  assert.equal(formatMoney(4550).replace(/\s/g, ' '), '45,50 KM');
 });
 
 test('Content-Security-Policy erlaubt Bilder von Unsplash', async () => {
@@ -88,7 +88,9 @@ test('Interessent kann sich auf der Startseite eintragen', async () => {
   assert.match(home.text, /Zanimaju te časovi tenisa/);
   assert.match(home.text, /<html lang="bs">/);
   assert.match(home.text, /class="hero-photo" src="https:\/\/unsplash\.com\/photos\//);
-  assert.match(home.text, /Unsplash<\/figcaption>/);
+  assert.doesNotMatch(home.text, /figcaption/);
+  assert.match(home.text, /certificirani ITF treneri/);
+  assert.doesNotMatch(home.text, /Transparentni/);
 
   const bad = await c.post('/anmeldung', { name: '', email: 'x' });
   assert.equal(bad.status, 400);
@@ -153,7 +155,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
 
   // Einen Termin absagen, einen Zusatzposten erfassen
   await admin.post(`/admin/termine/${lessons[1].id}`, {
-    user_id: String(lea.id), date: '2026-10-12', start_time: '17:30', duration_min: '90', court: '2', price: '60,00', cancelled: '1',
+    user_id: String(lea.id), date: '2026-10-12', start_time: '17:30', duration_min: '90', court: '2', price: '60,00', status: 'cancelled', kind: 'individual',
   }, `/admin/termine/${lessons[1].id}`);
   await admin.post(`/admin/abrechnung/${lea.id}/posten`, { month: '2026-10', description: 'Ballmaschine', amount: '5,50' }, `/admin/abrechnung/${lea.id}?monat=2026-10`);
 
@@ -183,6 +185,44 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '09:00', 60, 3000)").run(other.id);
   const week2 = await member.request('/mitglied?woche=2026-10-05');
   assert.doesNotMatch(week2.text, /09:00–10:00/);
+
+  // Status: neue Termine sind „Realizovan“, abgesagte „Otkazan“
+  assert.match(week.text, /Realizovan/);
+  const cancelledWeek = await member.request('/mitglied?woche=2026-10-12');
+  assert.match(cancelledWeek.text, /Otkazan/);
+
+  // Gruppentraining: Lea + Max; Lea sieht nur sich selbst, Admin sieht beide
+  const g = await admin.post('/admin/termine', {
+    kind: 'group', user_id: String(lea.id), user_id2: String(other.id), date: '2026-10-08', start_time: '18:00', duration_min: '60', price: '25', repeat: '1',
+  }, '/admin/termine');
+  assert.equal(g.status, 302);
+  const groupRows = db.prepare("SELECT * FROM lessons WHERE kind = 'group' ORDER BY user_id").all();
+  assert.equal(groupRows.length, 2);
+  assert.ok(groupRows[0].group_id && groupRows[0].group_id === groupRows[1].group_id);
+  assert.deepEqual(groupRows.map((r) => r.price_cents), [2500, 2500]);
+  const leaWeek = await member.request('/mitglied?woche=2026-10-05');
+  assert.match(leaWeek.text, /Grupni trening/);
+  assert.doesNotMatch(leaWeek.text, /Max/);
+  const adminWeek = await admin.request('/admin/termine?woche=2026-10-05');
+  assert.match(adminWeek.text, /Lea Neu, Max|Max, Lea Neu/);
+
+  // Gruppe ohne zweites Mitglied wird abgelehnt
+  const bad = await admin.post('/admin/termine', {
+    kind: 'group', user_id: String(lea.id), user_id2: '', date: '2026-10-09', start_time: '18:00', duration_min: '60',
+  }, '/admin/termine');
+  assert.equal(bad.status, 302);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM lessons WHERE date = '2026-10-09'").get().n, 0);
+
+  // Status der ganzen Gruppe auf „Otkazan“ setzen
+  await admin.post(`/admin/termine/${groupRows[0].id}/status`, { status: 'cancelled' }, '/admin/termine?woche=2026-10-05');
+  assert.deepEqual(db.prepare("SELECT cancelled FROM lessons WHERE kind = 'group'").all().map((r) => r.cancelled), [1, 1]);
+
+  // Manueller Obračun: Termine zählen nicht, nur Grundgebühr + Posten
+  db.prepare("UPDATE users SET billing_mode = 'manual' WHERE id = ?").run(lea.id);
+  const manualBill = await member.request('/mitglied/abrechnung?monat=2026-10');
+  assert.match(manualBill.text, /15,50/); // 10 KM Grundgebühr + 5,50 KM Posten
+  assert.match(manualBill.text, /Ručni obračun/);
+  db.prepare("UPDATE users SET billing_mode = 'schedule' WHERE id = ?").run(lea.id);
 
   // Deaktiviertes Mitglied kann sich nicht mehr einloggen
   db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(lea.id);

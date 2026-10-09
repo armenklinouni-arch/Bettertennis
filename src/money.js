@@ -1,13 +1,13 @@
 'use strict';
 
 // Iznosi se čuvaju kao cijeli centi (feninzi) da bi se izbjegle greške zaokruživanja.
-// Valuta se može podesiti varijablom CURRENCY (npr. EUR ili BAM za konvertibilnu marku).
+// Standardna valuta je konvertibilna marka (BAM, „KM“); može se promijeniti varijablom CURRENCY (npr. EUR).
 
-const CURRENCY = process.env.CURRENCY || 'EUR';
+const CURRENCY = process.env.CURRENCY || 'BAM';
 const formatter = new Intl.NumberFormat('bs-BA', { style: 'currency', currency: CURRENCY });
 const CURRENCY_SYMBOL = formatter.formatToParts(0).find((p) => p.type === 'currency').value;
 
-function formatEUR(cents) {
+function formatMoney(cents) {
   return formatter.format((cents || 0) / 100);
 }
 
@@ -21,7 +21,7 @@ function centsToInput(cents) {
 
 // Prihvata npr. "45", "45,5", "45,50", "1.234,50", "-10", "45.50 €", "45 KM".
 // Vraća cente ili null ako unos nije ispravan.
-function parseEUR(input) {
+function parseMoney(input) {
   if (input === undefined || input === null) return null;
   let s = String(input).replace(/[\s€]|KM/gi, '');
   if (s === '') return null;
@@ -38,4 +38,4 @@ function lessonPrice(hourlyRateCents, durationMin) {
   return Math.round((hourlyRateCents * durationMin) / 60);
 }
 
-module.exports = { formatEUR, centsToInput, parseEUR, lessonPrice, CURRENCY_SYMBOL };
+module.exports = { formatMoney, centsToInput, parseMoney, lessonPrice, CURRENCY_SYMBOL };

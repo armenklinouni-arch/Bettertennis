@@ -12,14 +12,22 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
    - **Interessenten**: Status pflegen (neu, kontaktiert, Probestunde, Mitglied, abgelehnt),
      mit einem Klick als Mitglied anlegen, löschen
    - **Mitglieder**: anlegen, bearbeiten, Passwort setzen, aktiv/inaktiv, löschen;
-     Stundenpreis und optionale monatliche Grundgebühr
+     Stundenpreis, optionale monatliche Grundgebühr und **Abrechnungsart**:
+     „Prema rasporedu“ (Termine werden automatisch berechnet) oder „Ručni unos“
+     (Termine zählen nicht, der Betrag wird nur manuell als Posten eingetragen)
    - **Termine**: Wochenplan aller Mitglieder, Termine anlegen (einmalig oder wöchentlich
-     für 4–52 Wochen), bearbeiten, absagen (wird dann nicht berechnet), löschen
+     für 4–52 Wochen), bearbeiten, löschen
+     - **Individualni trening** (1 Mitglied) oder **Grupni trening** (2 Mitglieder). Jedes
+       Mitglied sieht im eigenen Plan nur sich selbst, nicht die anderen Gruppenmitglieder.
+     - **Status**: neue Termine sind automatisch „Realizovan“; mit einem Klick auf „Otkazan“
+       umstellbar (abgesagte Termine werden nicht berechnet)
    - **Beträge**: Monatsübersicht aller Mitglieder, Detailansicht pro Mitglied, Zusatzposten
      und Gutschriften (negative Beträge)
 
-Monatsbetrag = Grundgebühr + Preise aller nicht abgesagten Termine des Monats + Zusatzposten.
-Der Terminpreis wird beim Anlegen aus dem Stundenpreis berechnet und kann pro Termin überschrieben werden.
+Monatsbetrag = Grundgebühr + Preise aller „Realizovan“-Termine des Monats + Zusatzposten
+(bei manueller Abrechnung nur Grundgebühr + Zusatzposten). Der Terminpreis wird beim Anlegen aus dem
+Stundenpreis berechnet und kann pro Termin überschrieben werden; bei Gruppentraining gilt er pro Person.
+Alle Beträge in Konvertibler Mark (KM).
 
 ## Starten
 
@@ -57,7 +65,7 @@ Tests: `npm test`
 | `SESSION_SECRET` | Schlüssel für Session-Cookies                                     | wird erzeugt und in der DB gespeichert |
 | `NODE_ENV`       | `production` setzt Cookies auf `Secure` (HTTPS nötig)             | –                     |
 | `TRUST_PROXY`    | `1`, wenn die App hinter einem Reverse-Proxy läuft                | –                     |
-| `CURRENCY`       | Währung der Beträge, z. B. `EUR` oder `BAM` (Konvertible Mark, „KM“) | `EUR`              |
+| `CURRENCY`       | Währung der Beträge, z. B. `BAM` (Konvertible Mark, „KM“) oder `EUR` | `BAM`              |
 | `TZ`             | Zeitzone für „heute“ und Wochenbeginn                             | `Europe/Berlin`       |
 
 ## Aufbau
@@ -79,8 +87,8 @@ test/app.test.js
 ```
 
 Foto auf der Startseite: [Aleksandr Galichkin auf Unsplash](https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc)
-(Unsplash-Lizenz, kostenlos nutzbar). Es wird direkt von Unsplash geladen; ohne Internetverbindung
-erscheint stattdessen der gezeichnete Tennisplatz.
+(Unsplash-Lizenz, kostenlos nutzbar, Namensnennung nicht erforderlich – daher auf der Seite ohne Bildnachweis).
+Es wird direkt von Unsplash geladen; ohne Internetverbindung erscheint stattdessen der gezeichnete Tennisplatz.
 
 Sicherheit: Passwörter mit scrypt gehasht, HMAC-signierte HttpOnly-Cookies, CSRF-Token auf allen
 Formularen, Content-Security-Policy, Begrenzung fehlgeschlagener Logins, alle Ausgaben HTML-escaped.

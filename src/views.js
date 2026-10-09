@@ -2,7 +2,7 @@
 
 const { html } = require('./html');
 const D = require('./dates');
-const { formatEUR } = require('./money');
+const { formatMoney } = require('./money');
 const { formatHours } = require('./billing');
 
 const SITE_NAME = 'BetterTennis';
@@ -79,14 +79,33 @@ function errorList(errors) {
   return html`<div class="flash flash-error" role="alert"><ul>${errors.map((e) => html`<li>${e}</li>`)}</ul></div>`;
 }
 
+// Vrste treninga i status termina (u bazi: kind i cancelled).
+const LESSON_KINDS = { individual: 'Individualni trening', group: 'Grupni trening' };
+const LESSON_STATUSES = { done: 'Realizovan', cancelled: 'Otkazan' };
+
+function lessonKindLabel(lesson) {
+  return LESSON_KINDS[lesson.kind] || LESSON_KINDS.individual;
+}
+
+function lessonStatusLabel(lesson) {
+  return lesson.cancelled ? LESSON_STATUSES.cancelled : LESSON_STATUSES.done;
+}
+
+function lessonTags(lesson) {
+  return html`<div class="lesson-tags">
+    <span class="tag tag-kind${lesson.kind === 'group' ? ' is-group' : ''}">${lessonKindLabel(lesson)}</span>
+    <span class="tag ${lesson.cancelled ? 'tag-cancelled' : 'tag-done'}">${lessonStatusLabel(lesson)}</span>
+  </div>`;
+}
+
 function lessonTimeRange(lesson) {
   return `${lesson.start_time}–${D.addMinutes(lesson.start_time, lesson.duration_min)}`;
 }
 
 // Sedmični pregled od ponedjeljka do nedjelje.
 // lessons: termini (s poljem member_name) unutar sedmice.
-// options.baseUrl: cilj za navigaciju po sedmicama; options.linkLesson: funkcija za linkove za uređivanje (admin).
-function weekView({ monday, lessons, baseUrl, today = D.todayISO(), linkLesson, showPrice = false, extraQuery = '' }) {
+// options.baseUrl: cilj za navigaciju po sedmicama; options.actions: funkcija koja vraća dugmad za termin (admin).
+function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '' }) {
   const days = D.weekDays(monday);
   const sunday = days[6];
   const prev = D.addDays(monday, -7);
@@ -127,10 +146,10 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), linkLesson, 
                 <div class="lesson-meta">
                   ${D.formatDateLong(l.date)}${l.court ? html` · Teren ${l.court}` : ''}
                 </div>
-                ${l.cancelled ? html`<div class="lesson-tag">Otkazano</div>` : ''}
+                ${lessonTags(l)}
                 ${l.note ? html`<div class="lesson-note">${l.note}</div>` : ''}
-                ${showPrice ? html`<div class="lesson-meta">${formatEUR(l.price_cents)}</div>` : ''}
-                ${linkLesson ? html`<a class="lesson-edit" href="${linkLesson(l)}">Uredi</a>` : ''}
+                ${showPrice ? html`<div class="lesson-meta">${formatMoney(l.price_cents)}${l.kind === 'group' ? ' po osobi' : ''}</div>` : ''}
+                ${actions ? actions(l) : ''}
               </article>`
                 )}
           </div>
@@ -144,14 +163,14 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), linkLesson, 
 function statementTable(statement, { adminDelete, req } = {}) {
   const rows = [];
   if (statement.fee) {
-    rows.push(html`<tr><td>Mjesečna osnovna članarina</td><td></td><td class="num">${formatEUR(statement.fee)}</td>${adminDelete ? html`<td></td>` : ''}</tr>`);
+    rows.push(html`<tr><td>Mjesečna osnovna članarina</td><td></td><td class="num">${formatMoney(statement.fee)}</td>${adminDelete ? html`<td></td>` : ''}</tr>`);
   }
   for (const l of statement.lessons) {
     rows.push(html`
       <tr class="${l.cancelled ? 'is-cancelled' : ''}">
-        <td>Trening ${D.formatDateLong(l.date)}, ${lessonTimeRange(l)} h${l.court ? ` · Teren ${l.court}` : ''}</td>
-        <td>${l.cancelled ? 'otkazano' : `${l.duration_min} min`}</td>
-        <td class="num">${l.cancelled ? formatEUR(0) : formatEUR(l.price_cents)}</td>
+        <td>${lessonKindLabel(l)} ${D.formatDateLong(l.date)}, ${lessonTimeRange(l)} h${l.court ? ` · Teren ${l.court}` : ''}</td>
+        <td>${lessonStatusLabel(l)} · ${l.duration_min} min</td>
+        <td class="num">${l.cancelled ? formatMoney(0) : formatMoney(l.price_cents)}</td>
         ${adminDelete ? html`<td></td>` : ''}
       </tr>`);
   }
@@ -160,7 +179,7 @@ function statementTable(statement, { adminDelete, req } = {}) {
       <tr>
         <td>${a.description}</td>
         <td>${a.amount_cents < 0 ? 'Odobrenje' : 'Dodatna stavka'}</td>
-        <td class="num">${formatEUR(a.amount_cents)}</td>
+        <td class="num">${formatMoney(a.amount_cents)}</td>
         ${adminDelete
           ? html`<td class="num">
               <form method="post" action="/admin/posten/${a.id}/loeschen" data-confirm="Zaista obrisati stavku?">
@@ -179,8 +198,10 @@ function statementTable(statement, { adminDelete, req } = {}) {
       <thead><tr><th>Stavka</th><th>Detalji</th><th class="num">Iznos</th>${adminDelete ? html`<th></th>` : ''}</tr></thead>
       <tbody>${rows}</tbody>
       <tfoot>
-        <tr><td>Treninzi</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}</td><td class="num">${formatEUR(statement.lessonsTotal)}</td>${adminDelete ? html`<td></td>` : ''}</tr>
-        <tr class="total"><td>Ukupno ${D.monthLabel(statement.month)}</td><td></td><td class="num">${formatEUR(statement.total)}</td>${adminDelete ? html`<td></td>` : ''}</tr>
+        ${statement.manual
+          ? html`<tr><td>Treninzi</td><td>Ručni obračun – vidi stavke</td><td class="num"></td>${adminDelete ? html`<td></td>` : ''}</tr>`
+          : html`<tr><td>Realizovani treninzi</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}</td><td class="num">${formatMoney(statement.lessonsTotal)}</td>${adminDelete ? html`<td></td>` : ''}</tr>`}
+        <tr class="total"><td>Ukupno ${D.monthLabel(statement.month)}</td><td></td><td class="num">${formatMoney(statement.total)}</td>${adminDelete ? html`<td></td>` : ''}</tr>
       </tfoot>
     </table>
   </div>`;
@@ -195,4 +216,7 @@ function monthNav(baseUrl, month, extraQuery = '') {
   </div>`;
 }
 
-module.exports = { layout, csrfField, errorList, weekView, statementTable, monthNav, lessonTimeRange, SITE_NAME };
+module.exports = {
+  layout, csrfField, errorList, weekView, statementTable, monthNav, lessonTimeRange, lessonTags,
+  lessonKindLabel, lessonStatusLabel, LESSON_KINDS, LESSON_STATUSES, SITE_NAME,
+};

@@ -2,11 +2,14 @@
 
 const { monthRange } = require('./dates');
 
-// Mjesečni pregled člana: osnovna članarina + neotkazani treninzi + ručno dodane stavke.
+// Mjesečni pregled člana: osnovna članarina + realizovani treninzi + ručno dodane stavke.
+// Kod ručnog obračuna (billing_mode = 'manual') treninzi iz rasporeda se ne obračunavaju,
+// nego samo članarina i ručno unesene stavke.
 // Samo informativno – nikakvo plaćanje se ne vrši.
 function monthlyStatement(db, user, month) {
   const { first, last } = monthRange(month);
-  const lessons = db
+  const manual = user.billing_mode === 'manual';
+  const lessons = manual ? [] : db
     .prepare(
       `SELECT * FROM lessons
         WHERE user_id = ? AND date BETWEEN ? AND ?
@@ -25,6 +28,7 @@ function monthlyStatement(db, user, month) {
 
   return {
     month,
+    manual,
     lessons,
     adjustments,
     fee,

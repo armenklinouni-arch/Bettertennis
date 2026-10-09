@@ -5,6 +5,7 @@
 
 process.env.TZ = process.env.TZ || 'Europe/Berlin';
 
+const crypto = require('node:crypto');
 const { openDatabase, ensureAdmin } = require('../src/db');
 const { hashPassword } = require('../src/auth');
 const D = require('../src/dates');
@@ -33,6 +34,21 @@ for (const m of members) {
     for (const [day, time, duration] of m.slots) {
       insertLesson.run(id, D.addDays(monday, week * 7 + day), time, duration, String(1 + (id % 3)), lessonPrice(m.rate, duration));
     }
+  }
+}
+
+// Grupni trening nedjeljom: Emir i Lejla (po jedan red po članu, isti group_id).
+const emir = db.prepare('SELECT id FROM users WHERE email = ?').get('emir@example.ba');
+const lejla = db.prepare('SELECT id FROM users WHERE email = ?').get('lejla@example.ba');
+const hasGroup = db.prepare("SELECT 1 FROM lessons WHERE kind = 'group' LIMIT 1").get();
+if (emir && lejla && !hasGroup) {
+  const insertGroup = db.prepare(
+    `INSERT INTO lessons (user_id, date, start_time, duration_min, court, price_cents, kind, group_id)
+     VALUES (?, ?, '10:00', 90, '1', 3000, 'group', ?)`
+  );
+  for (let week = -2; week < 6; week++) {
+    const groupId = crypto.randomUUID();
+    for (const member of [emir, lejla]) insertGroup.run(member.id, D.addDays(monday, week * 7 + 6), groupId);
   }
 }
 

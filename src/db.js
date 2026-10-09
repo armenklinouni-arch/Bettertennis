@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
   hourly_rate_cents INTEGER NOT NULL DEFAULT 0,
   monthly_fee_cents INTEGER NOT NULL DEFAULT 0,
   active            INTEGER NOT NULL DEFAULT 1,
+  billing_mode      TEXT NOT NULL DEFAULT 'schedule' CHECK (billing_mode IN ('schedule', 'manual')),
   notes             TEXT,
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -36,6 +37,8 @@ CREATE TABLE IF NOT EXISTS lessons (
   note         TEXT,
   price_cents  INTEGER NOT NULL DEFAULT 0,
   cancelled    INTEGER NOT NULL DEFAULT 0,
+  kind         TEXT NOT NULL DEFAULT 'individual' CHECK (kind IN ('individual', 'group')),
+  group_id     TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS lessons_user_date ON lessons (user_id, date);
@@ -70,9 +73,27 @@ function openDatabase(file) {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA foreign_keys = ON;');
   if (file !== ':memory:') db.exec('PRAGMA journal_mode = WAL;');
+  addMissingColumns(db);
   db.exec(SCHEMA);
+  db.exec('CREATE INDEX IF NOT EXISTS lessons_group ON lessons (group_id);');
   migrateLeadStatuses(db);
   return db;
+}
+
+// Starije baze nemaju nove kolone – dodajemo ih bez gubitka podataka.
+const NEW_COLUMNS = [
+  ['users', 'billing_mode', "TEXT NOT NULL DEFAULT 'schedule'"],
+  ['lessons', 'kind', "TEXT NOT NULL DEFAULT 'individual'"],
+  ['lessons', 'group_id', 'TEXT'],
+];
+
+function addMissingColumns(db) {
+  for (const [table, column, definition] of NEW_COLUMNS) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+    if (columns.length > 0 && !columns.some((c) => c.name === column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
+  }
 }
 
 // Statusi upita su ranije bili na njemačkom – prevodimo postojeće zapise.

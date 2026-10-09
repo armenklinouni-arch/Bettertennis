@@ -4,15 +4,22 @@ const crypto = require('node:crypto');
 const express = require('express');
 const { html } = require('../html');
 const D = require('../dates');
-const { formatEUR, centsToInput, parseEUR, lessonPrice, CURRENCY_SYMBOL } = require('../money');
+const { formatMoney, centsToInput, parseMoney, lessonPrice, CURRENCY_SYMBOL } = require('../money');
 const { monthlyStatement, formatHours } = require('../billing');
-const { layout, csrfField, errorList, weekView, statementTable, monthNav, lessonTimeRange } = require('../views');
+const {
+  layout, csrfField, errorList, weekView, statementTable, monthNav, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES,
+} = require('../views');
 const { requireAdmin, hashPassword } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
 
 const LEAD_STATUSES = ['novo', 'kontaktiran', 'probni trening', 'član', 'odbijen'];
 const DURATIONS = [30, 45, 60, 90, 120];
 const MAX_REPEAT_WEEKS = 52;
+const GROUP_SIZE = 2;
+const BILLING_MODES = {
+  schedule: 'Prema rasporedu (realizovani treninzi se automatski obračunavaju)',
+  manual: 'Ručni unos (bez rasporeda – iznos unosiš kao stavke)',
+};
 
 function toId(v) {
   const n = Number(v);
@@ -40,15 +47,15 @@ module.exports = function adminRoutes(db) {
     const newLeads = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status = 'novo'").get().n;
     const memberCount = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'member' AND active = 1").get().n;
     const weekCount = db
-      .prepare('SELECT COUNT(*) AS n FROM lessons WHERE cancelled = 0 AND date BETWEEN ? AND ?')
+      .prepare("SELECT COUNT(DISTINCT COALESCE(group_id, 'L' || id)) AS n FROM lessons WHERE cancelled = 0 AND date BETWEEN ? AND ?")
       .get(monday, D.addDays(monday, 6)).n;
     const monthTotal = activeMembers.all().reduce((sum, m) => sum + monthlyStatement(db, m, month).total, 0);
-    const todays = db
+    const todays = mergeGroups(db
       .prepare(
         `SELECT l.*, u.name AS member_name FROM lessons l JOIN users u ON u.id = l.user_id
-          WHERE l.date = ? ORDER BY l.start_time`
+          WHERE l.date = ? ORDER BY l.start_time, l.id`
       )
-      .all(today);
+      .all(today));
     const latestLeads = db.prepare("SELECT * FROM leads WHERE status = 'novo' ORDER BY id DESC LIMIT 5").all();
 
     res.send(String(layout(req, {
@@ -59,7 +66,7 @@ module.exports = function adminRoutes(db) {
         <a class="summary-tile" href="/admin/interessenten"><span class="label">Novi zainteresovani</span><span class="value">${newLeads}</span></a>
         <a class="summary-tile" href="/admin/mitglieder"><span class="label">Aktivni članovi</span><span class="value">${memberCount}</span></a>
         <a class="summary-tile" href="/admin/termine"><span class="label">Termini ove sedmice</span><span class="value">${weekCount}</span></a>
-        <a class="summary-tile" href="/admin/abrechnung?monat=${month}"><span class="label">Ukupno ${D.monthLabel(month)}</span><span class="value">${formatEUR(monthTotal)}</span></a>
+        <a class="summary-tile" href="/admin/abrechnung?monat=${month}"><span class="label">Ukupno ${D.monthLabel(month)}</span><span class="value">${formatMoney(monthTotal)}</span></a>
       </div>
       <div class="two-col">
         <section class="card">
@@ -68,8 +75,8 @@ module.exports = function adminRoutes(db) {
             ? html`<p class="muted">Danas nema treninga.</p>`
             : html`<ul class="list">${todays.map((l) => html`
                 <li class="${l.cancelled ? 'is-cancelled' : ''}"><strong>${lessonTimeRange(l)}</strong> · ${l.member_name}
-                  ${l.court ? html`· Teren ${l.court}` : ''}${l.cancelled ? ' (otkazano)' : ''}
-                  <a href="/admin/termine/${l.id}">uredi</a></li>`)}</ul>`}
+                  ${l.court ? html`· Teren ${l.court}` : ''} <a href="/admin/termine/${l.id}">uredi</a>
+                  ${lessonTags(l)}</li>`)}</ul>`}
         </section>
         <section class="card">
           <h2>Novi upiti</h2>
@@ -164,9 +171,9 @@ module.exports = function adminRoutes(db) {
             return html`<tr class="${m.active ? '' : 'is-inactive'}">
               <td><strong>${m.name}</strong></td>
               <td>${m.email}${m.phone ? html`<br>${m.phone}` : ''}</td>
-              <td class="num">${formatEUR(m.hourly_rate_cents)}</td>
-              <td class="num">${formatEUR(m.monthly_fee_cents)}</td>
-              <td class="num">${formatEUR(st.total)}<br><span class="small muted">Termini: ${st.lessonCount}</span></td>
+              <td class="num">${formatMoney(m.hourly_rate_cents)}</td>
+              <td class="num">${formatMoney(m.monthly_fee_cents)}</td>
+              <td class="num">${formatMoney(st.total)}<br><span class="small muted">${st.manual ? 'ručni obračun' : `Termini: ${st.lessonCount}`}</span></td>
               <td>${m.active ? 'aktivan' : 'neaktivan'}</td>
               <td class="actions">
                 <a class="btn btn-ghost btn-sm" href="/admin/mitglieder/${m.id}">Uredi</a>
@@ -204,6 +211,11 @@ module.exports = function adminRoutes(db) {
           </label>
           <label>Cijena po satu (${CURRENCY_SYMBOL})<input name="hourly_rate" inputmode="decimal" placeholder="npr. 45,00" value="${v.hourly_rate || ''}"></label>
           <label>Mjesečna članarina (${CURRENCY_SYMBOL})<input name="monthly_fee" inputmode="decimal" placeholder="npr. 0,00" value="${v.monthly_fee || ''}"></label>
+          <label class="span-2">Način obračuna
+            <select name="billing_mode">
+              ${Object.entries(BILLING_MODES).map(([k, label]) => html`<option value="${k}"${v.billing_mode === k ? ' selected' : ''}>${label}</option>`)}
+            </select>
+          </label>
           <label class="span-2">Interne bilješke<textarea name="notes" rows="3" maxlength="2000">${v.notes || ''}</textarea></label>
           <label class="check"><input type="checkbox" name="active" value="1"${v.active ? ' checked' : ''}><span>Aktivan (smije se prijaviti)</span></label>
           ${isNew ? '' : html`<label class="check"><input type="checkbox" name="reprice" value="1"><span>Ponovo izračunaj cijene svih budućih termina prema novoj cijeni po satu</span></label>`}
@@ -232,13 +244,14 @@ module.exports = function adminRoutes(db) {
       monthly_fee: str(body.monthly_fee, 20),
       notes: str(body.notes, 2000),
       active: body.active === '1',
+      billing_mode: body.billing_mode === 'manual' ? 'manual' : 'schedule',
     };
     const errors = [];
     if (!values.name) errors.push('Nedostaje ime.');
     if (!EMAIL_RE.test(values.email)) errors.push('Neispravna e-mail adresa.');
     if ((isNew || values.password) && values.password.length < 8) errors.push('Lozinka mora imati najmanje 8 znakova.');
-    const rate = values.hourly_rate === '' ? 0 : parseEUR(values.hourly_rate);
-    const fee = values.monthly_fee === '' ? 0 : parseEUR(values.monthly_fee);
+    const rate = values.hourly_rate === '' ? 0 : parseMoney(values.hourly_rate);
+    const fee = values.monthly_fee === '' ? 0 : parseMoney(values.monthly_fee);
     if (rate === null || rate < 0) errors.push('Neispravna cijena po satu.');
     if (fee === null || fee < 0) errors.push('Neispravna članarina.');
     return { values, errors, rate, fee };
@@ -253,6 +266,7 @@ module.exports = function adminRoutes(db) {
     const lead = leadId ? db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId) : null;
     const values = {
       active: true,
+      billing_mode: 'schedule',
       password: crypto.randomBytes(6).toString('base64url'),
       ...(lead ? { name: lead.name, email: lead.email, phone: lead.phone || '', notes: [lead.level, lead.availability, lead.message].filter(Boolean).join('\n') } : {}),
     };
@@ -269,10 +283,10 @@ module.exports = function adminRoutes(db) {
     }
     const r = db
       .prepare(
-        `INSERT INTO users (name, email, phone, password_hash, role, hourly_rate_cents, monthly_fee_cents, active, notes)
-         VALUES (?, ?, ?, ?, 'member', ?, ?, ?, ?)`
+        `INSERT INTO users (name, email, phone, password_hash, role, hourly_rate_cents, monthly_fee_cents, active, notes, billing_mode)
+         VALUES (?, ?, ?, ?, 'member', ?, ?, ?, ?, ?)`
       )
-      .run(values.name, values.email, values.phone || null, hashPassword(values.password), rate, fee, values.active ? 1 : 0, values.notes || null);
+      .run(values.name, values.email, values.phone || null, hashPassword(values.password), rate, fee, values.active ? 1 : 0, values.notes || null, values.billing_mode);
     if (leadId) {
       db.prepare("UPDATE leads SET status = 'član', converted_user_id = ? WHERE id = ?").run(r.lastInsertRowid, leadId);
     }
@@ -291,6 +305,7 @@ module.exports = function adminRoutes(db) {
       monthly_fee: centsToInput(member.monthly_fee_cents),
       notes: member.notes || '',
       active: !!member.active,
+      billing_mode: member.billing_mode,
     };
     res.send(String(memberForm(req, { member, values })));
   });
@@ -305,9 +320,9 @@ module.exports = function adminRoutes(db) {
       return res.send(String(memberForm(req, { member, values, errors })));
     }
     db.prepare(
-      `UPDATE users SET name = ?, email = ?, phone = ?, hourly_rate_cents = ?, monthly_fee_cents = ?, active = ?, notes = ?
+      `UPDATE users SET name = ?, email = ?, phone = ?, hourly_rate_cents = ?, monthly_fee_cents = ?, active = ?, notes = ?, billing_mode = ?
         WHERE id = ?`
-    ).run(values.name, values.email, values.phone || null, rate, fee, values.active ? 1 : 0, values.notes || null, member.id);
+    ).run(values.name, values.email, values.phone || null, rate, fee, values.active ? 1 : 0, values.notes || null, values.billing_mode, member.id);
     if (values.password) {
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(values.password), member.id);
     }
@@ -328,12 +343,75 @@ module.exports = function adminRoutes(db) {
   });
 
   // ---------------------------------------------------------------- Termini
-  function lessonFields(req, v, members) {
+  // Grupni trening se čuva kao po jedan red za svakog člana s istim group_id.
+  // Tako svaki član u svom rasporedu i obračunu vidi samo sebe, a admin vidi cijelu grupu.
+
+  const getLesson = db.prepare('SELECT * FROM lessons WHERE id = ?');
+  const groupRows = db.prepare('SELECT * FROM lessons WHERE group_id = ? ORDER BY id');
+  const insertLesson = db.prepare(
+    `INSERT INTO lessons (user_id, date, start_time, duration_min, court, note, price_cents, cancelled, kind, group_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const deleteLesson = db.prepare('DELETE FROM lessons WHERE id = ?');
+
+  function lessonSet(lesson) {
+    return lesson.group_id ? groupRows.all(lesson.group_id) : [lesson];
+  }
+
+  function transaction(fn) {
+    db.exec('BEGIN');
+    try {
+      fn();
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
+  // Spaja redove istog grupnog treninga u jedan prikaz s imenima svih članova.
+  function mergeGroups(rows) {
+    const out = [];
+    const byGroup = new Map();
+    for (const r of rows) {
+      const existing = r.group_id && byGroup.get(r.group_id);
+      if (existing) {
+        existing.member_name = `${existing.member_name}, ${r.member_name}`;
+        continue;
+      }
+      const item = { ...r };
+      if (r.group_id) byGroup.set(r.group_id, item);
+      out.push(item);
+    }
+    return out;
+  }
+
+  function lessonFields(req, v, members, { withStatus = false } = {}) {
+    const memberOptions = (selected) =>
+      members.map((m) => html`<option value="${m.id}"${String(selected) === String(m.id) ? ' selected' : ''}>${m.name} (${formatMoney(m.hourly_rate_cents)}/h)</option>`);
     return html`
+      <label>Vrsta treninga *
+        <select name="kind">
+          ${Object.entries(LESSON_KINDS).map(([k, label]) => html`<option value="${k}"${v.kind === k ? ' selected' : ''}>${label}</option>`)}
+        </select>
+      </label>
+      ${withStatus
+        ? html`<label>Status
+            <select name="status">
+              ${Object.entries(LESSON_STATUSES).map(([k, label]) => html`<option value="${k}"${(v.cancelled ? 'cancelled' : 'done') === k ? ' selected' : ''}>${label}${k === 'cancelled' ? ' (ne naplaćuje se)' : ''}</option>`)}
+            </select>
+          </label>`
+        : html`<p class="muted small form-hint">Novi termin automatski dobija status „${LESSON_STATUSES.done}“. Status možeš kasnije promijeniti u „${LESSON_STATUSES.cancelled}“.</p>`}
       <label>Član *
         <select name="user_id" required>
           <option value="">– odaberi –</option>
-          ${members.map((m) => html`<option value="${m.id}"${String(v.user_id) === String(m.id) ? ' selected' : ''}>${m.name} (${formatEUR(m.hourly_rate_cents)}/h)</option>`)}
+          ${memberOptions(v.user_id)}
+        </select>
+      </label>
+      <label>Drugi član (samo za grupni trening)
+        <select name="user_id2">
+          <option value="">– odaberi –</option>
+          ${memberOptions(v.user_id2)}
         </select>
       </label>
       <label>Datum *<input name="date" type="date" required value="${v.date || ''}"></label>
@@ -342,36 +420,60 @@ module.exports = function adminRoutes(db) {
         <select name="duration_min">${DURATIONS.map((d) => html`<option value="${d}"${Number(v.duration_min) === d ? ' selected' : ''}>${d} minuta</option>`)}</select>
       </label>
       <label>Teren<input name="court" maxlength="30" value="${v.court || ''}"></label>
-      <label>Cijena (${CURRENCY_SYMBOL})<input name="price" inputmode="decimal" placeholder="prazno = prema cijeni po satu" value="${v.price || ''}"></label>
-      <label class="span-2">Napomena (vidljiva članu)<input name="note" maxlength="300" value="${v.note || ''}"></label>`;
+      <label>Cijena po osobi (${CURRENCY_SYMBOL})<input name="price" inputmode="decimal" placeholder="prazno = prema cijeni po satu" value="${v.price || ''}"></label>
+      <label>Napomena (vidljiva članu)<input name="note" maxlength="300" value="${v.note || ''}"></label>`;
   }
 
   function readLessonForm(body) {
     const v = {
+      kind: body.kind === 'group' ? 'group' : 'individual',
       user_id: toId(body.user_id),
+      user_id2: toId(body.user_id2),
       date: str(body.date, 10),
       start_time: str(body.start_time, 5),
       duration_min: Number(body.duration_min),
       court: str(body.court, 30),
       note: str(body.note, 300),
       price: str(body.price, 20),
-      cancelled: body.cancelled === '1',
+      cancelled: body.status === 'cancelled',
       repeat: Math.max(1, Math.min(MAX_REPEAT_WEEKS, parseInt(body.repeat, 10) || 1)),
     };
     const errors = [];
-    const member = v.user_id ? getMember.get(v.user_id) : null;
-    if (!member) errors.push('Molimo odaberi člana.');
+    const members = [];
+    const first = v.user_id ? getMember.get(v.user_id) : null;
+    if (!first) errors.push('Molimo odaberi člana.');
+    else members.push(first);
+    if (v.kind === 'group') {
+      const second = v.user_id2 ? getMember.get(v.user_id2) : null;
+      if (!second) errors.push(`Za grupni trening odaberi ${GROUP_SIZE} člana.`);
+      else if (first && second.id === first.id) errors.push('Članovi u grupi moraju biti različiti.');
+      else members.push(second);
+    }
     if (!D.isValidDate(v.date)) errors.push('Neispravan datum.');
     if (!D.isValidTime(v.start_time)) errors.push('Neispravno vrijeme.');
     if (!DURATIONS.includes(v.duration_min)) errors.push('Neispravno trajanje.');
-    let price = null;
+    let fixedPrice = null;
     if (v.price !== '') {
-      price = parseEUR(v.price);
-      if (price === null || price < 0) errors.push('Neispravna cijena.');
-    } else if (member) {
-      price = lessonPrice(member.hourly_rate_cents, v.duration_min);
+      fixedPrice = parseMoney(v.price);
+      if (fixedPrice === null || fixedPrice < 0) errors.push('Neispravna cijena.');
     }
-    return { v, errors, member, price };
+    // Bez unesene cijene svaki član plaća prema svojoj cijeni po satu.
+    const participants = members.map((m) => ({
+      member: m,
+      price: fixedPrice !== null ? fixedPrice : lessonPrice(m.hourly_rate_cents, v.duration_min),
+    }));
+    return { v, errors, participants };
+  }
+
+  function insertOccurrence(v, participants, date, groupId = null) {
+    const gid = v.kind === 'group' ? groupId || crypto.randomUUID() : null;
+    for (const p of participants) {
+      insertLesson.run(p.member.id, date, v.start_time, v.duration_min, v.court || null, v.note || null, p.price, v.cancelled ? 1 : 0, v.kind, gid);
+    }
+  }
+
+  function participantNames(participants) {
+    return participants.map((p) => p.member.name).join(' i ');
   }
 
   router.get('/termine', (req, res) => {
@@ -383,13 +485,31 @@ module.exports = function adminRoutes(db) {
     let sql = `SELECT l.*, u.name AS member_name FROM lessons l JOIN users u ON u.id = l.user_id
                WHERE l.date BETWEEN ? AND ?`;
     if (filterMember) {
-      sql += ' AND l.user_id = ?';
-      params.push(filterMember.id);
+      // Uz termine člana prikazujemo i ostale članove njegovih grupa.
+      sql += ' AND (l.user_id = ? OR l.group_id IN (SELECT group_id FROM lessons WHERE user_id = ? AND group_id IS NOT NULL))';
+      params.push(filterMember.id, filterMember.id);
     }
-    const lessons = db.prepare(`${sql} ORDER BY l.date, l.start_time`).all(...params);
+    const lessons = mergeGroups(db.prepare(`${sql} ORDER BY l.date, l.start_time, l.id`).all(...params));
     const members = activeMembers.all();
     const extraQuery = filterMember ? `&mitglied=${filterMember.id}` : '';
-    const defaults = { user_id: filterMember ? filterMember.id : '', date: monday < today && today <= D.addDays(monday, 6) ? today : monday, start_time: '17:00', duration_min: 60 };
+    const back = `/admin/termine?woche=${monday}${extraQuery}`;
+    const defaults = {
+      kind: 'individual',
+      user_id: filterMember ? filterMember.id : '',
+      date: monday < today && today <= D.addDays(monday, 6) ? today : monday,
+      start_time: '17:00',
+      duration_min: 60,
+    };
+    const actions = (l) => html`
+      <div class="lesson-actions">
+        <a href="/admin/termine/${l.id}">Uredi</a>
+        <form method="post" action="/admin/termine/${l.id}/status">
+          ${csrfField(req)}
+          <input type="hidden" name="status" value="${l.cancelled ? 'done' : 'cancelled'}">
+          <input type="hidden" name="back" value="${back}">
+          <button type="submit" class="link-btn">${l.cancelled ? `Označi: ${LESSON_STATUSES.done}` : `Označi: ${LESSON_STATUSES.cancelled}`}</button>
+        </form>
+      </div>`;
 
     res.send(String(layout(req, {
       title: 'Termini',
@@ -406,7 +526,7 @@ module.exports = function adminRoutes(db) {
           <button class="btn btn-ghost btn-sm" type="submit">Filtriraj</button>
         </form>
       </div>
-      ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, linkLesson: (l) => `/admin/termine/${l.id}`, showPrice: true, extraQuery })}
+      ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, actions, showPrice: true, extraQuery })}
       <section class="card">
         <h2>Novi termin</h2>
         ${members.length === 0
@@ -427,41 +547,48 @@ module.exports = function adminRoutes(db) {
   });
 
   router.post('/termine', (req, res) => {
-    const { v, errors, member, price } = readLessonForm(req.body);
+    const { v, errors, participants } = readLessonForm(req.body);
     if (errors.length) {
       res.flash('error', errors.join(' '));
       return res.redirect(`/admin/termine${D.isValidDate(v.date) ? `?woche=${D.mondayOf(v.date)}` : ''}`);
     }
-    const insert = db.prepare(
-      'INSERT INTO lessons (user_id, date, start_time, duration_min, court, note, price_cents) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    );
-    db.exec('BEGIN');
-    try {
-      for (let i = 0; i < v.repeat; i++) {
-        insert.run(member.id, D.addDays(v.date, 7 * i), v.start_time, v.duration_min, v.court || null, v.note || null, price);
-      }
-      db.exec('COMMIT');
-    } catch (err) {
-      db.exec('ROLLBACK');
-      throw err;
-    }
+    v.cancelled = false; // novi termini su uvijek „Realizovan“
+    transaction(() => {
+      for (let i = 0; i < v.repeat; i++) insertOccurrence(v, participants, D.addDays(v.date, 7 * i));
+    });
+    const who = participantNames(participants);
     res.flash('success', v.repeat > 1
-      ? `Kreirano ${v.repeat} sedmičnih termina za: ${member.name} (od ${D.formatDateLong(v.date)})`
-      : `Termin za: ${member.name} kreiran je za ${D.formatDateLong(v.date)}`);
+      ? `Kreirano ${v.repeat} sedmičnih termina (${LESSON_KINDS[v.kind]}) za: ${who}, od ${D.formatDateLong(v.date)}`
+      : `${LESSON_KINDS[v.kind]} za: ${who} kreiran je za ${D.formatDateLong(v.date)}`);
     res.redirect(`/admin/termine?woche=${D.mondayOf(v.date)}`);
   });
 
+  function lessonFormValues(rows) {
+    const [first, second] = rows;
+    const samePrice = rows.every((r) => r.price_cents === first.price_cents);
+    return {
+      ...first,
+      user_id: first.user_id,
+      user_id2: second ? second.user_id : '',
+      price: samePrice ? centsToInput(first.price_cents) : '',
+    };
+  }
+
   router.get('/termine/:id', (req, res) => {
-    const lesson = db.prepare('SELECT * FROM lessons WHERE id = ?').get(toId(req.params.id));
+    const lesson = getLesson.get(toId(req.params.id));
     if (!lesson) return notFound(res, 'termin');
-    const values = { ...lesson, price: centsToInput(lesson.price_cents) };
-    res.send(String(lessonEditPage(req, lesson, values)));
+    res.send(String(lessonEditPage(req, lesson, lessonFormValues(lessonSet(lesson)))));
   });
 
   function lessonEditPage(req, lesson, values, errors = []) {
-    const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(lesson.user_id);
     const members = activeMembers.all();
-    if (owner && !members.some((m) => m.id === owner.id)) members.unshift(owner);
+    // Neaktivni članovi koji su već u terminu moraju ostati izborni.
+    for (const row of lessonSet(lesson)) {
+      if (!members.some((m) => m.id === row.user_id)) {
+        const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
+        if (owner) members.unshift(owner);
+      }
+    }
     return layout(req, {
       title: 'Uredi termin',
       body: html`
@@ -471,9 +598,7 @@ module.exports = function adminRoutes(db) {
         ${errorList(errors)}
         <form method="post" action="/admin/termine/${lesson.id}" class="form-grid">
           ${csrfField(req)}
-          ${lessonFields(req, values, members)}
-          <label class="check span-2"><input type="checkbox" name="cancelled" value="1"${values.cancelled ? ' checked' : ''}>
-            <span>Otkazano (ne naplaćuje se)</span></label>
+          ${lessonFields(req, values, members, { withStatus: true })}
           <div class="span-2 btn-row"><button class="btn btn-primary" type="submit">Sačuvaj</button></div>
         </form>
       </section>
@@ -486,25 +611,41 @@ module.exports = function adminRoutes(db) {
   }
 
   router.post('/termine/:id', (req, res) => {
-    const lesson = db.prepare('SELECT * FROM lessons WHERE id = ?').get(toId(req.params.id));
+    const lesson = getLesson.get(toId(req.params.id));
     if (!lesson) return notFound(res, 'termin');
-    const { v, errors, member, price } = readLessonForm(req.body);
+    const { v, errors, participants } = readLessonForm(req.body);
     if (errors.length) {
       res.status(400);
       return res.send(String(lessonEditPage(req, lesson, v, errors)));
     }
-    db.prepare(
-      `UPDATE lessons SET user_id = ?, date = ?, start_time = ?, duration_min = ?, court = ?, note = ?, price_cents = ?, cancelled = ?
-        WHERE id = ?`
-    ).run(member.id, v.date, v.start_time, v.duration_min, v.court || null, v.note || null, price, v.cancelled ? 1 : 0, lesson.id);
+    // Termin (ili cijelu grupu) zamjenjujemo novim redovima s istim group_id.
+    transaction(() => {
+      for (const row of lessonSet(lesson)) deleteLesson.run(row.id);
+      insertOccurrence(v, participants, v.date, lesson.group_id);
+    });
     res.flash('success', 'Termin je sačuvan.');
     res.redirect(`/admin/termine?woche=${D.mondayOf(v.date)}`);
   });
 
-  router.post('/termine/:id/loeschen', (req, res) => {
-    const lesson = db.prepare('SELECT * FROM lessons WHERE id = ?').get(toId(req.params.id));
+  router.post('/termine/:id/status', (req, res) => {
+    const lesson = getLesson.get(toId(req.params.id));
     if (!lesson) return notFound(res, 'termin');
-    db.prepare('DELETE FROM lessons WHERE id = ?').run(lesson.id);
+    const cancelled = req.body.status === 'cancelled' ? 1 : 0;
+    const update = db.prepare('UPDATE lessons SET cancelled = ? WHERE id = ?');
+    transaction(() => {
+      for (const row of lessonSet(lesson)) update.run(cancelled, row.id);
+    });
+    res.flash('success', `Status termina: ${cancelled ? LESSON_STATUSES.cancelled : LESSON_STATUSES.done}.`);
+    const back = typeof req.body.back === 'string' && req.body.back.startsWith('/admin/termine') ? req.body.back : `/admin/termine?woche=${D.mondayOf(lesson.date)}`;
+    res.redirect(back);
+  });
+
+  router.post('/termine/:id/loeschen', (req, res) => {
+    const lesson = getLesson.get(toId(req.params.id));
+    if (!lesson) return notFound(res, 'termin');
+    transaction(() => {
+      for (const row of lessonSet(lesson)) deleteLesson.run(row.id);
+    });
     res.flash('success', 'Termin je obrisan.');
     res.redirect(`/admin/termine?woche=${D.mondayOf(lesson.date)}`);
   });
@@ -527,16 +668,16 @@ module.exports = function adminRoutes(db) {
         <tbody>${rows.length === 0
           ? html`<tr><td colspan="8" class="empty">Nema članova.</td></tr>`
           : rows.map(({ member: m, st }) => html`<tr class="${m.active ? '' : 'is-inactive'}">
-            <td><strong>${m.name}</strong></td>
-            <td class="num">${st.lessonCount}</td>
+            <td><strong>${m.name}</strong>${st.manual ? html` <span class="tag">ručni obračun</span>` : ''}</td>
+            <td class="num">${st.manual ? '–' : st.lessonCount}</td>
             <td class="num">${formatHours(st.hours)}</td>
-            <td class="num">${formatEUR(st.fee)}</td>
-            <td class="num">${formatEUR(st.lessonsTotal)}</td>
-            <td class="num">${formatEUR(st.adjustmentsTotal)}</td>
-            <td class="num"><strong>${formatEUR(st.total)}</strong></td>
+            <td class="num">${formatMoney(st.fee)}</td>
+            <td class="num">${formatMoney(st.lessonsTotal)}</td>
+            <td class="num">${formatMoney(st.adjustmentsTotal)}</td>
+            <td class="num"><strong>${formatMoney(st.total)}</strong></td>
             <td class="actions"><a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}">Detalji</a></td>
           </tr>`)}</tbody>
-        <tfoot><tr class="total"><td colspan="6">Ukupno ${D.monthLabel(month)}</td><td class="num">${formatEUR(sum)}</td><td></td></tr></tfoot>
+        <tfoot><tr class="total"><td colspan="6">Ukupno ${D.monthLabel(month)}</td><td class="num">${formatMoney(sum)}</td><td></td></tr></tfoot>
       </table></div>
       <p class="muted small">Iznosi se članovima prikazuju samo informativno. Plaćanje se ne obrađuje kroz aplikaciju.</p>`,
     })));
@@ -557,9 +698,11 @@ module.exports = function adminRoutes(db) {
       ${monthNav(`/admin/abrechnung/${member.id}`, month)}
       <div class="summary-tile big">
         <span class="label">Ukupno ${D.monthLabel(month)} (ovako vidi član)</span>
-        <span class="value">${formatEUR(st.total)}</span>
-        <span class="hint">${formatEUR(member.hourly_rate_cents)} po satu · članarina ${formatEUR(member.monthly_fee_cents)}</span>
+        <span class="value">${formatMoney(st.total)}</span>
+        <span class="hint">${formatMoney(member.hourly_rate_cents)} po satu · članarina ${formatMoney(member.monthly_fee_cents)}</span>
       </div>
+      ${st.manual ? html`<p class="notice">Ovaj član ima <strong>ručni obračun</strong>: treninzi iz rasporeda se ne obračunavaju.
+        Iznos za mjesec unesi ispod kao stavku. Način obračuna mijenjaš kod <a href="/admin/mitglieder/${member.id}">člana</a>.</p>` : ''}
       ${statementTable(st, { adminDelete: true, req })}
       <section class="card">
         <h2>Dodaj stavku</h2>
@@ -581,7 +724,7 @@ module.exports = function adminRoutes(db) {
     if (!member) return notFound(res, 'član');
     const month = D.isValidMonth(req.body.month) ? req.body.month : D.monthOf(D.todayISO());
     const description = str(req.body.description, 200);
-    const amount = parseEUR(req.body.amount);
+    const amount = parseMoney(req.body.amount);
     if (!description || amount === null) {
       res.flash('error', 'Molimo unesi opis i ispravan iznos.');
     } else {
