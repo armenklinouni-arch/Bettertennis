@@ -109,11 +109,20 @@ function sessionMiddleware({ secret, secure }) {
 }
 
 // Učitava prijavljenog korisnika (samo aktivni računi).
+// Treneri imaju vlastiti račun (tabela trainers); u sesiji su zapisani kao tid.
+// Za prikaz se predstavljaju kao korisnik s ulogom 'trainer'.
 function loadUser(db) {
   const stmt = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1');
+  const trainerStmt = db.prepare('SELECT * FROM trainers WHERE id = ? AND active = 1 AND password_hash IS NOT NULL');
   const unread = db.prepare('SELECT COUNT(*) AS n FROM news_recipients WHERE user_id = ? AND read_at IS NULL');
   return (req, res, next) => {
-    req.user = req.session.uid ? stmt.get(req.session.uid) || null : null;
+    req.user = null;
+    if (req.session.uid) {
+      req.user = stmt.get(req.session.uid) || null;
+    } else if (req.session.tid) {
+      const trainer = trainerStmt.get(req.session.tid);
+      if (trainer) req.user = { ...trainer, role: 'trainer', trainer_id: trainer.id };
+    }
     // Broj nepročitanih aktuelnosti za oznaku u navigaciji.
     req.unreadNews = req.user && req.user.role === 'member' ? unread.get(req.user.id).n : 0;
     next();
@@ -136,9 +145,32 @@ function csrfProtection(req, res, next) {
   next();
 }
 
+// Početna stranica nakon prijave, zavisno od uloge.
+function homeFor(user) {
+  if (user.role === 'admin') return '/admin';
+  if (user.role === 'trainer') return '/trener';
+  return '/mitglied';
+}
+
 function requireLogin(req, res, next) {
   if (!req.user) {
     return res.redirect(`/login?weiter=${encodeURIComponent(req.originalUrl)}`);
+  }
+  next();
+}
+
+// Članski dio: treneri nemaju pristup (vide samo svoj trenerski dio).
+function requireMember(req, res, next) {
+  if (!req.user) return res.redirect(`/login?weiter=${encodeURIComponent(req.originalUrl)}`);
+  if (req.user.role === 'trainer') return res.redirect('/trener');
+  next();
+}
+
+function requireTrainer(req, res, next) {
+  if (!req.user) return res.redirect(`/login?weiter=${encodeURIComponent(req.originalUrl)}`);
+  if (req.user.role !== 'trainer') {
+    res.status(403);
+    return res.send('Nemate pristup: ovaj dio je samo za trenere.');
   }
   next();
 }
@@ -186,6 +218,9 @@ module.exports = {
   loadUser,
   csrfProtection,
   requireLogin,
+  requireMember,
+  requireTrainer,
+  homeFor,
   requireAdmin,
   createLoginLimiter,
   // za testove

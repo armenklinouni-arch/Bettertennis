@@ -8,6 +8,7 @@ const publicRoutes = require('./routes/public');
 const memberRoutes = require('./routes/member');
 const adminRoutes = require('./routes/admin');
 const trainerRoutes = require('./routes/trainers');
+const trainerPortalRoutes = require('./routes/trainer-portal');
 
 function createApp(db, { secret, secureCookies = false, trustProxy = false } = {}) {
   const app = express();
@@ -33,6 +34,7 @@ function createApp(db, { secret, secureCookies = false, trustProxy = false } = {
 
   app.use('/', publicRoutes(db, { loginLimiter: createLoginLimiter() }));
   app.use('/mitglied', memberRoutes(db));
+  app.use('/trener', trainerPortalRoutes(db));
   app.use('/admin/treneri', trainerRoutes(db));
   app.use('/admin', adminRoutes(db));
 

@@ -7,7 +7,7 @@ const { formatMoney, centsToInput, parseMoney, CURRENCY_SYMBOL } = require('../m
 const { formatHours } = require('../billing');
 const { trainerReport } = require('../trainers');
 const { layout, csrfField, errorList, monthNav, lessonTimeRange, LESSON_KINDS } = require('../views');
-const { requireAdmin } = require('../auth');
+const { requireAdmin, hashPassword } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
 
 function toId(v) {
@@ -119,7 +119,16 @@ module.exports = function trainerRoutes(db) {
           ${csrfField(req)}
           <label>Ime i prezime *<input name="name" required maxlength="120" value="${v.name || ''}"></label>
           <label>Telefon<input name="phone" type="tel" maxlength="50" value="${v.phone || ''}"></label>
-          <label class="span-2">E-mail<input name="email" type="email" maxlength="200" value="${v.email || ''}"></label>
+          <label class="span-2">E-mail (za prijavu trenera)<input name="email" type="email" maxlength="200" value="${v.email || ''}"></label>
+          <label class="span-2">${isNew || !trainer.password_hash
+            ? 'Lozinka za prijavu (najmanje 8 znakova; prazno = trener nema pristup)'
+            : 'Nova lozinka za prijavu (prazno = bez promjene)'}
+            <input name="password" type="text" autocomplete="new-password" minlength="8" value="${v.password || ''}">
+          </label>
+          ${!isNew && trainer.password_hash
+            ? html`<label class="check span-2"><input type="checkbox" name="revoke" value="1"><span>Ukloni pristup (trener se više ne može prijaviti)</span></label>`
+            : ''}
+          <p class="muted small span-2">Prijavljeni trener vidi samo svoje termine, svoje igrače, svoje sate i svoju isplatu – ne vidi druge trenere ni cijene članova.</p>
           <label>Isplata – individualni trening (${CURRENCY_SYMBOL} po satu)
             <input name="rate_individual" inputmode="decimal" placeholder="npr. 25,00" value="${v.rate_individual || ''}"></label>
           <label>Isplata – grupni trening (${CURRENCY_SYMBOL} po satu)
@@ -141,6 +150,13 @@ module.exports = function trainerRoutes(db) {
     });
   }
 
+  // E-mail za prijavu mora biti jedinstven među članovima, adminima i trenerima.
+  function emailTaken(email, exceptTrainerId = 0) {
+    if (!email) return false;
+    return !!db.prepare('SELECT id FROM users WHERE email = ? COLLATE NOCASE').get(email)
+      || !!db.prepare('SELECT id FROM trainers WHERE email = ? COLLATE NOCASE AND id != ?').get(email, exceptTrainerId);
+  }
+
   function readTrainerForm(body) {
     const values = {
       name: str(body.name, 120),
@@ -150,10 +166,14 @@ module.exports = function trainerRoutes(db) {
       rate_group: str(body.rate_group, 20),
       notes: str(body.notes, 2000),
       active: body.active === '1',
+      password: typeof body.password === 'string' ? body.password : '',
+      revoke: body.revoke === '1',
     };
     const errors = [];
     if (!values.name) errors.push('Ime trenera je obavezno.');
     if (values.email && !EMAIL_RE.test(values.email)) errors.push('Neispravna e-mail adresa.');
+    if (values.password && values.password.length < 8) errors.push('Lozinka mora imati najmanje 8 znakova.');
+    if (values.password && !values.email) errors.push('Za prijavu trenera potreban je e-mail.');
     const rateIndividual = values.rate_individual === '' ? 0 : parseMoney(values.rate_individual);
     const rateGroup = values.rate_group === '' ? 0 : parseMoney(values.rate_group);
     if (rateIndividual === null || rateIndividual < 0) errors.push('Neispravna isplata za individualni trening.');
@@ -167,15 +187,17 @@ module.exports = function trainerRoutes(db) {
 
   router.post('/', (req, res) => {
     const { values, errors, rateIndividual, rateGroup } = readTrainerForm(req.body);
+    if (!errors.length && emailTaken(values.email)) errors.push('Ova e-mail adresa se već koristi.');
     if (errors.length) {
       res.status(400);
       return res.send(String(trainerForm(req, { values, errors })));
     }
     const r = db.prepare(
-      `INSERT INTO trainers (name, phone, email, rate_individual_cents, rate_group_cents, active, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(values.name, values.phone || null, values.email || null, rateIndividual, rateGroup, values.active ? 1 : 0, values.notes || null);
-    res.flash('success', `Trener ${values.name} je kreiran.`);
+      `INSERT INTO trainers (name, phone, email, rate_individual_cents, rate_group_cents, active, notes, password_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(values.name, values.phone || null, values.email || null, rateIndividual, rateGroup, values.active ? 1 : 0, values.notes || null,
+      values.password ? hashPassword(values.password) : null);
+    res.flash('success', `Trener ${values.name} je kreiran.${values.password ? ` Prijava: ${values.email} / lozinka: ${values.password}` : ''}`);
     res.redirect(`/admin/treneri/${r.lastInsertRowid}`);
   });
 
@@ -186,6 +208,7 @@ module.exports = function trainerRoutes(db) {
       trainer,
       values: {
         ...trainer,
+        password: '',
         rate_individual: centsToInput(trainer.rate_individual_cents),
         rate_group: centsToInput(trainer.rate_group_cents),
         active: !!trainer.active,
@@ -197,6 +220,8 @@ module.exports = function trainerRoutes(db) {
     const trainer = getTrainer.get(toId(req.params.id));
     if (!trainer) return notFound(res);
     const { values, errors, rateIndividual, rateGroup } = readTrainerForm(req.body);
+    if (!errors.length && emailTaken(values.email, trainer.id)) errors.push('Ova e-mail adresa se već koristi.');
+    if (!errors.length && trainer.password_hash && !values.revoke && !values.email) errors.push('Trener ima pristup – e-mail ne može biti prazan.');
     if (errors.length) {
       res.status(400);
       return res.send(String(trainerForm(req, { trainer, values, errors })));
@@ -205,7 +230,15 @@ module.exports = function trainerRoutes(db) {
       `UPDATE trainers SET name = ?, phone = ?, email = ?, rate_individual_cents = ?, rate_group_cents = ?, active = ?, notes = ?
         WHERE id = ?`
     ).run(values.name, values.phone || null, values.email || null, rateIndividual, rateGroup, values.active ? 1 : 0, values.notes || null, trainer.id);
-    res.flash('success', `Promjene za trenera ${values.name} su sačuvane.`);
+    let access = '';
+    if (values.revoke) {
+      db.prepare('UPDATE trainers SET password_hash = NULL WHERE id = ?').run(trainer.id);
+      access = ' Pristup je uklonjen.';
+    } else if (values.password) {
+      db.prepare('UPDATE trainers SET password_hash = ? WHERE id = ?').run(hashPassword(values.password), trainer.id);
+      access = ` Prijava: ${values.email} / lozinka: ${values.password}`;
+    }
+    res.flash('success', `Promjene za trenera ${values.name} su sačuvane.${access}`);
     res.redirect(`/admin/treneri/${trainer.id}`);
   });
 
@@ -232,7 +265,8 @@ module.exports = function trainerRoutes(db) {
         <div>
           <h1>${trainer.name}</h1>
           <p class="muted">Isplata: ${formatMoney(trainer.rate_individual_cents)}/h individualni · ${formatMoney(trainer.rate_group_cents)}/h grupni trening
-            ${trainer.active ? '' : html` · <span class="tag">neaktivan</span>`}</p>
+            ${trainer.active ? '' : html` · <span class="tag">neaktivan</span>`}
+            · ${trainer.password_hash && trainer.email ? html`<span class="tag tag-done">Pristup: ${trainer.email}</span>` : html`<span class="tag">bez pristupa</span>`}</p>
         </div>
         <div class="btn-row">
           <a class="btn btn-ghost" href="/admin/treneri/${trainer.id}/uredi">Uredi trenera</a>

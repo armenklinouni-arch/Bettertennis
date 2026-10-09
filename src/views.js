@@ -28,6 +28,11 @@ function layout(req, { title, body, wide = false }) {
       ${navLink('/admin/termine', 'Termini')}
       ${navLink('/admin/abrechnung', 'Iznosi')}
       ${navLink('/admin/aktuelnosti', 'Aktuelnosti')}`;
+  } else if (user.role === 'trainer') {
+    nav = html`
+      ${navLink('/trener', 'Moj izvještaj', true)}
+      ${navLink('/trener/raspored', 'Moj raspored')}
+      ${navLink('/trener/lozinka', 'Lozinka')}`;
   } else {
     nav = html`
       ${navLink('/mitglied', 'Sedmični raspored', true)}
@@ -49,14 +54,14 @@ function layout(req, { title, body, wide = false }) {
 <body>
   <header class="site-header">
     <div class="container header-inner${wide || (user && user.role === 'admin') ? ' wide' : ''}">
-      <a class="brand" href="${user ? (user.role === 'admin' ? '/admin' : '/mitglied') : '/'}">
+      <a class="brand" href="${user ? ({ admin: '/admin', trainer: '/trener' }[user.role] || '/mitglied') : '/'}">
         <span class="ball" aria-hidden="true"></span>${SITE_NAME}
       </a>
       <nav class="main-nav" aria-label="Glavna navigacija">${nav}</nav>
       ${user
         ? html`<form method="post" action="/logout" class="logout">
             ${csrfField(req)}
-            <span class="who">${user.name}${user.role === 'admin' ? html` <span class="badge">Admin</span>` : ''}</span>
+            <span class="who">${user.name}${user.role === 'admin' ? html` <span class="badge">Admin</span>` : ''}${user.role === 'trainer' ? html` <span class="badge">Trener</span>` : ''}</span>
             <button type="submit" class="btn btn-ghost btn-sm">Odjava</button>
           </form>`
         : ''}

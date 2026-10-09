@@ -383,3 +383,53 @@ test('Trainer: anlegen, Terminen zuordnen, Bericht mit Einzel/Gruppe, Zusatzzahl
   await admin.post(`/admin/treneri/${trainer.id}/loeschen`, {}, `/admin/treneri/${trainer.id}/uredi`);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM lessons WHERE date = '2026-11-03' AND trainer_id IS NULL").get().n, 3);
 });
+
+test('Trainer-Konto: sieht nur eigene Stunden, Gruppen und Spieler; Rollen sind getrennt', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const m = ['Dino', 'Edin', 'Faris'].map((n) => db.prepare('INSERT INTO users (name, email, password_hash, hourly_rate_cents) VALUES (?, ?, ?, 3000)')
+    .run(n, `${n.toLowerCase()}@portal-test.de`, hashPassword('memberpass1')).lastInsertRowid);
+
+  // Trainer mit Login anlegen, zweiter Trainer ohne Login
+  await admin.post('/admin/treneri', { name: 'Mirza Trener', email: 'mirza@portal-test.de', password: 'trener1234', rate_individual: '20', rate_group: '30', active: '1' }, '/admin/treneri/neu');
+  await admin.post('/admin/treneri', { name: 'Drugi Trener', rate_individual: '99', rate_group: '99', active: '1' }, '/admin/treneri/neu');
+  const mirza = db.prepare("SELECT * FROM trainers WHERE name = 'Mirza Trener'").get();
+  const other = db.prepare("SELECT * FROM trainers WHERE name = 'Drugi Trener'").get();
+  assert.ok(mirza.password_hash);
+  assert.equal(other.password_hash, null);
+
+  // E-Mail darf nicht doppelt vergeben werden
+  const dup = await admin.post('/admin/treneri', { name: 'Dupli', email: 'dino@portal-test.de', password: 'trener1234', active: '1' }, '/admin/treneri/neu');
+  assert.equal(dup.status, 400);
+
+  await admin.post('/admin/termine', { kind: 'individual', trainer_id: String(mirza.id), user_id: String(m[0]), date: '2026-09-07', start_time: '09:00', duration_min: '60' }, '/admin/termine');
+  await admin.post('/admin/termine', { kind: 'group', trainer_id: String(mirza.id), user_id: String(m[0]), member_ids: [String(m[1]), String(m[2])], date: '2026-09-08', start_time: '09:00', duration_min: '90', price: '15' }, '/admin/termine');
+  await admin.post('/admin/termine', { kind: 'individual', trainer_id: String(other.id), user_id: String(m[1]), date: '2026-09-09', start_time: '11:00', duration_min: '60' }, '/admin/termine');
+
+  const t = client();
+  const login = await t.login('mirza@portal-test.de', 'trener1234');
+  assert.equal(login.location, '/trener');
+  const report = await t.request('/trener?monat=2026-09');
+  assert.equal(report.status, 200);
+  assert.match(report.text, /3 igrača:<\/strong> Dino, Edin, Faris/);
+  assert.match(report.text, /65,00\sKM/); // 20 KM + 1,5 h × 30 KM
+  assert.match(report.text, /Ukupno do danas/);
+  assert.doesNotMatch(report.text, /Drugi Trener|11:00–12:00/); // fremde Termine nicht sichtbar
+  assert.doesNotMatch(report.text, /Vrijednost|Razlika/); // keine Mitgliederpreise
+  const plan = await t.request('/trener/raspored?woche=2026-09-07');
+  assert.match(plan.text, /Dino, Edin, Faris \(3 igrača\)/);
+  assert.doesNotMatch(plan.text, /11:00–12:00/);
+
+  // Rollen getrennt
+  assert.equal((await t.request('/mitglied')).location, '/trener');
+  assert.equal((await t.request('/admin')).status, 403);
+  assert.equal((await t.request('/admin/treneri')).status, 403);
+  const member = client();
+  await member.login('dino@portal-test.de', 'memberpass1');
+  assert.equal((await member.request('/trener')).status, 403);
+
+  // Zugang entziehen
+  await admin.post(`/admin/treneri/${mirza.id}`, { name: 'Mirza Trener', email: 'mirza@portal-test.de', rate_individual: '20', rate_group: '30', active: '1', revoke: '1' }, `/admin/treneri/${mirza.id}/uredi`);
+  assert.equal((await client().login('mirza@portal-test.de', 'trener1234')).status, 401);
+  assert.equal((await t.request('/trener')).status, 302);
+});

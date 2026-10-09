@@ -260,7 +260,8 @@ module.exports = function adminRoutes(db) {
   }
 
   function emailTaken(email, exceptId = 0) {
-    return !!db.prepare('SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?').get(email, exceptId);
+    return !!db.prepare('SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?').get(email, exceptId)
+      || !!db.prepare('SELECT id FROM trainers WHERE email = ? COLLATE NOCASE').get(email);
   }
 
   router.get('/mitglieder/neu', (req, res) => {

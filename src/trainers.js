@@ -11,16 +11,15 @@ function trainerPay(trainer, kind, durationMin) {
   return Math.round(((rate || 0) * durationMin) / 60);
 }
 
-// Realizovani termini trenera u mjesecu, grupni treninzi spojeni u jedan termin.
-function trainerSessions(db, trainer, month) {
-  const { first, last } = monthRange(month);
+// Termini trenera u periodu, grupni treninzi spojeni u jedan termin (s listom članova).
+function trainerSessionsBetween(db, trainer, from, to, { includeCancelled = false } = {}) {
   const rows = db
     .prepare(
       `SELECT l.*, u.name AS member_name FROM lessons l JOIN users u ON u.id = l.user_id
-        WHERE l.trainer_id = ? AND l.cancelled = 0 AND l.date BETWEEN ? AND ?
+        WHERE l.trainer_id = ? AND l.date BETWEEN ? AND ? ${includeCancelled ? '' : 'AND l.cancelled = 0'}
         ORDER BY l.date, l.start_time, l.id`
     )
-    .all(trainer.id, first, last);
+    .all(trainer.id, from, to);
   const sessions = [];
   const byGroup = new Map();
   for (const r of rows) {
@@ -37,7 +36,8 @@ function trainerSessions(db, trainer, month) {
       duration_min: r.duration_min,
       court: r.court,
       kind: r.kind,
-      cancelled: 0,
+      cancelled: r.cancelled,
+      note: r.note,
       members: [r.member_name],
       value_cents: r.price_cents,
       pay_cents: trainerPay(trainer, r.kind, r.duration_min),
@@ -46,6 +46,25 @@ function trainerSessions(db, trainer, month) {
     sessions.push(session);
   }
   return sessions;
+}
+
+// Realizovani termini trenera u mjesecu.
+function trainerSessions(db, trainer, month) {
+  const { first, last } = monthRange(month);
+  return trainerSessionsBetween(db, trainer, first, last);
+}
+
+// Ukupno od početka (od prvog termina) do zadanog datuma: broj termina i sati po vrsti.
+function trainerTotalsUntil(db, trainer, until) {
+  const sessions = trainerSessionsBetween(db, trainer, '0000-01-01', until);
+  const totals = { individual: emptyTotals(), group: emptyTotals(), first: sessions.length ? sessions[0].date : null };
+  for (const s of sessions) {
+    const t = s.kind === 'group' ? totals.group : totals.individual;
+    t.count += 1;
+    t.minutes += s.duration_min;
+    t.pay += s.pay_cents;
+  }
+  return totals;
 }
 
 function emptyTotals() {
@@ -84,4 +103,4 @@ function trainerReport(db, trainer, month) {
   };
 }
 
-module.exports = { trainerPay, trainerSessions, trainerReport };
+module.exports = { trainerPay, trainerSessions, trainerSessionsBetween, trainerTotalsUntil, trainerReport };

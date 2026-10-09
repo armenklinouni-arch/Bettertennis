@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const { html } = require('../html');
 const { layout, csrfField, errorList } = require('../views');
-const { verifyPassword, DUMMY_HASH } = require('../auth');
+const { verifyPassword, DUMMY_HASH, homeFor } = require('../auth');
 
 const LEVELS = ['Početnik', 'Povratnik', 'Napredni', 'Takmičar'];
 
@@ -178,11 +178,12 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
   }
 
   router.get('/login', (req, res) => {
-    if (req.user) return res.redirect(req.user.role === 'admin' ? '/admin' : '/mitglied');
+    if (req.user) return res.redirect(homeFor(req.user));
     res.send(String(loginPage(req, { next: str(req.query.weiter, 300) })));
   });
 
   const findUser = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE');
+  const findTrainer = db.prepare('SELECT * FROM trainers WHERE email = ? COLLATE NOCASE AND password_hash IS NOT NULL');
 
   router.post('/login', (req, res) => {
     const email = str(req.body.email, 200);
@@ -195,8 +196,11 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
       return res.send(String(loginPage(req, { email, next, error: 'Previše neuspjelih pokušaja. Molimo sačekaj nekoliko minuta.' })));
     }
 
+    // Prvo članovi/admin, zatim treneri s aktiviranim pristupom.
     const user = findUser.get(email);
-    const valid = verifyPassword(password, user ? user.password_hash : DUMMY_HASH) && user && user.active;
+    const trainer = user ? null : findTrainer.get(email);
+    const account = user || trainer;
+    const valid = verifyPassword(password, account ? account.password_hash : DUMMY_HASH) && account && account.active;
     if (!valid) {
       loginLimiter.fail(key);
       res.status(401);
@@ -204,9 +208,10 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
     }
 
     loginLimiter.reset(key);
-    req.session = { uid: user.id, csrf: crypto.randomBytes(18).toString('base64url') };
+    const csrf = crypto.randomBytes(18).toString('base64url');
+    req.session = user ? { uid: user.id, csrf } : { tid: trainer.id, csrf };
     res.saveSession();
-    res.redirect(safeNext(next, user.role === 'admin' ? '/admin' : '/mitglied'));
+    res.redirect(safeNext(next, user ? homeFor(user) : '/trener'));
   });
 
   router.post('/logout', (req, res) => {

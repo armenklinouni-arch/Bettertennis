@@ -8,11 +8,11 @@ const { monthlyStatement, formatHours, memberMonthRange, MEMBER_MONTHS_BACK } = 
 const {
   layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, lessonTimeRange, lessonKindLabel,
 } = require('../views');
-const { requireLogin, hashPassword, verifyPassword } = require('../auth');
+const { requireMember, hashPassword, verifyPassword } = require('../auth');
 
 module.exports = function memberRoutes(db) {
   const router = express.Router();
-  router.use(requireLogin);
+  router.use(requireMember);
 
   const weekLessons = db.prepare(
     // Namjerno bez imena trenera: članovi ne smiju vidjeti koji trener radi s njima.

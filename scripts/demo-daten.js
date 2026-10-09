@@ -54,9 +54,11 @@ if (emir && lejla && !hasGroup) {
 
 // Dva trenera; termini se naizmjenično dodjeljuju (grupe uvijek prvom treneru).
 if (!db.prepare('SELECT COUNT(*) AS n FROM trainers').get().n) {
-  const insertTrainer = db.prepare('INSERT INTO trainers (name, phone, rate_individual_cents, rate_group_cents) VALUES (?, ?, ?, ?)');
-  const t1 = insertTrainer.run('Haris Mujić', '061 222 333', 2500, 3500).lastInsertRowid;
-  const t2 = insertTrainer.run('Ivana Perić', '062 444 555', 2000, 3000).lastInsertRowid;
+  const insertTrainer = db.prepare(
+    'INSERT INTO trainers (name, phone, email, password_hash, rate_individual_cents, rate_group_cents) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  const t1 = insertTrainer.run('Haris Mujić', '061 222 333', 'haris@example.ba', hashPassword('trener123'), 2500, 3500).lastInsertRowid;
+  const t2 = insertTrainer.run('Ivana Perić', '062 444 555', 'ivana@example.ba', hashPassword('trener123'), 2000, 3000).lastInsertRowid;
   db.prepare("UPDATE lessons SET trainer_id = ? WHERE kind = 'group'").run(t1);
   db.prepare("UPDATE lessons SET trainer_id = CASE WHEN id % 2 = 0 THEN ? ELSE ? END WHERE kind = 'individual'").run(t1, t2);
   db.prepare("INSERT INTO trainer_bonuses (trainer_id, month, description, amount_cents) VALUES (?, ?, 'Nagrada za klupski turnir', 5000)")
@@ -80,4 +82,4 @@ if (!db.prepare('SELECT COUNT(*) AS n FROM leads').get().n) {
   db.prepare("INSERT INTO leads (name, email, phone, level, availability) VALUES ('Selma Hadžić', 'selma@example.ba', '062 987 654', 'Povratnik', 'vikendom prijepodne')").run();
 }
 
-console.log('Demo podaci kreirani. Prijave članova: amina@example.ba, emir@example.ba, lejla@example.ba – lozinka: tennis123');
+console.log('Demo podaci kreirani. Prijave članova: amina@example.ba, emir@example.ba, lejla@example.ba – lozinka: tennis123. Treneri: haris@example.ba, ivana@example.ba – lozinka: trener123');

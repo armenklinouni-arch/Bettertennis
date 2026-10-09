@@ -34,6 +34,12 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      schicken; Mitglieder sehen sie in ihrem Postfach mit Zähler für ungelesene Nachrichten
      (kein E-Mail-Versand)
 
+4. **Trainerbereich** (Login unter `/login`, Zugang legt der Admin beim Trainer an) – jeder Trainer
+   sieht nur seine eigenen Daten: Gesamtstunden seit dem ersten Training, Monatsbericht (Anzahl,
+   Stunden und Betrag für Einzel- und Gruppentraining, Zusatzzahlungen), Liste der Trainings mit
+   Anzahl und Namen der Spieler sowie seinen Wochenplan. Keine Daten anderer Trainer, keine
+   Mitgliederpreise.
+
 Monatsbetrag = Grundgebühr + Preise aller „Realizovan“-Termine des Monats + Zusatzposten
 (bei manueller Abrechnung nur Grundgebühr + Zusatzposten). Der Terminpreis wird beim Anlegen aus dem
 Stundenpreis berechnet und kann pro Termin überschrieben werden; bei Gruppentraining gilt er pro Person.
@@ -56,7 +62,8 @@ ADMIN_EMAIL=chef@meine-tennisschule.de ADMIN_PASSWORD='ein-sicheres-passwort' np
 ```
 
 Beispieldaten zum Ausprobieren (3 Mitglieder mit Terminen, 2 Interessenten; Logins `amina@example.ba`,
-`emir@example.ba`, `lejla@example.ba`, Passwort `tennis123`):
+`emir@example.ba`, `lejla@example.ba`, Passwort `tennis123`; Trainer `haris@example.ba`,
+`ivana@example.ba`, Passwort `trener123`):
 
 ```bash
 npm run demo

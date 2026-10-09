@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS trainers (
   rate_group_cents      INTEGER NOT NULL DEFAULT 0,
   active                INTEGER NOT NULL DEFAULT 1,
   notes                 TEXT,
+  password_hash         TEXT,
   created_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -134,6 +135,7 @@ const NEW_COLUMNS = [
   ['lessons', 'kind', "TEXT NOT NULL DEFAULT 'individual'"],
   ['lessons', 'group_id', 'TEXT'],
   ['lessons', 'trainer_id', 'INTEGER REFERENCES trainers(id) ON DELETE SET NULL'],
+  ['trainers', 'password_hash', 'TEXT'],
 ];
 
 function addMissingColumns(db) {
