@@ -1,0 +1,79 @@
+# BetterTennis
+
+Webanwendung für eine Tennisschule mit drei Bereichen:
+
+1. **Startseite** – Interessenten tragen sich unverbindlich für Tennisstunden ein
+   (Name, E-Mail, Telefon, Spielstärke, Wunschzeiten, Nachricht).
+2. **Mitgliederbereich** (Login) – Wochenübersicht **Montag bis Sonntag** mit Name, Datum und
+   Uhrzeit jeder gebuchten Trainingseinheit (Wochen vor/zurück blätterbar) sowie der
+   **Monatsbetrag**, der am Monatsende fällig wird – nur zur Information, keine Bezahlfunktion.
+3. **Admin-Bereich** – Verwaltung von allem:
+   - **Interessenten**: Status pflegen (neu, kontaktiert, Probestunde, Mitglied, abgelehnt),
+     mit einem Klick als Mitglied anlegen, löschen
+   - **Mitglieder**: anlegen, bearbeiten, Passwort setzen, aktiv/inaktiv, löschen;
+     Stundenpreis und optionale monatliche Grundgebühr
+   - **Termine**: Wochenplan aller Mitglieder, Termine anlegen (einmalig oder wöchentlich
+     für 4–52 Wochen), bearbeiten, absagen (wird dann nicht berechnet), löschen
+   - **Beträge**: Monatsübersicht aller Mitglieder, Detailansicht pro Mitglied, Zusatzposten
+     und Gutschriften (negative Beträge)
+
+Monatsbetrag = Grundgebühr + Preise aller nicht abgesagten Termine des Monats + Zusatzposten.
+Der Terminpreis wird beim Anlegen aus dem Stundenpreis berechnet und kann pro Termin überschrieben werden.
+
+## Starten
+
+Voraussetzung: Node.js ≥ 22.13 (nutzt das eingebaute `node:sqlite`, keine nativen Abhängigkeiten).
+
+```bash
+npm install
+npm start            # http://localhost:3000
+```
+
+Beim ersten Start wird ein Admin-Konto angelegt und die Zugangsdaten werden in der Konsole
+ausgegeben. Alternativ vorher festlegen:
+
+```bash
+ADMIN_EMAIL=chef@meine-tennisschule.de ADMIN_PASSWORD='ein-sicheres-passwort' npm start
+```
+
+Beispieldaten zum Ausprobieren (3 Mitglieder mit Terminen, 2 Interessenten; Passwort `tennis123`):
+
+```bash
+npm run demo
+```
+
+Tests: `npm test`
+
+## Konfiguration
+
+| Variable         | Bedeutung                                                         | Standard              |
+|------------------|-------------------------------------------------------------------|-----------------------|
+| `PORT`           | HTTP-Port                                                         | `3000`                |
+| `DB_FILE`        | Pfad der SQLite-Datenbank                                         | `data/bettertennis.db`|
+| `ADMIN_EMAIL`    | E-Mail des ersten Admins (nur wenn noch kein Admin existiert)     | `admin@bettertennis.local` |
+| `ADMIN_PASSWORD` | Passwort des ersten Admins                                        | zufällig, wird geloggt |
+| `SESSION_SECRET` | Schlüssel für Session-Cookies                                     | wird erzeugt und in der DB gespeichert |
+| `NODE_ENV`       | `production` setzt Cookies auf `Secure` (HTTPS nötig)             | –                     |
+| `TRUST_PROXY`    | `1`, wenn die App hinter einem Reverse-Proxy läuft                | –                     |
+| `TZ`             | Zeitzone für „heute“ und Wochenbeginn                             | `Europe/Berlin`       |
+
+## Aufbau
+
+```
+src/
+  server.js        Startpunkt, Admin-Erstanlage
+  app.js           Express-App, Sicherheits-Header, Middleware
+  db.js            SQLite-Schema (users, lessons, adjustments, leads, settings)
+  auth.js          Passwort-Hashing (scrypt), signierte Session-Cookies, CSRF, Login-Sperre
+  billing.js       Berechnung des Monatsbetrags
+  dates.js         Datums-/Wochenlogik (Montag–Sonntag, KW)
+  money.js         Euro-Formatierung und -Eingabe (Beträge in Cent)
+  views.js         Layout, Wochenansicht, Abrechnungstabelle
+  routes/          public.js, member.js, admin.js
+public/            CSS und ein kleines Script (Lösch-Bestätigung)
+scripts/demo-daten.js
+test/app.test.js
+```
+
+Sicherheit: Passwörter mit scrypt gehasht, HMAC-signierte HttpOnly-Cookies, CSRF-Token auf allen
+Formularen, Content-Security-Policy, Begrenzung fehlgeschlagener Logins, alle Ausgaben HTML-escaped.

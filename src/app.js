@@ -1,0 +1,50 @@
+'use strict';
+
+const path = require('node:path');
+const express = require('express');
+const { sessionMiddleware, loadUser, csrfProtection, createLoginLimiter } = require('./auth');
+const { sessionSecret } = require('./db');
+const publicRoutes = require('./routes/public');
+const memberRoutes = require('./routes/member');
+const adminRoutes = require('./routes/admin');
+
+function createApp(db, { secret, secureCookies = false, trustProxy = false } = {}) {
+  const app = express();
+  app.disable('x-powered-by');
+  if (trustProxy) app.set('trust proxy', 1);
+
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; form-action 'self'; frame-ancestors 'none'"
+    );
+    next();
+  });
+
+  app.use('/static', express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h' }));
+  app.use(express.urlencoded({ extended: false, limit: '50kb' }));
+  app.use(sessionMiddleware({ secret: sessionSecret(db, secret), secure: secureCookies }));
+  app.use(loadUser(db));
+  app.use(csrfProtection);
+
+  app.use('/', publicRoutes(db, { loginLimiter: createLoginLimiter() }));
+  app.use('/mitglied', memberRoutes(db));
+  app.use('/admin', adminRoutes(db));
+
+  app.use((req, res) => {
+    res.status(404).send('Seite nicht gefunden.');
+  });
+
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    console.error(err);
+    res.status(500).send('Es ist ein Fehler aufgetreten.');
+  });
+
+  return app;
+}
+
+module.exports = { createApp };
