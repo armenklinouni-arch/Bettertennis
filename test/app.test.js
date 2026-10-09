@@ -260,7 +260,19 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   }, '/admin/termine');
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM lessons WHERE date = '2026-10-11'").get().n, 0);
   const editPage = await admin.request(`/admin/termine/${eightRows[0].id}`);
-  assert.equal((editPage.text.match(/name="member_ids" value="\d+" checked/g) || []).length, 7);
+  // Beim Bearbeiten einer Gruppe sind alle 8 Spieler angehakt
+  assert.equal((editPage.text.match(/name="member_ids" value="\d+" checked/g) || []).length, 8);
+
+  // Gruppe nur über Häkchen (ohne Feld „Član“) – so wie nach Auswahl einer stalne grupe
+  const viaChecks = await admin.post('/admin/termine', {
+    kind: 'group', user_id: '', member_ids: extra.slice(0, 3).map(String), date: '2026-10-12', start_time: '09:00', duration_min: '60',
+  }, '/admin/termine');
+  assert.equal(viaChecks.status, 302);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM lessons WHERE date = '2026-10-12' AND start_time = '09:00'").get().n, 3);
+  db.prepare("DELETE FROM lessons WHERE date = '2026-10-12' AND start_time = '09:00'").run();
+  // Nur ein Häkchen reicht für eine Gruppe nicht
+  await admin.post('/admin/termine', { kind: 'group', member_ids: String(extra[0]), date: '2026-10-13', start_time: '09:00', duration_min: '60' }, '/admin/termine');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM lessons WHERE date = '2026-10-13'").get().n, 0);
   db.prepare("DELETE FROM lessons WHERE date = '2026-10-10'").run();
   for (const id of extra) db.prepare('DELETE FROM users WHERE id = ?').run(id);
 

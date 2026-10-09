@@ -18,7 +18,7 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      - „Ručni unos“: Termine erscheinen nicht, der Betrag wird nur manuell als Posten eingetragen
    - **Grupe**: feste Trainingsgruppen (z. B. „Grupa 1“ … „Grupa 10“) mit 2–8 Mitgliedern anlegen,
      bearbeiten, löschen. Beim Anlegen eines Termins wählt man die Gruppe aus und ihre Mitglieder
-     werden automatisch markiert (Trainingsart wird auf Gruppentraining gesetzt).
+     bekommen automatisch ein Häkchen in der Spielerliste (einzelne Häkchen lassen sich wieder entfernen; Trainingsart wird auf Gruppentraining gesetzt).
    - **Treneri**: Trainer anlegen/bearbeiten/löschen mit getrenntem Stundensatz für Einzel- und
      Gruppentraining; Monatsbericht pro Trainer (Anzahl, Stunden und Auszahlung getrennt nach
      Einzel/Gruppe, Zusatzzahlungen wie Prämien, Gesamtauszahlung, Wert der Trainings und Differenz)

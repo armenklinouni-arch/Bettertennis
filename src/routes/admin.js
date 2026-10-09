@@ -436,14 +436,14 @@ module.exports = function adminRoutes(db) {
           ${trainerOptions(v.trainer_id)}
         </select>
       </label>
-      <label>Član *
-        <select name="user_id" required>
+      <label>Član (za individualni trening)
+        <select name="user_id">
           <option value="">– odaberi –</option>
           ${memberOptions(v.user_id)}
         </select>
       </label>
       <fieldset class="span-2 recipients group-members">
-        <legend>Ostali članovi u grupi (samo za grupni trening, ukupno ${GROUP_MIN}–${GROUP_MAX} članova)</legend>
+        <legend>Igrači u grupi (za grupni trening označi ${GROUP_MIN}–${GROUP_MAX} igrača)</legend>
         <div class="recipient-list">
           ${members.map((m) => html`<label class="check"><input type="checkbox" name="member_ids" value="${m.id}"${(v.member_ids || []).map(String).includes(String(m.id)) ? ' checked' : ''}><span>${m.name}</span></label>`)}
         </div>
@@ -476,18 +476,19 @@ module.exports = function adminRoutes(db) {
     };
     const errors = [];
     const members = [];
-    const first = v.user_id ? getMember.get(v.user_id) : null;
-    if (!first) errors.push('Molimo odaberi člana.');
-    else members.push(first);
     if (v.kind === 'group') {
-      // Prvi član + označeni ostali članovi (bez duplikata).
-      for (const id of new Set(v.member_ids)) {
-        if (first && id === first.id) continue;
+      // Grupni trening: svi označeni igrači (kvačice); polje „Član“ se dodaje ako je popunjeno.
+      const ids = [...new Set([...(v.user_id ? [v.user_id] : []), ...v.member_ids])];
+      for (const id of ids) {
         const m = getMember.get(id);
         if (m) members.push(m);
       }
-      if (members.length < GROUP_MIN) errors.push(`Za grupni trening odaberi najmanje ${GROUP_MIN} člana.`);
-      if (members.length > GROUP_MAX) errors.push(`Grupni trening može imati najviše ${GROUP_MAX} članova.`);
+      if (members.length < GROUP_MIN) errors.push(`Za grupni trening označi najmanje ${GROUP_MIN} igrača.`);
+      if (members.length > GROUP_MAX) errors.push(`Grupni trening može imati najviše ${GROUP_MAX} igrača.`);
+    } else {
+      const first = v.user_id ? getMember.get(v.user_id) : null;
+      if (!first) errors.push('Za individualni trening odaberi člana.');
+      else members.push(first);
     }
     if (v.trainer_id && !getTrainer.get(v.trainer_id)) errors.push('Odabrani trener ne postoji.');
     if (!D.isValidDate(v.date)) errors.push('Neispravan datum.');
@@ -606,12 +607,14 @@ module.exports = function adminRoutes(db) {
   });
 
   function lessonFormValues(rows) {
-    const [first, ...others] = rows;
+    const [first] = rows;
     const samePrice = rows.every((r) => r.price_cents === first.price_cents);
+    const isGroup = first.kind === 'group';
     return {
       ...first,
-      user_id: first.user_id,
-      member_ids: others.map((r) => r.user_id),
+      // Kod grupe su svi igrači označeni kvačicama, polje „Član“ ostaje prazno.
+      user_id: isGroup ? '' : first.user_id,
+      member_ids: isGroup ? rows.map((r) => r.user_id) : [],
       price: samePrice ? centsToInput(first.price_cents) : '',
     };
   }
