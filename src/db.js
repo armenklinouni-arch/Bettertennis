@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS lessons (
   cancelled    INTEGER NOT NULL DEFAULT 0,
   kind         TEXT NOT NULL DEFAULT 'individual' CHECK (kind IN ('individual', 'group')),
   group_id     TEXT,
+  trainer_id   INTEGER REFERENCES trainers(id) ON DELETE SET NULL,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS lessons_user_date ON lessons (user_id, date);
@@ -53,6 +54,28 @@ CREATE TABLE IF NOT EXISTS adjustments (
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS adjustments_user_month ON adjustments (user_id, month);
+
+CREATE TABLE IF NOT EXISTS trainers (
+  id                    INTEGER PRIMARY KEY,
+  name                  TEXT NOT NULL,
+  phone                 TEXT,
+  email                 TEXT,
+  rate_individual_cents INTEGER NOT NULL DEFAULT 0,
+  rate_group_cents      INTEGER NOT NULL DEFAULT 0,
+  active                INTEGER NOT NULL DEFAULT 1,
+  notes                 TEXT,
+  created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS trainer_bonuses (
+  id           INTEGER PRIMARY KEY,
+  trainer_id   INTEGER NOT NULL REFERENCES trainers(id) ON DELETE CASCADE,
+  month        TEXT NOT NULL,
+  description  TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS trainer_bonuses_month ON trainer_bonuses (trainer_id, month);
 
 CREATE TABLE IF NOT EXISTS payments (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -100,6 +123,7 @@ function openDatabase(file) {
   relaxBillingModeCheck(db);
   db.exec(SCHEMA);
   db.exec('CREATE INDEX IF NOT EXISTS lessons_group ON lessons (group_id);');
+  db.exec('CREATE INDEX IF NOT EXISTS lessons_trainer ON lessons (trainer_id, date);');
   migrateLeadStatuses(db);
   return db;
 }
@@ -109,6 +133,7 @@ const NEW_COLUMNS = [
   ['users', 'billing_mode', "TEXT NOT NULL DEFAULT 'schedule'"],
   ['lessons', 'kind', "TEXT NOT NULL DEFAULT 'individual'"],
   ['lessons', 'group_id', 'TEXT'],
+  ['lessons', 'trainer_id', 'INTEGER REFERENCES trainers(id) ON DELETE SET NULL'],
 ];
 
 function addMissingColumns(db) {

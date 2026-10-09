@@ -16,10 +16,15 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      - „Prema rasporedu“: Termine werden automatisch berechnet
      - „Raspored s prikazom, bez obračuna“: Termine werden in der Abrechnung angezeigt, aber nicht berechnet
      - „Ručni unos“: Termine erscheinen nicht, der Betrag wird nur manuell als Posten eingetragen
+   - **Treneri**: Trainer anlegen/bearbeiten/löschen mit getrenntem Stundensatz für Einzel- und
+     Gruppentraining; Monatsbericht pro Trainer (Anzahl, Stunden und Auszahlung getrennt nach
+     Einzel/Gruppe, Zusatzzahlungen wie Prämien, Gesamtauszahlung, Wert der Trainings und Differenz)
+     und Detailliste aller durchgeführten Trainings. Gruppentraining zählt einmal pro Termin.
    - **Termine**: Wochenplan aller Mitglieder, Termine anlegen (einmalig oder wöchentlich
      für 4–52 Wochen), bearbeiten, löschen
      - **Individualni trening** (1 Mitglied) oder **Grupni trening** (2–8 Mitglieder). Jedes
        Mitglied sieht im eigenen Plan nur sich selbst, nicht die anderen Gruppenmitglieder.
+     - Jedem Termin kann ein **Trainer** zugeordnet werden (auch für Mitglieder im Wochenplan sichtbar)
      - **Status**: neue Termine sind automatisch „Realizovan“; mit einem Klick auf „Otkazan“
        umstellbar (abgesagte Termine werden nicht berechnet)
    - **Beträge**: Monatsübersicht aller Mitglieder, Detailansicht pro Mitglied, Zusatzposten

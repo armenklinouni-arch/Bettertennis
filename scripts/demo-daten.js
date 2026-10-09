@@ -52,6 +52,17 @@ if (emir && lejla && !hasGroup) {
   }
 }
 
+// Dva trenera; termini se naizmjenično dodjeljuju (grupe uvijek prvom treneru).
+if (!db.prepare('SELECT COUNT(*) AS n FROM trainers').get().n) {
+  const insertTrainer = db.prepare('INSERT INTO trainers (name, phone, rate_individual_cents, rate_group_cents) VALUES (?, ?, ?, ?)');
+  const t1 = insertTrainer.run('Haris Mujić', '061 222 333', 2500, 3500).lastInsertRowid;
+  const t2 = insertTrainer.run('Ivana Perić', '062 444 555', 2000, 3000).lastInsertRowid;
+  db.prepare("UPDATE lessons SET trainer_id = ? WHERE kind = 'group'").run(t1);
+  db.prepare("UPDATE lessons SET trainer_id = CASE WHEN id % 2 = 0 THEN ? ELSE ? END WHERE kind = 'individual'").run(t1, t2);
+  db.prepare("INSERT INTO trainer_bonuses (trainer_id, month, description, amount_cents) VALUES (?, ?, 'Nagrada za klupski turnir', 5000)")
+    .run(t1, D.monthOf(D.todayISO()));
+}
+
 // Primjer aktuelnosti za sve članove i status plaćanja za prošli mjesec.
 if (!db.prepare('SELECT COUNT(*) AS n FROM news').get().n) {
   const { lastInsertRowid: newsId } = db

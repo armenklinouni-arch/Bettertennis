@@ -24,6 +24,7 @@ function layout(req, { title, body, wide = false }) {
       ${navLink('/admin', 'Pregled', true)}
       ${navLink('/admin/interessenten', 'Zainteresovani')}
       ${navLink('/admin/mitglieder', 'Članovi')}
+      ${navLink('/admin/treneri', 'Treneri')}
       ${navLink('/admin/termine', 'Termini')}
       ${navLink('/admin/abrechnung', 'Iznosi')}
       ${navLink('/admin/aktuelnosti', 'Aktuelnosti')}`;
@@ -145,6 +146,7 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
               <article class="lesson${l.cancelled ? ' is-cancelled' : ''}">
                 <div class="lesson-time">${lessonTimeRange(l)} h</div>
                 <div class="lesson-name">${l.member_name}</div>
+                ${l.trainer_name ? html`<div class="lesson-meta">Trener: ${l.trainer_name}</div>` : ''}
                 <div class="lesson-meta">
                   ${D.formatDateLong(l.date)}${l.court ? html` · Teren ${l.court}` : ''}
                 </div>

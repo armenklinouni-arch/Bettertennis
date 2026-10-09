@@ -323,3 +323,57 @@ test('Eingaben werden HTML-escaped', async () => {
   assert.ok(!page.text.includes('<script>alert(1)</script>'));
   assert.ok(page.text.includes('&lt;script&gt;'));
 });
+
+test('Trainer: anlegen, Terminen zuordnen, Bericht mit Einzel/Gruppe, Zusatzzahlung', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const ids = ['Ana', 'Ben', 'Cem'].map((n) => db.prepare('INSERT INTO users (name, email, password_hash, hourly_rate_cents) VALUES (?, ?, ?, 4000)')
+    .run(n, `${n.toLowerCase()}@trainer-test.de`, hashPassword('memberpass1')).lastInsertRowid);
+
+  const created = await admin.post('/admin/treneri', { name: 'Trener Test', rate_individual: '25,00', rate_group: '30', active: '1' }, '/admin/treneri/neu');
+  assert.equal(created.status, 302);
+  const trainer = db.prepare("SELECT * FROM trainers WHERE name = 'Trener Test'").get();
+  assert.equal(trainer.rate_individual_cents, 2500);
+  assert.equal(trainer.rate_group_cents, 3000);
+
+  // Einzeltraining 60 min, Gruppe (3 Mitglieder) 90 min, ein abgesagtes Einzeltraining
+  await admin.post('/admin/termine', { kind: 'individual', trainer_id: String(trainer.id), user_id: String(ids[0]), date: '2026-11-02', start_time: '10:00', duration_min: '60' }, '/admin/termine');
+  await admin.post('/admin/termine', { kind: 'group', trainer_id: String(trainer.id), user_id: String(ids[0]), member_ids: [String(ids[1]), String(ids[2])], date: '2026-11-03', start_time: '10:00', duration_min: '90', price: '20' }, '/admin/termine');
+  await admin.post('/admin/termine', { kind: 'individual', trainer_id: String(trainer.id), user_id: String(ids[1]), date: '2026-11-04', start_time: '10:00', duration_min: '60' }, '/admin/termine');
+  const groupLessons = db.prepare("SELECT * FROM lessons WHERE date = '2026-11-03'").all();
+  assert.equal(groupLessons.length, 3);
+  assert.ok(groupLessons.every((l) => l.trainer_id === trainer.id));
+  const cancelLesson = db.prepare("SELECT id FROM lessons WHERE date = '2026-11-04'").get();
+  await admin.post(`/admin/termine/${cancelLesson.id}/status`, { status: 'cancelled' }, '/admin/termine');
+
+  // Zusatzzahlung (Prämie)
+  await admin.post(`/admin/treneri/${trainer.id}/dodatno`, { month: '2026-11', description: 'Nagrada', amount: '50' }, `/admin/treneri/${trainer.id}?monat=2026-11`);
+
+  const { trainerReport } = require('../src/trainers');
+  const r = trainerReport(db, trainer, '2026-11');
+  assert.equal(r.individual.count, 1);
+  assert.equal(r.individual.pay, 2500); // 60 min × 25 KM
+  assert.equal(r.group.count, 1); // Gruppe zählt einmal
+  assert.equal(r.group.pay, 4500); // 90 min × 30 KM
+  assert.equal(r.bonusTotal, 5000);
+  assert.equal(r.payTotal, 12000);
+  assert.equal(r.valueTotal, 4000 + 3 * 2000);
+  assert.equal(r.margin, 10000 - 12000);
+
+  const page = await admin.request('/admin/treneri?monat=2026-11');
+  assert.match(page.text, /Trener Test/);
+  assert.match(page.text, /120,00\sKM/);
+  const detail = await admin.request(`/admin/treneri/${trainer.id}?monat=2026-11`);
+  assert.match(detail.text, /Ana, Ben, Cem/);
+  assert.match(detail.text, /Nagrada/);
+
+  // Mitglied sieht den Trainer im Wochenplan
+  const ana = client();
+  await ana.login('ana@trainer-test.de', 'memberpass1');
+  const week = await ana.request('/mitglied?woche=2026-11-02');
+  assert.match(week.text, /Trener: Trener Test/);
+
+  // Trainer löschen: Termine bleiben, ohne Trainer
+  await admin.post(`/admin/treneri/${trainer.id}/loeschen`, {}, `/admin/treneri/${trainer.id}/uredi`);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM lessons WHERE date = '2026-11-03' AND trainer_id IS NULL").get().n, 3);
+});

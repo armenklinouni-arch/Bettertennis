@@ -32,6 +32,8 @@ module.exports = function adminRoutes(db) {
   const getMember = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'member'");
   const allMembers = db.prepare("SELECT * FROM users WHERE role = 'member' ORDER BY active DESC, name COLLATE NOCASE");
   const activeMembers = db.prepare("SELECT * FROM users WHERE role = 'member' AND active = 1 ORDER BY name COLLATE NOCASE");
+  const activeTrainers = db.prepare('SELECT * FROM trainers WHERE active = 1 ORDER BY name COLLATE NOCASE');
+  const getTrainer = db.prepare('SELECT * FROM trainers WHERE id = ?');
 
   function notFound(res, what = 'Zapis') {
     res.status(404);
@@ -51,7 +53,8 @@ module.exports = function adminRoutes(db) {
     const monthTotal = activeMembers.all().reduce((sum, m) => sum + monthlyStatement(db, m, month).total, 0);
     const todays = mergeGroups(db
       .prepare(
-        `SELECT l.*, u.name AS member_name FROM lessons l JOIN users u ON u.id = l.user_id
+        `SELECT l.*, u.name AS member_name, t.name AS trainer_name FROM lessons l
+           JOIN users u ON u.id = l.user_id LEFT JOIN trainers t ON t.id = l.trainer_id
           WHERE l.date = ? ORDER BY l.start_time, l.id`
       )
       .all(today));
@@ -348,8 +351,8 @@ module.exports = function adminRoutes(db) {
   const getLesson = db.prepare('SELECT * FROM lessons WHERE id = ?');
   const groupRows = db.prepare('SELECT * FROM lessons WHERE group_id = ? ORDER BY id');
   const insertLesson = db.prepare(
-    `INSERT INTO lessons (user_id, date, start_time, duration_min, court, note, price_cents, cancelled, kind, group_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO lessons (user_id, date, start_time, duration_min, court, note, price_cents, cancelled, kind, group_id, trainer_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const deleteLesson = db.prepare('DELETE FROM lessons WHERE id = ?');
 
@@ -385,6 +388,14 @@ module.exports = function adminRoutes(db) {
     return out;
   }
 
+  // Aktivni treneri + trener koji je već na terminu (i ako je u međuvremenu neaktivan).
+  function trainerOptions(selected) {
+    const trainers = activeTrainers.all();
+    const current = selected ? getTrainer.get(selected) : null;
+    if (current && !trainers.some((t) => t.id === current.id)) trainers.unshift(current);
+    return trainers.map((t) => html`<option value="${t.id}"${String(selected) === String(t.id) ? ' selected' : ''}>${t.name}</option>`);
+  }
+
   function lessonFields(req, v, members, { withStatus = false } = {}) {
     const memberOptions = (selected) =>
       members.map((m) => html`<option value="${m.id}"${String(selected) === String(m.id) ? ' selected' : ''}>${m.name} (${formatMoney(m.hourly_rate_cents)}/h)</option>`);
@@ -401,6 +412,12 @@ module.exports = function adminRoutes(db) {
             </select>
           </label>`
         : html`<p class="muted small form-hint">Novi termin automatski dobija status „${LESSON_STATUSES.done}“. Status možeš kasnije promijeniti u „${LESSON_STATUSES.cancelled}“.</p>`}
+      <label>Trener
+        <select name="trainer_id">
+          <option value="">– bez trenera –</option>
+          ${trainerOptions(v.trainer_id)}
+        </select>
+      </label>
       <label>Član *
         <select name="user_id" required>
           <option value="">– odaberi –</option>
@@ -427,6 +444,7 @@ module.exports = function adminRoutes(db) {
     const v = {
       kind: body.kind === 'group' ? 'group' : 'individual',
       user_id: toId(body.user_id),
+      trainer_id: toId(body.trainer_id),
       member_ids: (Array.isArray(body.member_ids) ? body.member_ids : body.member_ids ? [body.member_ids] : [])
         .map(toId).filter(Boolean),
       date: str(body.date, 10),
@@ -453,6 +471,7 @@ module.exports = function adminRoutes(db) {
       if (members.length < GROUP_MIN) errors.push(`Za grupni trening odaberi najmanje ${GROUP_MIN} člana.`);
       if (members.length > GROUP_MAX) errors.push(`Grupni trening može imati najviše ${GROUP_MAX} članova.`);
     }
+    if (v.trainer_id && !getTrainer.get(v.trainer_id)) errors.push('Odabrani trener ne postoji.');
     if (!D.isValidDate(v.date)) errors.push('Neispravan datum.');
     if (!D.isValidTime(v.start_time)) errors.push('Neispravno vrijeme.');
     if (!DURATIONS.includes(v.duration_min)) errors.push('Neispravno trajanje.');
@@ -472,7 +491,7 @@ module.exports = function adminRoutes(db) {
   function insertOccurrence(v, participants, date, groupId = null) {
     const gid = v.kind === 'group' ? groupId || crypto.randomUUID() : null;
     for (const p of participants) {
-      insertLesson.run(p.member.id, date, v.start_time, v.duration_min, v.court || null, v.note || null, p.price, v.cancelled ? 1 : 0, v.kind, gid);
+      insertLesson.run(p.member.id, date, v.start_time, v.duration_min, v.court || null, v.note || null, p.price, v.cancelled ? 1 : 0, v.kind, gid, v.trainer_id);
     }
   }
 
@@ -486,7 +505,8 @@ module.exports = function adminRoutes(db) {
     const memberFilter = toId(req.query.mitglied);
     const filterMember = memberFilter ? getMember.get(memberFilter) : null;
     const params = [monday, D.addDays(monday, 6)];
-    let sql = `SELECT l.*, u.name AS member_name FROM lessons l JOIN users u ON u.id = l.user_id
+    let sql = `SELECT l.*, u.name AS member_name, t.name AS trainer_name FROM lessons l
+               JOIN users u ON u.id = l.user_id LEFT JOIN trainers t ON t.id = l.trainer_id
                WHERE l.date BETWEEN ? AND ?`;
     if (filterMember) {
       // Uz termine člana prikazujemo i ostale članove njegovih grupa.
