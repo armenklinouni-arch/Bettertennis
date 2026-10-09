@@ -50,13 +50,16 @@ function layout(req, { title, body, wide = false }) {
   <title>${title ? `${title} · ${SITE_NAME}` : SITE_NAME}</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='%23d4e157'/%3E%3Cpath d='M18 26c22 14 22 34 0 48M82 26c-22 14-22 34 0 48' stroke='%23fff' stroke-width='6' fill='none'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/png" href="/static/img/favicon.png">
+  <link rel="apple-touch-icon" href="/static/img/logo-mark.png">
+  <meta name="theme-color" content="#11304c">
 </head>
 <body>
   <header class="site-header">
     <div class="container header-inner${wide || (user && user.role === 'admin') ? ' wide' : ''}">
       <a class="brand" href="${user ? ({ admin: '/admin', trainer: '/trener' }[user.role] || '/mitglied') : '/'}">
-        <span class="ball" aria-hidden="true"></span>${SITE_NAME}
+        <img class="brand-mark" src="/static/img/logo-mark.png" alt="" width="40" height="40">
+        <span class="brand-name">Better<span>Tennis</span></span>
       </a>
       <nav class="main-nav" aria-label="Glavna navigacija">${nav}</nav>
       ${user

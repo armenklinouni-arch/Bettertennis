@@ -37,6 +37,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
       body: html`
       <section class="hero">
         <div class="hero-text">
+          <img class="logo-full hero-logo" src="/static/img/logo.png" alt="BetterTennis – teniska škola" width="604" height="800">
           <p class="eyebrow">Teniska škola</p>
           <h1>Igraj bolji tenis – uz trening koji ti odgovara.</h1>
           <p class="lead">Individualni i grupni časovi za sve nivoe znanja. Prijavi se bez obaveze,
@@ -158,6 +159,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
       title: 'Prijava',
       body: html`
       <section class="card narrow">
+        <img class="logo-full login-logo" src="/static/img/logo.png" alt="BetterTennis" width="604" height="800">
         <h1>Prijava za članove</h1>
         <p class="muted">Prijavi se da vidiš svoj sedmični raspored i mjesečni iznos.</p>
         ${error ? errorList([error]) : ''}

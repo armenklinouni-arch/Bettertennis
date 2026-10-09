@@ -1,17 +1,22 @@
+/* Boje preuzete iz logotipa BetterTennis: tamnoplava (#11304C) i zelena (#7FBF35). */
 :root {
-  --bg: #f6f7f2;
+  --brand-navy: #11304c;
+  --brand-green: #7fbf35;
+  --bg: #f5f7f4;
   --surface: #ffffff;
-  --text: #1d2a22;
-  --muted: #5f6d64;
-  --border: #dfe4dc;
-  --primary: #1f6f4a;
-  --primary-dark: #17573a;
-  --primary-soft: #e3f1e9;
-  --accent: #d4e157;
+  --text: #13263a;
+  --muted: #5b6878;
+  --border: #dde3e8;
+  --primary: #11304c;
+  --primary-dark: #0a2036;
+  --on-primary: #ffffff;
+  --primary-soft: #eaf4de;
+  --accent: #7fbf35;
+  --brand-text: #11304c;
   --clay: #c8643b;
   --danger: #b3261e;
   --danger-soft: #fbe9e7;
-  --success-soft: #e3f1e9;
+  --success-soft: #eaf4de;
   --radius: 12px;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
   color-scheme: light;
@@ -19,17 +24,19 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121714;
-    --surface: #1b221e;
-    --text: #e6ece8;
-    --muted: #9aa8a0;
-    --border: #2d3832;
-    --primary: #4cb383;
-    --primary-dark: #63c595;
-    --primary-soft: #1f3329;
+    --bg: #0e1824;
+    --surface: #152434;
+    --text: #e6edf3;
+    --muted: #9aabbb;
+    --border: #263a4e;
+    --primary: #8fd14f;
+    --primary-dark: #a6dd6e;
+    --on-primary: #0b1a2a;
+    --primary-soft: #1d3326;
+    --brand-text: #e6edf3;
     --danger: #f2867d;
     --danger-soft: #3a2220;
-    --success-soft: #1f3329;
+    --success-soft: #1d3326;
     --shadow: none;
     color-scheme: dark;
   }
@@ -63,21 +70,30 @@ main.container { flex: 1; padding-top: 24px; padding-bottom: 48px; }
 /* ---------- Header ---------- */
 .site-header { background: var(--surface); border-bottom: 1px solid var(--border); }
 .header-inner { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; }
-.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 1.15rem; color: var(--text); text-decoration: none; }
-.ball { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); box-shadow: inset -3px -3px 0 rgba(0,0,0,0.08); position: relative; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.2rem; letter-spacing: -0.01em; color: var(--brand-text); text-decoration: none; font-style: italic; }
+.brand-name span { color: var(--brand-green); }
+.brand-mark { width: 40px; height: 40px; display: block; }
+/* Logo ima tamnoplave dijelove – u tamnom načinu stoji na svijetloj podlozi. */
+.logo-full { display: block; height: auto; }
+@media (prefers-color-scheme: dark) {
+  .brand-mark { background: #fff; border-radius: 10px; padding: 3px; }
+  .logo-full { background: #fff; border-radius: 16px; padding: 12px; }
+}
+.hero-logo { width: 150px; margin: 0 0 18px; }
+.login-logo { width: 120px; margin: 0 auto 14px; }
 .main-nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
 .main-nav a { padding: 6px 10px; border-radius: 8px; color: var(--muted); text-decoration: none; font-weight: 500; }
 .main-nav a:hover { background: var(--primary-soft); color: var(--text); }
 .main-nav a.active { background: var(--primary-soft); color: var(--primary); }
 .logout { display: flex; align-items: center; gap: 10px; margin: 0; }
 .who { color: var(--muted); font-size: 0.9rem; }
-.badge { display: inline-block; background: var(--clay); color: #fff; font-size: 0.7rem; padding: 1px 6px; border-radius: 999px; vertical-align: middle; }
+.badge { display: inline-block; background: var(--brand-green); color: #11304c; font-weight: 600; font-size: 0.7rem; padding: 1px 6px; border-radius: 999px; vertical-align: middle; }
 
 .site-footer { color: var(--muted); font-size: 0.85rem; padding: 20px 0; border-top: 1px solid var(--border); }
 
 /* ---------- Buttons & forms ---------- */
 .btn { white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 18px; border-radius: 10px; border: 1px solid transparent; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; line-height: 1.2; }
-.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary { background: var(--primary); color: var(--on-primary); }
 .btn-primary:hover { background: var(--primary-dark); }
 .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
 .btn-ghost:hover { background: var(--primary-soft); }
@@ -124,7 +140,7 @@ form.inline select { margin: 0; width: auto; min-width: 0; }
 .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
 .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
 .filters a { padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border); text-decoration: none; color: var(--muted); background: var(--surface); }
-.filters a.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.filters a.active { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 
 /* ---------- Summary tiles ---------- */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
@@ -169,7 +185,7 @@ tr.is-inactive td { color: var(--muted); }
 .day.is-today .day-date { color: inherit; opacity: 0.85; }
 .day-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
 .day-body .empty { color: var(--muted); font-size: 0.85rem; margin: 4px 2px; }
-.lesson { border-left: 4px solid var(--clay); background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 0.9rem; }
+.lesson { border-left: 4px solid var(--brand-green); background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 0.9rem; }
 .lesson-time { font-weight: 700; font-variant-numeric: tabular-nums; }
 .lesson-name { font-weight: 500; }
 .lesson-meta, .lesson-note { color: var(--muted); font-size: 0.8rem; }
@@ -188,7 +204,7 @@ tr.is-inactive td { color: var(--muted); }
 .notice { padding: 10px 14px; border-radius: 10px; background: var(--primary-soft); margin-bottom: 16px; }
 a.notice-link { display: block; color: var(--text); text-decoration: none; }
 a.notice-link:hover { outline: 1px solid var(--primary); }
-.count { display: inline-block; min-width: 1.4em; padding: 0 6px; border-radius: 999px; background: var(--clay); color: #fff; font-size: 0.75rem; text-align: center; line-height: 1.5; }
+.count { display: inline-block; min-width: 1.4em; padding: 0 6px; border-radius: 999px; background: var(--brand-green); color: #11304c; font-weight: 700; font-size: 0.75rem; text-align: center; line-height: 1.5; }
 .inline-form { display: inline-block; margin: 0; }
 .payment-row { margin-bottom: 16px; }
 tr.is-selected td { background: var(--primary-soft); }
@@ -200,7 +216,7 @@ tr.is-selected td { background: var(--primary-soft); }
 .inbox li.is-unread .inbox-title { font-weight: 700; }
 .inbox-date { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
 .inbox-preview { grid-column: 1 / -1; color: var(--muted); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--clay); flex-shrink: 0; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--brand-green); flex-shrink: 0; }
 .news-article { margin-top: 14px; }
 .news-row { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .news-row form { margin: 0; flex-shrink: 0; }
@@ -220,7 +236,7 @@ tr.is-selected td { background: var(--primary-soft); }
 
 /* ---------- Landing ---------- */
 .hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 32px; align-items: center; padding: 24px 0 36px; }
-.eyebrow { text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.8rem; font-weight: 700; color: var(--clay); margin: 0 0 8px; }
+.eyebrow { text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.8rem; font-weight: 700; color: var(--brand-green); margin: 0 0 8px; }
 .hero h1 { font-size: clamp(1.8rem, 4.5vw, 2.8rem); }
 .lead { font-size: 1.1rem; color: var(--muted); margin-bottom: 22px; }
 .hero-text .btn { margin: 0 8px 8px 0; }
