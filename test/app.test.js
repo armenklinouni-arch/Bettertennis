@@ -28,6 +28,15 @@ before(async () => {
 
 after(() => server.close());
 
+// Formulardaten kodieren; Arrays werden wie bei Checkboxen als wiederholte Felder gesendet.
+function toFormBody(form) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(form)) {
+    for (const v of Array.isArray(value) ? value : [value]) params.append(key, v);
+  }
+  return params.toString();
+}
+
 // Kleiner Browser-Ersatz mit Cookie-Speicher.
 function client() {
   let cookie = '';
@@ -39,7 +48,7 @@ function client() {
         cookie,
         ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}),
       },
-      body: form ? new URLSearchParams(form).toString() : undefined,
+      body: form ? toFormBody(form) : undefined,
     });
     const set = res.headers.get('set-cookie');
     if (set) cookie = set.split(';')[0];
@@ -202,7 +211,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
 
   // Gruppentraining: Lea + Max; Lea sieht nur sich selbst, Admin sieht beide
   const g = await admin.post('/admin/termine', {
-    kind: 'group', user_id: String(lea.id), user_id2: String(other.id), date: '2026-10-08', start_time: '18:00', duration_min: '60', price: '25', repeat: '1',
+    kind: 'group', user_id: String(lea.id), member_ids: String(other.id), date: '2026-10-08', start_time: '18:00', duration_min: '60', price: '25', repeat: '1',
   }, '/admin/termine');
   assert.equal(g.status, 302);
   const groupRows = db.prepare("SELECT * FROM lessons WHERE kind = 'group' ORDER BY user_id").all();
@@ -217,10 +226,32 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
 
   // Gruppe ohne zweites Mitglied wird abgelehnt
   const bad = await admin.post('/admin/termine', {
-    kind: 'group', user_id: String(lea.id), user_id2: '', date: '2026-10-09', start_time: '18:00', duration_min: '60',
+    kind: 'group', user_id: String(lea.id), date: '2026-10-09', start_time: '18:00', duration_min: '60',
   }, '/admin/termine');
   assert.equal(bad.status, 302);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM lessons WHERE date = '2026-10-09'").get().n, 0);
+
+  // Gruppe mit bis zu 8 Mitgliedern; mehr als 8 wird abgelehnt
+  const extra = [];
+  for (let i = 1; i <= 8; i++) {
+    extra.push(db.prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)')
+      .run(`Gruppe ${i}`, `gruppe${i}@test.de`, hashPassword('memberpass1')).lastInsertRowid);
+  }
+  const eight = await admin.post('/admin/termine', {
+    kind: 'group', user_id: String(extra[0]), member_ids: extra.slice(1, 8).map(String), date: '2026-10-10', start_time: '09:00', duration_min: '60', price: '20',
+  }, '/admin/termine');
+  assert.equal(eight.status, 302);
+  const eightRows = db.prepare("SELECT * FROM lessons WHERE date = '2026-10-10'").all();
+  assert.equal(eightRows.length, 8);
+  assert.equal(new Set(eightRows.map((r) => r.group_id)).size, 1);
+  await admin.post('/admin/termine', {
+    kind: 'group', user_id: String(lea.id), member_ids: extra.map(String), date: '2026-10-11', start_time: '09:00', duration_min: '60',
+  }, '/admin/termine');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM lessons WHERE date = '2026-10-11'").get().n, 0);
+  const editPage = await admin.request(`/admin/termine/${eightRows[0].id}`);
+  assert.equal((editPage.text.match(/name="member_ids" value="\d+" checked/g) || []).length, 7);
+  db.prepare("DELETE FROM lessons WHERE date = '2026-10-10'").run();
+  for (const id of extra) db.prepare('DELETE FROM users WHERE id = ?').run(id);
 
   // Status der ganzen Gruppe auf „Otkazan“ setzen
   await admin.post(`/admin/termine/${groupRows[0].id}/status`, { status: 'cancelled' }, '/admin/termine?woche=2026-10-05');

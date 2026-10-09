@@ -26,3 +26,11 @@ document.addEventListener('change', (event) => {
   const some = box.form && box.form.querySelector('input[name="audience"][value="some"]');
   if (some) some.checked = true;
 });
+
+// Termini: označavanje ostalih članova automatski bira „Grupni trening“.
+document.addEventListener('change', (event) => {
+  const box = event.target;
+  if (box.name !== 'member_ids' || !box.checked || !box.closest('.group-members')) return;
+  const kind = box.form && box.form.querySelector('select[name="kind"]');
+  if (kind) kind.value = 'group';
+});

@@ -17,7 +17,8 @@ const { EMAIL_RE, str } = require('./public');
 const LEAD_STATUSES = ['novo', 'kontaktiran', 'probni trening', 'član', 'odbijen'];
 const DURATIONS = [30, 45, 60, 90, 120];
 const MAX_REPEAT_WEEKS = 52;
-const GROUP_SIZE = 2;
+const GROUP_MIN = 2; // grupni trening: najmanje 2 …
+const GROUP_MAX = 8; // … i najviše 8 članova
 
 function toId(v) {
   const n = Number(v);
@@ -406,12 +407,12 @@ module.exports = function adminRoutes(db) {
           ${memberOptions(v.user_id)}
         </select>
       </label>
-      <label>Drugi član (samo za grupni trening)
-        <select name="user_id2">
-          <option value="">– odaberi –</option>
-          ${memberOptions(v.user_id2)}
-        </select>
-      </label>
+      <fieldset class="span-2 recipients group-members">
+        <legend>Ostali članovi u grupi (samo za grupni trening, ukupno ${GROUP_MIN}–${GROUP_MAX} članova)</legend>
+        <div class="recipient-list">
+          ${members.map((m) => html`<label class="check"><input type="checkbox" name="member_ids" value="${m.id}"${(v.member_ids || []).map(String).includes(String(m.id)) ? ' checked' : ''}><span>${m.name}</span></label>`)}
+        </div>
+      </fieldset>
       <label>Datum *<input name="date" type="date" required value="${v.date || ''}"></label>
       <label>Vrijeme *<input name="start_time" type="time" required step="300" value="${v.start_time || ''}"></label>
       <label>Trajanje *
@@ -426,7 +427,8 @@ module.exports = function adminRoutes(db) {
     const v = {
       kind: body.kind === 'group' ? 'group' : 'individual',
       user_id: toId(body.user_id),
-      user_id2: toId(body.user_id2),
+      member_ids: (Array.isArray(body.member_ids) ? body.member_ids : body.member_ids ? [body.member_ids] : [])
+        .map(toId).filter(Boolean),
       date: str(body.date, 10),
       start_time: str(body.start_time, 5),
       duration_min: Number(body.duration_min),
@@ -442,10 +444,14 @@ module.exports = function adminRoutes(db) {
     if (!first) errors.push('Molimo odaberi člana.');
     else members.push(first);
     if (v.kind === 'group') {
-      const second = v.user_id2 ? getMember.get(v.user_id2) : null;
-      if (!second) errors.push(`Za grupni trening odaberi ${GROUP_SIZE} člana.`);
-      else if (first && second.id === first.id) errors.push('Članovi u grupi moraju biti različiti.');
-      else members.push(second);
+      // Prvi član + označeni ostali članovi (bez duplikata).
+      for (const id of new Set(v.member_ids)) {
+        if (first && id === first.id) continue;
+        const m = getMember.get(id);
+        if (m) members.push(m);
+      }
+      if (members.length < GROUP_MIN) errors.push(`Za grupni trening odaberi najmanje ${GROUP_MIN} člana.`);
+      if (members.length > GROUP_MAX) errors.push(`Grupni trening može imati najviše ${GROUP_MAX} članova.`);
     }
     if (!D.isValidDate(v.date)) errors.push('Neispravan datum.');
     if (!D.isValidTime(v.start_time)) errors.push('Neispravno vrijeme.');
@@ -471,7 +477,7 @@ module.exports = function adminRoutes(db) {
   }
 
   function participantNames(participants) {
-    return participants.map((p) => p.member.name).join(' i ');
+    return participants.map((p) => p.member.name).join(', ');
   }
 
   router.get('/termine', (req, res) => {
@@ -562,12 +568,12 @@ module.exports = function adminRoutes(db) {
   });
 
   function lessonFormValues(rows) {
-    const [first, second] = rows;
+    const [first, ...others] = rows;
     const samePrice = rows.every((r) => r.price_cents === first.price_cents);
     return {
       ...first,
       user_id: first.user_id,
-      user_id2: second ? second.user_id : '',
+      member_ids: others.map((r) => r.user_id),
       price: samePrice ? centsToInput(first.price_cents) : '',
     };
   }

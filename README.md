@@ -18,7 +18,7 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      - „Ručni unos“: Termine erscheinen nicht, der Betrag wird nur manuell als Posten eingetragen
    - **Termine**: Wochenplan aller Mitglieder, Termine anlegen (einmalig oder wöchentlich
      für 4–52 Wochen), bearbeiten, löschen
-     - **Individualni trening** (1 Mitglied) oder **Grupni trening** (2 Mitglieder). Jedes
+     - **Individualni trening** (1 Mitglied) oder **Grupni trening** (2–8 Mitglieder). Jedes
        Mitglied sieht im eigenen Plan nur sich selbst, nicht die anderen Gruppenmitglieder.
      - **Status**: neue Termine sind automatisch „Realizovan“; mit einem Klick auf „Otkazan“
        umstellbar (abgesagte Termine werden nicht berechnet)
