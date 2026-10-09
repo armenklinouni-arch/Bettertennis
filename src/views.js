@@ -18,23 +18,23 @@ function layout(req, { title, body, wide = false }) {
 
   let nav;
   if (!user) {
-    nav = html`${navLink('/', 'Start', true)} ${navLink('/login', 'Mitglieder-Login')}`;
+    nav = html`${navLink('/', 'Početna', true)} ${navLink('/login', 'Prijava za članove')}`;
   } else if (user.role === 'admin') {
     nav = html`
-      ${navLink('/admin', 'Übersicht', true)}
-      ${navLink('/admin/interessenten', 'Interessenten')}
-      ${navLink('/admin/mitglieder', 'Mitglieder')}
-      ${navLink('/admin/termine', 'Termine')}
-      ${navLink('/admin/abrechnung', 'Beträge')}`;
+      ${navLink('/admin', 'Pregled', true)}
+      ${navLink('/admin/interessenten', 'Zainteresovani')}
+      ${navLink('/admin/mitglieder', 'Članovi')}
+      ${navLink('/admin/termine', 'Termini')}
+      ${navLink('/admin/abrechnung', 'Iznosi')}`;
   } else {
     nav = html`
-      ${navLink('/mitglied', 'Wochenplan', true)}
-      ${navLink('/mitglied/abrechnung', 'Monatsbetrag')}
-      ${navLink('/mitglied/passwort', 'Passwort')}`;
+      ${navLink('/mitglied', 'Sedmični raspored', true)}
+      ${navLink('/mitglied/abrechnung', 'Mjesečni iznos')}
+      ${navLink('/mitglied/passwort', 'Lozinka')}`;
   }
 
   return html`<!doctype html>
-<html lang="de">
+<html lang="bs">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -49,12 +49,12 @@ function layout(req, { title, body, wide = false }) {
       <a class="brand" href="${user ? (user.role === 'admin' ? '/admin' : '/mitglied') : '/'}">
         <span class="ball" aria-hidden="true"></span>${SITE_NAME}
       </a>
-      <nav class="main-nav" aria-label="Hauptnavigation">${nav}</nav>
+      <nav class="main-nav" aria-label="Glavna navigacija">${nav}</nav>
       ${user
         ? html`<form method="post" action="/logout" class="logout">
             ${csrfField(req)}
             <span class="who">${user.name}${user.role === 'admin' ? html` <span class="badge">Admin</span>` : ''}</span>
-            <button type="submit" class="btn btn-ghost btn-sm">Abmelden</button>
+            <button type="submit" class="btn btn-ghost btn-sm">Odjava</button>
           </form>`
         : ''}
     </div>
@@ -64,7 +64,7 @@ function layout(req, { title, body, wide = false }) {
     ${body}
   </main>
   <footer class="site-footer">
-    <div class="container${wide ? ' wide' : ''}">© ${new Date().getFullYear()} ${SITE_NAME} · Tennisschule</div>
+    <div class="container${wide ? ' wide' : ''}">© ${new Date().getFullYear()} ${SITE_NAME} · Teniska škola</div>
   </footer>
 </body>
 </html>`;
@@ -83,9 +83,9 @@ function lessonTimeRange(lesson) {
   return `${lesson.start_time}–${D.addMinutes(lesson.start_time, lesson.duration_min)}`;
 }
 
-// Wochenübersicht Montag bis Sonntag.
-// lessons: Termine (mit Feld member_name) innerhalb der Woche.
-// options.baseUrl: Ziel für die Wochen-Navigation; options.linkLesson: Funktion für Bearbeiten-Links (Admin).
+// Sedmični pregled od ponedjeljka do nedjelje.
+// lessons: termini (s poljem member_name) unutar sedmice.
+// options.baseUrl: cilj za navigaciju po sedmicama; options.linkLesson: funkcija za linkove za uređivanje (admin).
 function weekView({ monday, lessons, baseUrl, today = D.todayISO(), linkLesson, showPrice = false, extraQuery = '' }) {
   const days = D.weekDays(monday);
   const sunday = days[6];
@@ -97,15 +97,15 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), linkLesson, 
   for (const l of lessons) if (byDay.has(l.date)) byDay.get(l.date).push(l);
 
   return html`
-  <section class="week" aria-label="Wochenübersicht">
+  <section class="week" aria-label="Sedmični pregled">
     <div class="week-head">
-      <a class="btn btn-ghost btn-sm" href="${q(prev)}" aria-label="Vorherige Woche">‹ Vorherige</a>
+      <a class="btn btn-ghost btn-sm" href="${q(prev)}" aria-label="Prethodna sedmica">‹ Prethodna</a>
       <div class="week-title">
-        <strong>KW ${D.isoWeekNumber(monday)}</strong>
+        <strong>${D.isoWeekNumber(monday)}. sedmica</strong>
         <span>${D.formatDate(monday)} – ${D.formatDate(sunday)}</span>
-        ${monday !== thisMonday ? html`<a href="${q(thisMonday)}" class="today-link">Diese Woche</a>` : ''}
+        ${monday !== thisMonday ? html`<a href="${q(thisMonday)}" class="today-link">Ova sedmica</a>` : ''}
       </div>
-      <a class="btn btn-ghost btn-sm" href="${q(next)}" aria-label="Nächste Woche">Nächste ›</a>
+      <a class="btn btn-ghost btn-sm" href="${q(next)}" aria-label="Sljedeća sedmica">Sljedeća ›</a>
     </div>
     <div class="week-grid">
       ${days.map((day, i) => {
@@ -118,19 +118,19 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), linkLesson, 
           </div>
           <div class="day-body">
             ${items.length === 0
-              ? html`<p class="empty">Kein Training</p>`
+              ? html`<p class="empty">Nema treninga</p>`
               : items.map(
                   (l) => html`
               <article class="lesson${l.cancelled ? ' is-cancelled' : ''}">
-                <div class="lesson-time">${lessonTimeRange(l)} Uhr</div>
+                <div class="lesson-time">${lessonTimeRange(l)} h</div>
                 <div class="lesson-name">${l.member_name}</div>
                 <div class="lesson-meta">
-                  ${D.formatDateLong(l.date)}${l.court ? html` · Platz ${l.court}` : ''}
+                  ${D.formatDateLong(l.date)}${l.court ? html` · Teren ${l.court}` : ''}
                 </div>
-                ${l.cancelled ? html`<div class="lesson-tag">Abgesagt</div>` : ''}
+                ${l.cancelled ? html`<div class="lesson-tag">Otkazano</div>` : ''}
                 ${l.note ? html`<div class="lesson-note">${l.note}</div>` : ''}
                 ${showPrice ? html`<div class="lesson-meta">${formatEUR(l.price_cents)}</div>` : ''}
-                ${linkLesson ? html`<a class="lesson-edit" href="${linkLesson(l)}">Bearbeiten</a>` : ''}
+                ${linkLesson ? html`<a class="lesson-edit" href="${linkLesson(l)}">Uredi</a>` : ''}
               </article>`
                 )}
           </div>
@@ -140,17 +140,17 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), linkLesson, 
   </section>`;
 }
 
-// Monatsabrechnung als Tabelle (nur Information).
+// Mjesečni obračun kao tabela (samo informativno).
 function statementTable(statement, { adminDelete, req } = {}) {
   const rows = [];
   if (statement.fee) {
-    rows.push(html`<tr><td>Monatliche Grundgebühr</td><td></td><td class="num">${formatEUR(statement.fee)}</td>${adminDelete ? html`<td></td>` : ''}</tr>`);
+    rows.push(html`<tr><td>Mjesečna osnovna članarina</td><td></td><td class="num">${formatEUR(statement.fee)}</td>${adminDelete ? html`<td></td>` : ''}</tr>`);
   }
   for (const l of statement.lessons) {
     rows.push(html`
       <tr class="${l.cancelled ? 'is-cancelled' : ''}">
-        <td>Training ${D.formatDateLong(l.date)}, ${lessonTimeRange(l)} Uhr${l.court ? ` · Platz ${l.court}` : ''}</td>
-        <td>${l.cancelled ? 'abgesagt' : `${l.duration_min} Min.`}</td>
+        <td>Trening ${D.formatDateLong(l.date)}, ${lessonTimeRange(l)} h${l.court ? ` · Teren ${l.court}` : ''}</td>
+        <td>${l.cancelled ? 'otkazano' : `${l.duration_min} min`}</td>
         <td class="num">${l.cancelled ? formatEUR(0) : formatEUR(l.price_cents)}</td>
         ${adminDelete ? html`<td></td>` : ''}
       </tr>`);
@@ -159,28 +159,28 @@ function statementTable(statement, { adminDelete, req } = {}) {
     rows.push(html`
       <tr>
         <td>${a.description}</td>
-        <td>${a.amount_cents < 0 ? 'Gutschrift' : 'Zusatzposten'}</td>
+        <td>${a.amount_cents < 0 ? 'Odobrenje' : 'Dodatna stavka'}</td>
         <td class="num">${formatEUR(a.amount_cents)}</td>
         ${adminDelete
           ? html`<td class="num">
-              <form method="post" action="/admin/posten/${a.id}/loeschen" data-confirm="Posten wirklich löschen?">
-                ${csrfField(req)}<button class="btn btn-danger btn-sm" type="submit">Löschen</button>
+              <form method="post" action="/admin/posten/${a.id}/loeschen" data-confirm="Zaista obrisati stavku?">
+                ${csrfField(req)}<button class="btn btn-danger btn-sm" type="submit">Obriši</button>
               </form></td>`
           : ''}
       </tr>`);
   }
   if (rows.length === 0) {
-    rows.push(html`<tr><td colspan="${adminDelete ? 4 : 3}" class="empty">Für diesen Monat sind keine Posten vorhanden.</td></tr>`);
+    rows.push(html`<tr><td colspan="${adminDelete ? 4 : 3}" class="empty">Za ovaj mjesec nema stavki.</td></tr>`);
   }
 
   return html`
   <div class="table-wrap">
     <table class="statement">
-      <thead><tr><th>Posten</th><th>Details</th><th class="num">Betrag</th>${adminDelete ? html`<th></th>` : ''}</tr></thead>
+      <thead><tr><th>Stavka</th><th>Detalji</th><th class="num">Iznos</th>${adminDelete ? html`<th></th>` : ''}</tr></thead>
       <tbody>${rows}</tbody>
       <tfoot>
-        <tr><td>Trainingsstunden</td><td>${statement.lessonCount} Termine · ${formatHours(statement.hours)}</td><td class="num">${formatEUR(statement.lessonsTotal)}</td>${adminDelete ? html`<td></td>` : ''}</tr>
-        <tr class="total"><td>Summe ${D.monthLabel(statement.month)}</td><td></td><td class="num">${formatEUR(statement.total)}</td>${adminDelete ? html`<td></td>` : ''}</tr>
+        <tr><td>Treninzi</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}</td><td class="num">${formatEUR(statement.lessonsTotal)}</td>${adminDelete ? html`<td></td>` : ''}</tr>
+        <tr class="total"><td>Ukupno ${D.monthLabel(statement.month)}</td><td></td><td class="num">${formatEUR(statement.total)}</td>${adminDelete ? html`<td></td>` : ''}</tr>
       </tfoot>
     </table>
   </div>`;

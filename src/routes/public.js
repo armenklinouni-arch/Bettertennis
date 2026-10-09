@@ -6,14 +6,21 @@ const { html } = require('../html');
 const { layout, csrfField, errorList } = require('../views');
 const { verifyPassword, DUMMY_HASH } = require('../auth');
 
-const LEVELS = ['Anfänger', 'Wiedereinsteiger', 'Fortgeschritten', 'Turnierspieler'];
+const LEVELS = ['Početnik', 'Povratnik', 'Napredni', 'Takmičar'];
+
+// Fotografija teniskog terena s Unsplasha (Unsplash licenca, besplatno za korištenje).
+const HERO_PHOTO = {
+  src: 'https://unsplash.com/photos/msx3rGYfOEc/download?w=1200',
+  page: 'https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc',
+  author: 'Aleksandr Galichkin',
+};
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function str(v, max = 500) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
 }
 
-// Nur interne, relative Weiterleitungen erlauben (kein Open Redirect).
+// Dozvoljena su samo interna, relativna preusmjeravanja (bez open redirecta).
 function safeNext(next, fallback) {
   return typeof next === 'string' && /^\/(?![/\\])/.test(next) ? next : fallback;
 }
@@ -23,71 +30,74 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
 
   function homePage(req, { values = {}, errors = [] } = {}) {
     return layout(req, {
-      title: 'Tennisstunden',
+      title: 'Časovi tenisa',
       body: html`
       <section class="hero">
         <div class="hero-text">
-          <p class="eyebrow">Tennisschule</p>
-          <h1>Besser Tennis spielen – mit Training, das zu dir passt.</h1>
-          <p class="lead">Einzel- und Gruppenstunden für alle Spielstärken. Trag dich unverbindlich ein,
-            wir melden uns bei dir und vereinbaren eine Probestunde.</p>
-          <a class="btn btn-primary" href="#anmeldung">Jetzt eintragen</a>
-          <a class="btn btn-ghost" href="/login">Ich bin schon Mitglied</a>
+          <p class="eyebrow">Teniska škola</p>
+          <h1>Igraj bolji tenis – uz trening koji ti odgovara.</h1>
+          <p class="lead">Individualni i grupni časovi za sve nivoe znanja. Prijavi se bez obaveze,
+            javit ćemo ti se i dogovoriti probni trening.</p>
+          <a class="btn btn-primary" href="#anmeldung">Prijavi se sada</a>
+          <a class="btn btn-ghost" href="/login">Već sam član</a>
         </div>
-        <div class="hero-art" aria-hidden="true">
-          <div class="court"><span></span></div>
-        </div>
+        <figure class="hero-art">
+          <div class="court" aria-hidden="true"><span></span></div>
+          <img class="hero-photo" src="${HERO_PHOTO.src}" alt="Teniski teren od šljake s bijelim linijama"
+            width="1200" height="1600" loading="eager" referrerpolicy="no-referrer">
+          <figcaption>Foto: <a href="${HERO_PHOTO.page}" target="_blank" rel="noopener">${HERO_PHOTO.author}</a> / Unsplash</figcaption>
+        </figure>
       </section>
 
       <section class="features">
         <div class="feature card">
-          <h3>Für jedes Niveau</h3>
-          <p>Vom ersten Schlag bis zur Turniervorbereitung – das Training richtet sich nach deinem Spielstand.</p>
+          <h3>Za svaki nivo</h3>
+          <p>Od prvog udarca do pripreme za turnir – trening se prilagođava tvom nivou igre.</p>
         </div>
         <div class="feature card">
-          <h3>Fester Wochenplan</h3>
-          <p>Als Mitglied siehst du im Login-Bereich alle deine Trainingszeiten von Montag bis Sonntag.</p>
+          <h3>Stalni sedmični raspored</h3>
+          <p>Kao član u svom profilu vidiš sve termine treninga od ponedjeljka do nedjelje.</p>
         </div>
         <div class="feature card">
-          <h3>Transparente Kosten</h3>
-          <p>Du siehst jederzeit, welcher Betrag am Monatsende für deine Stunden anfällt.</p>
+          <h3>Transparentni troškovi</h3>
+          <p>U svakom trenutku vidiš koliki iznos za tvoje časove dospijeva na kraju mjeseca.</p>
         </div>
       </section>
 
       <section id="anmeldung" class="card form-card">
-        <h2>Interesse an Tennisstunden?</h2>
-        <p class="muted">Fülle das Formular aus – wir melden uns innerhalb weniger Tage bei dir.</p>
+        <h2>Zanimaju te časovi tenisa?</h2>
+        <p class="muted">Popuni obrazac – javit ćemo ti se u roku od nekoliko dana.</p>
         ${errorList(errors)}
         <form method="post" action="/anmeldung" class="form-grid" novalidate>
           ${csrfField(req)}
-          <label>Name *
+          <label>Ime i prezime *
             <input name="name" required maxlength="120" autocomplete="name" value="${values.name || ''}">
           </label>
-          <label>E-Mail *
+          <label>E-mail *
             <input name="email" type="email" required maxlength="200" autocomplete="email" value="${values.email || ''}">
           </label>
           <label>Telefon
             <input name="phone" type="tel" maxlength="50" autocomplete="tel" value="${values.phone || ''}">
           </label>
-          <label>Spielstärke
+          <label>Nivo znanja
             <select name="level">
               ${LEVELS.map((l) => html`<option${values.level === l ? ' selected' : ''}>${l}</option>`)}
             </select>
           </label>
-          <label class="span-2">Wann hast du Zeit? (Tage / Uhrzeiten)
-            <input name="availability" maxlength="300" placeholder="z. B. Di und Do ab 17 Uhr" value="${values.availability || ''}">
+          <label class="span-2">Kada imaš vremena? (dani / sati)
+            <input name="availability" maxlength="300" placeholder="npr. utorkom i četvrtkom od 17 h" value="${values.availability || ''}">
           </label>
-          <label class="span-2">Nachricht
+          <label class="span-2">Poruka
             <textarea name="message" rows="4" maxlength="2000">${values.message || ''}</textarea>
           </label>
-          <label class="hp" aria-hidden="true">Bitte leer lassen
+          <label class="hp" aria-hidden="true">Molimo ostavite prazno
             <input name="website" tabindex="-1" autocomplete="off">
           </label>
           <label class="check span-2">
             <input type="checkbox" name="consent" value="1" required${values.consent ? ' checked' : ''}>
-            <span>Ich bin einverstanden, dass meine Angaben zur Kontaktaufnahme gespeichert werden. *</span>
+            <span>Slažem se da se moji podaci sačuvaju radi kontakta. *</span>
           </label>
-          <div class="span-2"><button class="btn btn-primary" type="submit">Unverbindlich eintragen</button></div>
+          <div class="span-2"><button class="btn btn-primary" type="submit">Prijavi se bez obaveze</button></div>
         </form>
       </section>`,
     });
@@ -108,13 +118,13 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
       consent: req.body.consent === '1',
     };
 
-    // Honeypot: Bots füllen das versteckte Feld aus – stillschweigend ignorieren.
+    // Honeypot: botovi popunjavaju skriveno polje – tiho ignorisati.
     if (str(req.body.website)) return res.redirect('/danke');
 
     const errors = [];
-    if (!values.name) errors.push('Bitte gib deinen Namen an.');
-    if (!EMAIL_RE.test(values.email)) errors.push('Bitte gib eine gültige E-Mail-Adresse an.');
-    if (!values.consent) errors.push('Bitte bestätige die Einwilligung zur Kontaktaufnahme.');
+    if (!values.name) errors.push('Molimo upiši svoje ime.');
+    if (!EMAIL_RE.test(values.email)) errors.push('Molimo upiši ispravnu e-mail adresu.');
+    if (!values.consent) errors.push('Molimo potvrdi saglasnost za kontakt.');
     if (errors.length) {
       res.status(400);
       return res.send(String(homePage(req, { values, errors })));
@@ -128,36 +138,36 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
 
   router.get('/danke', (req, res) => {
     res.send(String(layout(req, {
-      title: 'Danke',
+      title: 'Hvala',
       body: html`
       <section class="card narrow center">
-        <h1>Danke für dein Interesse!</h1>
-        <p>Wir haben deine Anfrage erhalten und melden uns in Kürze bei dir.</p>
-        <a class="btn btn-primary" href="/">Zur Startseite</a>
+        <h1>Hvala na interesovanju!</h1>
+        <p>Primili smo tvoj upit i uskoro ćemo ti se javiti.</p>
+        <a class="btn btn-primary" href="/">Na početnu stranicu</a>
       </section>`,
     })));
   });
 
   function loginPage(req, { email = '', error = null, next = '' } = {}) {
     return layout(req, {
-      title: 'Login',
+      title: 'Prijava',
       body: html`
       <section class="card narrow">
-        <h1>Mitglieder-Login</h1>
-        <p class="muted">Melde dich an, um deinen Wochenplan und deinen Monatsbetrag zu sehen.</p>
+        <h1>Prijava za članove</h1>
+        <p class="muted">Prijavi se da vidiš svoj sedmični raspored i mjesečni iznos.</p>
         ${error ? errorList([error]) : ''}
         <form method="post" action="/login" class="stack">
           ${csrfField(req)}
           <input type="hidden" name="weiter" value="${next}">
-          <label>E-Mail
+          <label>E-mail
             <input name="email" type="email" required autocomplete="username" value="${email}" autofocus>
           </label>
-          <label>Passwort
+          <label>Lozinka
             <input name="password" type="password" required autocomplete="current-password">
           </label>
-          <button class="btn btn-primary" type="submit">Anmelden</button>
+          <button class="btn btn-primary" type="submit">Prijavi se</button>
         </form>
-        <p class="muted small">Noch kein Mitglied? <a href="/#anmeldung">Hier unverbindlich eintragen.</a></p>
+        <p class="muted small">Još nisi član? <a href="/#anmeldung">Prijavi se ovdje bez obaveze.</a></p>
       </section>`,
     });
   }
@@ -177,7 +187,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
 
     if (loginLimiter.isBlocked(key)) {
       res.status(429);
-      return res.send(String(loginPage(req, { email, next, error: 'Zu viele Fehlversuche. Bitte warte einige Minuten.' })));
+      return res.send(String(loginPage(req, { email, next, error: 'Previše neuspjelih pokušaja. Molimo sačekaj nekoliko minuta.' })));
     }
 
     const user = findUser.get(email);
@@ -185,7 +195,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
     if (!valid) {
       loginLimiter.fail(key);
       res.status(401);
-      return res.send(String(loginPage(req, { email, next, error: 'E-Mail oder Passwort ist falsch.' })));
+      return res.send(String(loginPage(req, { email, next, error: 'E-mail ili lozinka nisu ispravni.' })));
     }
 
     loginLimiter.reset(key);
@@ -196,7 +206,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
 
   router.post('/logout', (req, res) => {
     req.session = { csrf: req.session.csrf };
-    res.flash('success', 'Du wurdest abgemeldet.');
+    res.flash('success', 'Odjavljen/a si.');
     res.redirect('/login');
   });
 

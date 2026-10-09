@@ -71,26 +71,37 @@ test('Datums- und Geldhilfen', () => {
   assert.equal(parseEUR('1.234,5'), 123450);
   assert.equal(parseEUR('-10'), -1000);
   assert.equal(parseEUR('abc'), null);
+  assert.equal(parseEUR('45,50 KM'), 4550);
+  assert.equal(D.formatDateLong('2026-10-05'), 'Ponedjeljak, 05.10.2026.');
   assert.equal(formatEUR(4550).replace(/\s/g, ' '), '45,50 €');
+});
+
+test('Content-Security-Policy erlaubt Bilder von Unsplash', async () => {
+  const res = await fetch(base + '/');
+  assert.match(res.headers.get('content-security-policy'), /img-src 'self' data: https:\/\/unsplash\.com https:\/\/images\.unsplash\.com/);
 });
 
 test('Interessent kann sich auf der Startseite eintragen', async () => {
   const c = client();
   const home = await c.request('/');
   assert.equal(home.status, 200);
-  assert.match(home.text, /Interesse an Tennisstunden/);
+  assert.match(home.text, /Zanimaju te časovi tenisa/);
+  assert.match(home.text, /<html lang="bs">/);
+  assert.match(home.text, /class="hero-photo" src="https:\/\/unsplash\.com\/photos\//);
+  assert.match(home.text, /Unsplash<\/figcaption>/);
 
   const bad = await c.post('/anmeldung', { name: '', email: 'x' });
   assert.equal(bad.status, 400);
 
   const ok = await c.post('/anmeldung', {
-    name: 'Lea Neu', email: 'lea@example.de', level: 'Anfänger', availability: 'Di ab 17 Uhr', consent: '1',
+    name: 'Lea Neu', email: 'lea@example.de', level: 'Početnik', availability: 'Di ab 17 Uhr', consent: '1',
   });
   assert.equal(ok.status, 302);
   assert.equal(ok.location, '/danke');
   const lead = db.prepare('SELECT * FROM leads WHERE email = ?').get('lea@example.de');
   assert.equal(lead.name, 'Lea Neu');
-  assert.equal(lead.status, 'neu');
+  assert.equal(lead.status, 'novo');
+  assert.equal(lead.level, 'Početnik');
 });
 
 test('POST ohne gültiges CSRF-Token wird abgelehnt', async () => {
@@ -129,7 +140,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   assert.equal(created.status, 302);
   const lea = db.prepare('SELECT * FROM users WHERE email = ?').get('lea@example.de');
   assert.equal(lea.hourly_rate_cents, 4000);
-  assert.equal(db.prepare('SELECT status FROM leads WHERE id = ?').get(lead.id).status, 'Mitglied');
+  assert.equal(db.prepare('SELECT status FROM leads WHERE id = ?').get(lead.id).status, 'član');
 
   // Wöchentliche Termine anlegen: 4 × 90 Minuten ab Montag, 5.10.2026
   const t = await admin.post('/admin/termine', {
@@ -156,16 +167,16 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   assert.equal(ml.location, '/mitglied');
   const week = await member.request('/mitglied?woche=2026-10-07');
   assert.equal(week.status, 200);
-  assert.match(week.text, /KW 41/);
+  assert.match(week.text, /41\. sedmica/);
   for (const day of D.DAY_NAMES) assert.ok(week.text.includes(day), `${day} fehlt`);
-  assert.match(week.text, /17:30–19:00 Uhr/);
+  assert.match(week.text, /17:30–19:00 h/);
   assert.match(week.text, /Lea Neu/);
-  assert.match(week.text, /Montag, 05\.10\.2026/);
+  assert.match(week.text, /Ponedjeljak, 05\.10\.2026\./);
 
   const bill = await member.request('/mitglied/abrechnung?monat=2026-10');
   assert.match(bill.text, /195,50/);
   assert.match(bill.text, /Ballmaschine/);
-  assert.match(bill.text, /nur zur Information/);
+  assert.match(bill.text, /samo informativan/);
 
   // Mitglied sieht keine fremden Termine
   const other = db.prepare("SELECT id FROM users WHERE email = 'max@test.de'").get();

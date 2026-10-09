@@ -1,6 +1,6 @@
 'use strict';
 
-// Wochentage und "heute" sollen sich nach deutscher Zeit richten.
+// Dani u sedmici i "danas" ravnaju se po srednjoevropskom vremenu.
 process.env.TZ = process.env.TZ || 'Europe/Berlin';
 
 const { openDatabase, ensureAdmin } = require('./db');
@@ -18,10 +18,10 @@ const created = ensureAdmin(db, {
 });
 if (created) {
   console.log('------------------------------------------------------------');
-  console.log('Admin-Konto wurde angelegt:');
-  console.log(`  E-Mail:   ${created.email}`);
-  console.log(`  Passwort: ${created.password}`);
-  console.log('Bitte nach dem ersten Login das Passwort ändern.');
+  console.log('Kreiran je administratorski račun:');
+  console.log(`  E-mail:  ${created.email}`);
+  console.log(`  Lozinka: ${created.password}`);
+  console.log('Molimo promijenite lozinku nakon prve prijave.');
   console.log('------------------------------------------------------------');
 }
 
@@ -32,5 +32,5 @@ const app = createApp(db, {
 });
 
 app.listen(PORT, () => {
-  console.log(`BetterTennis läuft auf http://localhost:${PORT}`);
+  console.log(`BetterTennis radi na http://localhost:${PORT}`);
 });

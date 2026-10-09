@@ -1,14 +1,17 @@
 'use strict';
 
-// Beträge werden als ganze Cent gespeichert, um Rundungsfehler zu vermeiden.
+// Iznosi se čuvaju kao cijeli centi (feninzi) da bi se izbjegle greške zaokruživanja.
+// Valuta se može podesiti varijablom CURRENCY (npr. EUR ili BAM za konvertibilnu marku).
 
-const formatter = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+const CURRENCY = process.env.CURRENCY || 'EUR';
+const formatter = new Intl.NumberFormat('bs-BA', { style: 'currency', currency: CURRENCY });
+const CURRENCY_SYMBOL = formatter.formatToParts(0).find((p) => p.type === 'currency').value;
 
 function formatEUR(cents) {
   return formatter.format((cents || 0) / 100);
 }
 
-// Für Eingabefelder: 4550 -> "45,50"
+// Za polja unosa: 4550 -> "45,50"
 function centsToInput(cents) {
   if (cents === null || cents === undefined) return '';
   const sign = cents < 0 ? '-' : '';
@@ -16,11 +19,11 @@ function centsToInput(cents) {
   return `${sign}${Math.floor(abs / 100)},${String(abs % 100).padStart(2, '0')}`;
 }
 
-// Akzeptiert z. B. "45", "45,5", "45,50", "1.234,50", "-10", "45.50 €".
-// Gibt Cent zurück oder null bei ungültiger Eingabe.
+// Prihvata npr. "45", "45,5", "45,50", "1.234,50", "-10", "45.50 €", "45 KM".
+// Vraća cente ili null ako unos nije ispravan.
 function parseEUR(input) {
   if (input === undefined || input === null) return null;
-  let s = String(input).replace(/[\s€]/g, '');
+  let s = String(input).replace(/[\s€]|KM/gi, '');
   if (s === '') return null;
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
   if (!/^-?\d+(\.\d{1,2})?$/.test(s)) return null;
@@ -35,4 +38,4 @@ function lessonPrice(hourlyRateCents, durationMin) {
   return Math.round((hourlyRateCents * durationMin) / 60);
 }
 
-module.exports = { formatEUR, centsToInput, parseEUR, lessonPrice };
+module.exports = { formatEUR, centsToInput, parseEUR, lessonPrice, CURRENCY_SYMBOL };

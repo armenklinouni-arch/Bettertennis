@@ -3,9 +3,9 @@
 const crypto = require('node:crypto');
 
 const COOKIE_NAME = 'bt_session';
-const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 14; // 14 Tage
+const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 14; // 14 dana
 
-// ---------- Passwörter (scrypt) ----------
+// ---------- Lozinke (scrypt) ----------
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16);
@@ -21,10 +21,10 @@ function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(expected, actual);
 }
 
-// Dummy-Hash, damit ein Login mit unbekannter E-Mail genauso lange dauert.
+// Lažni hash, da prijava s nepoznatim e-mailom traje jednako dugo.
 const DUMMY_HASH = hashPassword(crypto.randomBytes(16).toString('hex'));
 
-// ---------- Signierte Session-Cookies ----------
+// ---------- Potpisani session-kolačići ----------
 
 function parseCookies(header) {
   const out = {};
@@ -67,7 +67,7 @@ function decodeSession(value, secret) {
   }
 }
 
-// Middleware: req.session ist ein einfaches Objekt; Änderungen werden mit res.saveSession() geschrieben.
+// Middleware: req.session je običan objekat; promjene se upisuju pomoću res.saveSession().
 function sessionMiddleware({ secret, secure }) {
   return (req, res, next) => {
     const cookies = parseCookies(req.headers.cookie);
@@ -93,7 +93,7 @@ function sessionMiddleware({ secret, secure }) {
       res.saveSession();
     };
 
-    // Flash-Nachricht genau einmal ausliefern.
+    // Flash-poruku prikazati tačno jednom.
     req.takeFlash = () => {
       const flash = req.session.flash;
       if (flash) {
@@ -108,7 +108,7 @@ function sessionMiddleware({ secret, secure }) {
   };
 }
 
-// Lädt den eingeloggten Benutzer (nur aktive Konten).
+// Učitava prijavljenog korisnika (samo aktivni računi).
 function loadUser(db) {
   const stmt = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1');
   return (req, res, next) => {
@@ -117,7 +117,7 @@ function loadUser(db) {
   };
 }
 
-// Schutz gegen Cross-Site-Request-Forgery für alle POST-Anfragen.
+// Zaštita od Cross-Site-Request-Forgery za sve POST zahtjeve.
 function csrfProtection(req, res, next) {
   if (req.method !== 'POST') return next();
   const token = req.body && req.body._csrf;
@@ -128,7 +128,7 @@ function csrfProtection(req, res, next) {
     crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
   if (!ok) {
     res.status(403);
-    return res.send('Ungültiges Formular-Token. Bitte die Seite neu laden und erneut versuchen.');
+    return res.send('Neispravan token obrasca. Molimo osvježite stranicu i pokušajte ponovo.');
   }
   next();
 }
@@ -146,12 +146,12 @@ function requireAdmin(req, res, next) {
   }
   if (req.user.role !== 'admin') {
     res.status(403);
-    return res.send('Kein Zugriff: Dieser Bereich ist nur für Administratoren.');
+    return res.send('Nemate pristup: ovaj dio je samo za administratore.');
   }
   next();
 }
 
-// Einfache Begrenzung fehlgeschlagener Logins pro IP (im Speicher).
+// Jednostavno ograničenje neuspjelih prijava po IP adresi (u memoriji).
 function createLoginLimiter({ maxAttempts = 10, windowMs = 15 * 60 * 1000 } = {}) {
   const attempts = new Map();
   return {
@@ -185,7 +185,7 @@ module.exports = {
   requireLogin,
   requireAdmin,
   createLoginLimiter,
-  // für Tests
+  // za testove
   encodeSession,
   decodeSession,
 };

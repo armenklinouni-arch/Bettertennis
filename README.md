@@ -1,6 +1,7 @@
 # BetterTennis
 
-Webanwendung für eine Tennisschule mit drei Bereichen:
+Webanwendung für eine Tennisschule. **Die Oberfläche ist auf Bosnisch** (lateinische Schrift);
+diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
 
 1. **Startseite** – Interessenten tragen sich unverbindlich für Tennisstunden ein
    (Name, E-Mail, Telefon, Spielstärke, Wunschzeiten, Nachricht).
@@ -36,7 +37,8 @@ ausgegeben. Alternativ vorher festlegen:
 ADMIN_EMAIL=chef@meine-tennisschule.de ADMIN_PASSWORD='ein-sicheres-passwort' npm start
 ```
 
-Beispieldaten zum Ausprobieren (3 Mitglieder mit Terminen, 2 Interessenten; Passwort `tennis123`):
+Beispieldaten zum Ausprobieren (3 Mitglieder mit Terminen, 2 Interessenten; Logins `amina@example.ba`,
+`emir@example.ba`, `lejla@example.ba`, Passwort `tennis123`):
 
 ```bash
 npm run demo
@@ -55,6 +57,7 @@ Tests: `npm test`
 | `SESSION_SECRET` | Schlüssel für Session-Cookies                                     | wird erzeugt und in der DB gespeichert |
 | `NODE_ENV`       | `production` setzt Cookies auf `Secure` (HTTPS nötig)             | –                     |
 | `TRUST_PROXY`    | `1`, wenn die App hinter einem Reverse-Proxy läuft                | –                     |
+| `CURRENCY`       | Währung der Beträge, z. B. `EUR` oder `BAM` (Konvertible Mark, „KM“) | `EUR`              |
 | `TZ`             | Zeitzone für „heute“ und Wochenbeginn                             | `Europe/Berlin`       |
 
 ## Aufbau
@@ -74,6 +77,10 @@ public/            CSS und ein kleines Script (Lösch-Bestätigung)
 scripts/demo-daten.js
 test/app.test.js
 ```
+
+Foto auf der Startseite: [Aleksandr Galichkin auf Unsplash](https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc)
+(Unsplash-Lizenz, kostenlos nutzbar). Es wird direkt von Unsplash geladen; ohne Internetverbindung
+erscheint stattdessen der gezeichnete Tennisplatz.
 
 Sicherheit: Passwörter mit scrypt gehasht, HMAC-signierte HttpOnly-Cookies, CSRF-Token auf allen
 Formularen, Content-Security-Policy, Begrenzung fehlgeschlagener Logins, alle Ausgaben HTML-escaped.

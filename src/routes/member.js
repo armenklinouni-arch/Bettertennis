@@ -22,7 +22,7 @@ module.exports = function memberRoutes(db) {
       ORDER BY date, start_time LIMIT 5`
   );
 
-  // Wochenplan Montag–Sonntag
+  // Sedmični raspored ponedjeljak–nedjelja
   router.get('/', (req, res) => {
     const today = D.todayISO();
     const requested = D.isValidDate(req.query.woche) ? req.query.woche : today;
@@ -34,54 +34,54 @@ module.exports = function memberRoutes(db) {
     const weekMinutes = lessons.filter((l) => !l.cancelled).reduce((s, l) => s + l.duration_min, 0);
 
     res.send(String(layout(req, {
-      title: 'Mein Wochenplan',
+      title: 'Moj sedmični raspored',
       wide: true,
       body: html`
       <div class="page-head">
         <div>
-          <h1>Hallo ${req.user.name}!</h1>
-          <p class="muted">Deine Trainingseinheiten in dieser Woche: ${lessons.filter((l) => !l.cancelled).length}
+          <h1>Zdravo, ${req.user.name}!</h1>
+          <p class="muted">Tvoji treninzi ove sedmice: ${lessons.filter((l) => !l.cancelled).length}
             (${formatHours(weekMinutes / 60)})</p>
         </div>
         <a class="summary-tile" href="/mitglied/abrechnung?monat=${month}">
-          <span class="label">Voraussichtlicher Betrag ${D.monthLabel(month)}</span>
+          <span class="label">Očekivani iznos za ${D.monthLabel(month)}</span>
           <span class="value">${formatEUR(statement.total)}</span>
-          <span class="hint">${statement.lessonCount} Termine · nur zur Information</span>
+          <span class="hint">Termini: ${statement.lessonCount} · samo informativno</span>
         </a>
       </div>
       ${weekView({ monday, lessons, baseUrl: '/mitglied', today })}
       <section class="card">
-        <h2>Nächste Termine</h2>
+        <h2>Sljedeći termini</h2>
         ${upcoming.length === 0
-          ? html`<p class="muted">Aktuell sind keine weiteren Termine geplant.</p>`
+          ? html`<p class="muted">Trenutno nema planiranih termina.</p>`
           : html`<ul class="list">${upcoming.map(
-              (l) => html`<li><strong>${D.formatDateLong(l.date)}</strong> · ${lessonTimeRange(l)} Uhr
-                ${l.court ? html`· Platz ${l.court}` : ''} — ${req.user.name}</li>`
+              (l) => html`<li><strong>${D.formatDateLong(l.date)}</strong> · ${lessonTimeRange(l)} h
+                ${l.court ? html`· Teren ${l.court}` : ''} — ${req.user.name}</li>`
             )}</ul>`}
       </section>`,
     })));
   });
 
-  // Monatsbetrag (nur Information, keine Zahlungsfunktion)
+  // Mjesečni iznos (samo informativno, bez funkcije plaćanja)
   router.get('/abrechnung', (req, res) => {
     const month = D.isValidMonth(req.query.monat) ? req.query.monat : D.monthOf(D.todayISO());
     const statement = monthlyStatement(db, req.user, month);
     res.send(String(layout(req, {
-      title: 'Monatsbetrag',
+      title: 'Mjesečni iznos',
       body: html`
       <div class="page-head">
         <div>
-          <h1>Monatsbetrag</h1>
-          <p class="muted">Übersicht der Kosten für ${D.monthLabel(month)}. Diese Aufstellung dient nur zur Information –
-            die Bezahlung erfolgt wie mit deiner Tennisschule vereinbart.</p>
+          <h1>Mjesečni iznos</h1>
+          <p class="muted">Pregled troškova za ${D.monthLabel(month)}. Ovaj pregled je samo informativan –
+            plaćanje se vrši kako je dogovoreno s tvojom teniskom školom.</p>
         </div>
       </div>
       ${monthNav('/mitglied/abrechnung', month)}
       <div class="summary-tile big">
-        <span class="label">Am Monatsende zu zahlen</span>
+        <span class="label">Za platiti na kraju mjeseca</span>
         <span class="value">${formatEUR(statement.total)}</span>
-        <span class="hint">${statement.lessonCount} Termine · ${formatHours(statement.hours)}${
-          req.user.hourly_rate_cents ? ` · ${formatEUR(req.user.hourly_rate_cents)} pro Stunde` : ''}</span>
+        <span class="hint">Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}${
+          req.user.hourly_rate_cents ? ` · ${formatEUR(req.user.hourly_rate_cents)} po satu` : ''}</span>
       </div>
       ${statementTable(statement)}`,
     })));
@@ -89,23 +89,23 @@ module.exports = function memberRoutes(db) {
 
   function passwordPage(req, errors = []) {
     return layout(req, {
-      title: 'Passwort ändern',
+      title: 'Promjena lozinke',
       body: html`
       <section class="card narrow">
-        <h1>Passwort ändern</h1>
+        <h1>Promjena lozinke</h1>
         ${errorList(errors)}
         <form method="post" action="/mitglied/passwort" class="stack">
           ${csrfField(req)}
-          <label>Aktuelles Passwort
+          <label>Trenutna lozinka
             <input name="current" type="password" required autocomplete="current-password">
           </label>
-          <label>Neues Passwort (mind. 8 Zeichen)
+          <label>Nova lozinka (najmanje 8 znakova)
             <input name="password" type="password" required minlength="8" autocomplete="new-password">
           </label>
-          <label>Neues Passwort wiederholen
+          <label>Ponovi novu lozinku
             <input name="password2" type="password" required minlength="8" autocomplete="new-password">
           </label>
-          <button class="btn btn-primary" type="submit">Speichern</button>
+          <button class="btn btn-primary" type="submit">Sačuvaj</button>
         </form>
       </section>`,
     });
@@ -118,15 +118,15 @@ module.exports = function memberRoutes(db) {
   router.post('/passwort', (req, res) => {
     const { current = '', password = '', password2 = '' } = req.body;
     const errors = [];
-    if (!verifyPassword(current, req.user.password_hash)) errors.push('Das aktuelle Passwort ist falsch.');
-    if (typeof password !== 'string' || password.length < 8) errors.push('Das neue Passwort muss mindestens 8 Zeichen haben.');
-    if (password !== password2) errors.push('Die neuen Passwörter stimmen nicht überein.');
+    if (!verifyPassword(current, req.user.password_hash)) errors.push('Trenutna lozinka nije ispravna.');
+    if (typeof password !== 'string' || password.length < 8) errors.push('Nova lozinka mora imati najmanje 8 znakova.');
+    if (password !== password2) errors.push('Nove lozinke se ne podudaraju.');
     if (errors.length) {
       res.status(400);
       return res.send(String(passwordPage(req, errors)));
     }
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), req.user.id);
-    res.flash('success', 'Dein Passwort wurde geändert.');
+    res.flash('success', 'Tvoja lozinka je promijenjena.');
     res.redirect(req.user.role === 'admin' ? '/admin' : '/mitglied');
   });
 

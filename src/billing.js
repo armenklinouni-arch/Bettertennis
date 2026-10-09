@@ -2,8 +2,8 @@
 
 const { monthRange } = require('./dates');
 
-// Monatsübersicht eines Mitglieds: Grundgebühr + nicht abgesagte Trainings + manuelle Posten.
-// Reine Information – es findet keine Zahlung statt.
+// Mjesečni pregled člana: osnovna članarina + neotkazani treninzi + ručno dodane stavke.
+// Samo informativno – nikakvo plaćanje se ne vrši.
 function monthlyStatement(db, user, month) {
   const { first, last } = monthRange(month);
   const lessons = db
@@ -37,7 +37,7 @@ function monthlyStatement(db, user, month) {
 }
 
 function formatHours(hours) {
-  return `${hours.toLocaleString('de-DE', { maximumFractionDigits: 2 })} Std.`;
+  return `${hours.toLocaleString('bs-BA', { maximumFractionDigits: 2 })} h`;
 }
 
 module.exports = { monthlyStatement, formatHours };

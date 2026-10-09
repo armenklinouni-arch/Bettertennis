@@ -19,7 +19,7 @@ function createApp(db, { secret, secureCookies = false, trustProxy = false } = {
     res.setHeader('Referrer-Policy', 'same-origin');
     res.setHeader(
       'Content-Security-Policy',
-      "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; form-action 'self'; frame-ancestors 'none'"
+      "default-src 'self'; img-src 'self' data: https://unsplash.com https://images.unsplash.com; style-src 'self'; script-src 'self'; form-action 'self'; frame-ancestors 'none'"
     );
     next();
   });
@@ -35,13 +35,13 @@ function createApp(db, { secret, secureCookies = false, trustProxy = false } = {
   app.use('/admin', adminRoutes(db));
 
   app.use((req, res) => {
-    res.status(404).send('Seite nicht gefunden.');
+    res.status(404).send('Stranica nije pronađena.');
   });
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     console.error(err);
-    res.status(500).send('Es ist ein Fehler aufgetreten.');
+    res.status(500).send('Došlo je do greške.');
   });
 
   return app;

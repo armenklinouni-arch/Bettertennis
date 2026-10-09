@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS leads (
   level             TEXT,
   availability      TEXT,
   message           TEXT,
-  status            TEXT NOT NULL DEFAULT 'neu',
+  status            TEXT NOT NULL DEFAULT 'novo',
   converted_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -71,7 +71,22 @@ function openDatabase(file) {
   db.exec('PRAGMA foreign_keys = ON;');
   if (file !== ':memory:') db.exec('PRAGMA journal_mode = WAL;');
   db.exec(SCHEMA);
+  migrateLeadStatuses(db);
   return db;
+}
+
+// Statusi upita su ranije bili na njemačkom – prevodimo postojeće zapise.
+const OLD_LEAD_STATUSES = {
+  neu: 'novo',
+  kontaktiert: 'kontaktiran',
+  Probestunde: 'probni trening',
+  Mitglied: 'član',
+  abgelehnt: 'odbijen',
+};
+
+function migrateLeadStatuses(db) {
+  const update = db.prepare('UPDATE leads SET status = ? WHERE status = ?');
+  for (const [oldStatus, newStatus] of Object.entries(OLD_LEAD_STATUSES)) update.run(newStatus, oldStatus);
 }
 
 function getSetting(db, key) {
@@ -84,7 +99,7 @@ function setSetting(db, key, value) {
     .run(key, value);
 }
 
-// Geheimnis zum Signieren der Session-Cookies: aus der Umgebung oder einmalig erzeugt und gespeichert.
+// Tajni ključ za potpisivanje session-kolačića: iz okruženja ili jednom generisan i sačuvan.
 function sessionSecret(db, fromEnv) {
   if (fromEnv) return fromEnv;
   let secret = getSetting(db, 'session_secret');
@@ -95,8 +110,8 @@ function sessionSecret(db, fromEnv) {
   return secret;
 }
 
-// Legt beim ersten Start ein Admin-Konto an, falls noch keines existiert.
-// Gibt das erzeugte Passwort zurück, wenn es zufällig generiert wurde.
+// Pri prvom pokretanju kreira administratorski račun ako još ne postoji.
+// Vraća generisanu lozinku ako je nasumično kreirana.
 function ensureAdmin(db, { email, password, name } = {}) {
   const existing = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get();
   if (existing) return null;

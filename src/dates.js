@@ -1,13 +1,13 @@
 'use strict';
 
-// Datumslogik arbeitet ausschließlich mit Strings im Format YYYY-MM-DD bzw. YYYY-MM.
-// Intern wird UTC verwendet, damit Sommer-/Winterzeit keine Tage verschiebt.
+// Datumi se obrađuju isključivo kao stringovi u formatu YYYY-MM-DD odnosno YYYY-MM.
+// Interno se koristi UTC da ljetno/zimsko računanje vremena ne pomjera dane.
 
-const DAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
-const DAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const DAY_NAMES = ['Ponedjeljak', 'Utorak', 'Srijeda', 'Četvrtak', 'Petak', 'Subota', 'Nedjelja'];
+const DAY_SHORT = ['Pon', 'Uto', 'Sri', 'Čet', 'Pet', 'Sub', 'Ned'];
 const MONTH_NAMES = [
-  'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
+  'Januar', 'Februar', 'Mart', 'April', 'Maj', 'Juni',
+  'Juli', 'August', 'Septembar', 'Oktobar', 'Novembar', 'Decembar',
 ];
 
 const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -42,7 +42,7 @@ function toISO(d) {
   return d.toISOString().slice(0, 10);
 }
 
-// Heutiges Datum in der lokalen Zeitzone des Servers (TZ, Standard Europe/Berlin).
+// Današnji datum u lokalnoj vremenskoj zoni servera (TZ, standardno Europe/Berlin).
 function todayISO(now = new Date()) {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
@@ -53,7 +53,7 @@ function addDays(iso, n) {
   return toISO(d);
 }
 
-// 0 = Montag … 6 = Sonntag
+// 0 = ponedjeljak … 6 = nedjelja
 function weekdayIndex(iso) {
   return (toDate(iso).getUTCDay() + 6) % 7;
 }
@@ -76,7 +76,7 @@ function isoWeekNumber(iso) {
 
 function formatDate(iso) {
   const [y, m, d] = iso.split('-');
-  return `${d}.${m}.${y}`;
+  return `${d}.${m}.${y}.`;
 }
 
 function formatDateShort(iso) {
