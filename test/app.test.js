@@ -566,3 +566,11 @@ test('Fester Admin aus ADMIN_EMAIL/ADMIN_PASSWORD bleibt bei jedem Start gleich'
   assert.equal(chef.active, 1);
   assert.equal(fresh.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'chef@schule.net' COLLATE NOCASE").get().n, 1);
 });
+
+test('Login akzeptiert versehentliche Leerzeichen um das Passwort', async () => {
+  db.prepare("INSERT INTO users (name, email, password_hash) VALUES ('Space', 'space@test.de', ?)").run(hashPassword('mein-pw-123!?'));
+  const ok = await client().login(' space@test.de ', ' mein-pw-123!? ');
+  assert.equal(ok.status, 302);
+  const bad = await client().login('space@test.de', 'mein-pw-123');
+  assert.equal(bad.status, 401);
+});

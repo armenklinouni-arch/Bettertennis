@@ -203,7 +203,10 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
     const user = findUser.get(email);
     const trainer = user ? null : findTrainer.get(email);
     const account = user || trainer;
-    const valid = verifyPassword(password, account ? account.password_hash : DUMMY_HASH) && account && account.active;
+    // Pri kopiranju lozinke često se slučajno doda razmak na početku ili kraju – i to dozvoljavamo.
+    const hash = account ? account.password_hash : DUMMY_HASH;
+    const passwordOk = verifyPassword(password, hash) || (password.trim() !== password && verifyPassword(password.trim(), hash));
+    const valid = passwordOk && account && account.active;
     if (!valid) {
       loginLimiter.fail(key);
       res.status(401);
