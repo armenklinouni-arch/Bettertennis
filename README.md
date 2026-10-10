@@ -117,8 +117,9 @@ scripts/demo-daten.js
 test/app.test.js
 ```
 
-Illustrationen (Programme und Kinderübungen) liegen als SVG unter `public/img/illustracije/` und sind
-eigens für diese Seite in den Logofarben gezeichnet. Die Startseite nutzt sanfte Scroll- und Hover-Animationen;
+Die vier Programmkarten (Individualni, Grupni, Video analiza, Konsultacije) zeigen Fotos von Unsplash
+(Unsplash-Lizenz). Die Foto-IDs stehen in `src/routes/public.js` (`PROGRAMS`) und lassen sich dort austauschen.
+Lädt ein Foto nicht, erscheint automatisch die eigene Illustration aus `public/img/illustracije/`. Die Startseite nutzt sanfte Scroll- und Hover-Animationen;
 bei der Systemeinstellung „Bewegung reduzieren“ werden sie automatisch abgeschaltet.
 
 Foto auf der Startseite: [Aleksandr Galichkin auf Unsplash](https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc)

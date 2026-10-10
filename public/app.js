@@ -10,12 +10,23 @@ function markPhotoFailed(img) {
   const figure = img.closest('.hero-art');
   if (figure) figure.classList.add('photo-failed');
 }
+// Slike s data-fallback (npr. fotografije s Unsplasha): ako se ne učitaju, prikaži lokalnu ilustraciju.
+function useFallback(img) {
+  const fallback = img.getAttribute('data-fallback');
+  if (!fallback) return;
+  img.removeAttribute('data-fallback');
+  img.src = fallback;
+}
 document.addEventListener('error', (event) => {
   if (event.target.classList && event.target.classList.contains('hero-photo')) markPhotoFailed(event.target);
+  if (event.target.hasAttribute && event.target.hasAttribute('data-fallback')) useFallback(event.target);
 }, true);
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.hero-photo').forEach((img) => {
     if (img.complete && img.naturalWidth === 0) markPhotoFailed(img);
+  });
+  document.querySelectorAll('img[data-fallback]').forEach((img) => {
+    if (img.complete && img.naturalWidth === 0) useFallback(img);
   });
 });
 

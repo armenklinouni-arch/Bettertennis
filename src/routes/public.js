@@ -20,35 +20,23 @@ function isValidPhone(phone) {
   return PHONE_RE.test(phone) && phone.replace(/\D/g, '').length >= 6;
 }
 
-// Programi i vježbe za djecu na početnoj stranici (ilustracije u public/img/illustracije).
+// Programi na početnoj stranici. Fotografije se učitavaju s Unsplasha (Unsplash licenca, besplatno);
+// ako se fotografija ne može učitati, prikazuje se vlastita ilustracija iz public/img/illustracije.
+// Za drugu fotografiju dovoljno je zamijeniti `photo` ID-om s unsplash.com/photos/<…-ID>.
+const unsplash = (id) => `https://unsplash.com/photos/${id}/download?w=800`;
 const PROGRAMS = [
-  { img: 'individualni.svg', tag: '1 igrač', title: 'Individualni trening',
-    alt: 'Trener i jedan igrač na terenu',
+  { photo: '8N0-G_EftOA', img: 'individualni.svg', tag: 'Jedan na jedan', title: 'Individualni trening',
+    alt: 'Igračica na teniskom terenu tokom treninga',
     text: 'Trening jedan na jedan, potpuno prilagođen tvom tempu i ciljevima – najbrži napredak u tehnici i taktici.' },
-  { img: 'grupni.svg', tag: '2–8 igrača', title: 'Grupni trening',
-    alt: 'Grupa igrača s trenerom na terenu',
+  { photo: 'Dhdck86QmyE', img: 'grupni.svg', tag: 'Mala grupa', title: 'Grupni trening',
+    alt: 'Grupa igrača na teniskom terenu',
     text: 'Trening u maloj grupi igrača sličnog nivoa. Više igre, motivacije i druženja.' },
-  { img: 'video-analiza.svg', tag: 'Tehnika', title: 'Video analiza',
-    alt: 'Kamera na stativu i tablet s analizom udarca',
+  { photo: 'Hmoz8oI53wo', img: 'video-analiza.svg', tag: 'Tehnika', title: 'Video analiza',
+    alt: 'Mobitel na stativu snima trening',
     text: 'Snimamo tvoje udarce i analiziramo ih usporeno, kadar po kadar – vidiš tačno šta i kako popraviti.' },
-  { img: 'konsultacije.svg', tag: 'Plan i savjeti', title: 'Konsultacije',
-    alt: 'Trener i igrač razgovaraju o planu treninga',
+  { photo: 'MznNvPMu9d0', img: 'konsultacije.svg', tag: 'Plan i savjeti', title: 'Konsultacije',
+    alt: 'Igrači razgovaraju na teniskom terenu',
     text: 'Razgovaramo o tvojim ciljevima, planu treninga, opremi i pripremi za turnire.' },
-];
-
-const DRILLS = [
-  { img: 'djeca-slalom.svg', title: 'Slalom s lopticom na reketu',
-    alt: 'Dijete vodi lopticu na reketu u slalomu između čunjeva',
-    goal: 'kontrola reketa i koordinacija oko–ruka', gear: '5–6 čunjeva, reket, mekana loptica', age: '4–8 godina' },
-  { img: 'djeca-ljestve.svg', title: 'Koordinacione ljestve',
-    alt: 'Dijete brzim koracima prelazi koordinacione ljestve',
-    goal: 'brzi i lagani koraci, ravnoteža, rad nogu', gear: 'ljestve za koordinaciju, 2 čunja', age: '5–12 godina' },
-  { img: 'djeca-mete.svg', title: 'Gađanje meta',
-    alt: 'Dijete gađa obruče postavljene na terenu',
-    goal: 'preciznost i usmjeravanje udarca', gear: 'obruči ili mete, korpa s mekanim lopticama', age: '6–12 godina' },
-  { img: 'djeca-hvatanje.svg', title: 'Baci – uhvati – broji',
-    alt: 'Dvoje djece baca i hvata lopticu u paru',
-    goal: 'osjećaj za loptu, timing i saradnja u paru', gear: 'loptice, 4 čunja za polje', age: '4–8 godina' },
 ];
 
 function str(v, max = 500) {
@@ -99,7 +87,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
         <div class="program-grid">
           ${PROGRAMS.map((pr, i) => html`
           <article class="program-card lift reveal delay-${i % 4}">
-            <div class="program-img"><img src="/static/img/illustracije/${pr.img}" alt="${pr.alt}" width="400" height="260" loading="lazy"></div>
+            <div class="program-img"><img src="${unsplash(pr.photo)}" data-fallback="/static/img/illustracije/${pr.img}" alt="${pr.alt}" width="400" height="260" loading="lazy" referrerpolicy="no-referrer"></div>
             <div class="program-body">
               <span class="tag tag-kind is-group">${pr.tag}</span>
               <h3>${pr.title}</h3>
@@ -125,29 +113,6 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
           <div class="feature-icon" aria-hidden="true">🏅</div>
           <h3>Treneri</h3>
           <p>Svi naši treneri su certificirani ITF treneri sa dugogodišnjim iskustvom.</p>
-        </div>
-      </section>
-
-      <section class="section kids" id="djeca" aria-labelledby="djeca-naslov">
-        <div class="section-head reveal">
-          <p class="eyebrow">Tenis za djecu</p>
-          <h2 id="djeca-naslov">Učimo kroz igru</h2>
-          <p class="muted">Kod djece počinjemo igrom: kratke, šarene vježbe s čunjevima, ljestvama i mekanim lopticama razvijaju
-            koordinaciju, brzinu i osjećaj za loptu – prije nego što učimo pravu tehniku udaraca.</p>
-        </div>
-        <div class="drill-grid">
-          ${DRILLS.map((d, i) => html`
-          <article class="drill-card lift reveal delay-${i % 4}">
-            <div class="drill-img"><img src="/static/img/illustracije/${d.img}" alt="${d.alt}" width="400" height="260" loading="lazy"></div>
-            <div class="drill-body">
-              <h3><span class="drill-no">${i + 1}</span>${d.title}</h3>
-              <dl class="drill-facts">
-                <div><dt>Cilj</dt><dd>${d.goal}</dd></div>
-                <div><dt>Oprema</dt><dd>${d.gear}</dd></div>
-                <div><dt>Uzrast</dt><dd>${d.age}</dd></div>
-              </dl>
-            </div>
-          </article>`)}
         </div>
       </section>
 

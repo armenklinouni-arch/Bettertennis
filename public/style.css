@@ -321,27 +321,18 @@ body { background: radial-gradient(1200px 500px at 85% -10%, rgba(127, 191, 53, 
 
 /* Programi */
 .program-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
-.program-card, .drill-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; }
-.program-img, .drill-img { overflow: hidden; background: var(--primary-soft); }
-.program-img img, .drill-img img { display: block; width: 100%; height: auto; transition: transform .5s var(--ease); }
-.lift:hover .program-img img, .lift:hover .drill-img img { transform: scale(1.05); }
-.program-body, .drill-body { padding: 16px 18px 20px; }
-.program-body h3, .drill-body h3 { margin: 8px 0 6px; font-size: 1.15rem; color: var(--brand-text); }
+.program-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.program-img { overflow: hidden; background: var(--primary-soft); }
+.program-img img { display: block; width: 100%; height: auto; aspect-ratio: 400 / 260; object-fit: cover; transition: transform .5s var(--ease); }
+.lift:hover .program-img img { transform: scale(1.05); }
+.program-body { padding: 16px 18px 20px; }
+.program-body h3 { margin: 8px 0 6px; font-size: 1.15rem; color: var(--brand-text); }
 .program-body p { margin: 0; color: var(--muted); }
 
 /* Zašto mi */
 .features { gap: 18px; }
 .feature { border-radius: 18px; }
 .feature-icon { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 1.4rem; background: var(--primary-soft); margin-bottom: 10px; }
-
-/* Djeca: vježbe */
-.kids { padding: 32px; border-radius: 26px; background: linear-gradient(160deg, color-mix(in srgb, var(--brand-green) 14%, var(--surface)), var(--surface) 70%); border: 1px solid var(--border); }
-.drill-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-.drill-no { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--navy-grad); color: #fff; font-size: .9rem; margin-right: 10px; vertical-align: 2px; }
-.drill-facts { margin: 10px 0 0; display: grid; gap: 6px; }
-.drill-facts div { display: grid; grid-template-columns: 76px 1fr; gap: 8px; font-size: .95rem; }
-.drill-facts dt { font-weight: 700; color: var(--positive); }
-.drill-facts dd { margin: 0; color: var(--text); }
 
 /* Formular */
 .form-card { border-radius: 22px; padding: 28px; box-shadow: var(--shadow-lg); border-top: 4px solid var(--brand-green); }
@@ -358,20 +349,17 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 @media (prefers-reduced-motion: reduce) {
   .js .reveal { opacity: 1; transform: none; transition: none; }
   .hero-badge { animation: none; }
-  .btn, .lift, .program-img img, .drill-img img { transition: none; }
+  .btn, .lift, .program-img img { transition: none; }
   .btn:hover, .lift:hover { transform: none; }
-  .lift:hover .program-img img, .lift:hover .drill-img img { transform: none; }
+  .lift:hover .program-img img { transform: none; }
 }
 
 @media (max-width: 1000px) { .program-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) {
   .section { margin: 40px 0; }
-  .kids { padding: 18px; border-radius: 20px; }
-  .drill-grid, .program-grid { grid-template-columns: 1fr; }
+  .program-grid { grid-template-columns: 1fr; }
   .hero-badge { left: 10px; bottom: 14px; }
-  .drill-facts div { grid-template-columns: 64px 1fr; }
 }
 @media (prefers-color-scheme: dark) {
   .hero-chips li { color: var(--text); }
-  .kids { background: linear-gradient(160deg, #1b3326, var(--surface) 70%); }
 }

@@ -23,7 +23,7 @@ function createApp(db, { secret, secureCookies = false, trustProxy = false } = {
     res.setHeader('Referrer-Policy', 'same-origin');
     res.setHeader(
       'Content-Security-Policy',
-      "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; form-action 'self'; frame-ancestors 'none'"
+      "default-src 'self'; img-src 'self' data: https://unsplash.com https://images.unsplash.com; style-src 'self'; script-src 'self'; form-action 'self'; frame-ancestors 'none'"
     );
     next();
   });

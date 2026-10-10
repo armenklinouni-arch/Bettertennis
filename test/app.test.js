@@ -87,9 +87,9 @@ test('Datums- und Geldhilfen', () => {
   assert.equal(formatMoney(4550).replace(/\s/g, ' '), '45,50 KM');
 });
 
-test('Startseitenfoto wird lokal ausgeliefert (keine externen Bilder)', async () => {
+test('Startseitenfoto lokal, Programmfotos von Unsplash erlaubt', async () => {
   const res = await fetch(base + '/');
-  assert.match(res.headers.get('content-security-policy'), /img-src 'self' data:;/);
+  assert.match(res.headers.get('content-security-policy'), /img-src 'self' data: https:\/\/unsplash\.com https:\/\/images\.unsplash\.com;/);
   const img = await fetch(base + '/static/img/tennisplatz.jpg');
   assert.equal(img.status, 200);
   assert.equal(img.headers.get('content-type'), 'image/jpeg');
@@ -575,14 +575,14 @@ test('Login akzeptiert versehentliche Leerzeichen um das Passwort', async () => 
   assert.equal(bad.status, 401);
 });
 
-test('Startseite: Programme und Kinderübungen mit Illustrationen', async () => {
+test('Startseite: Programme mit Unsplash-Fotos und lokalen Ersatzbildern, ohne Kinderbereich und ohne „2–8 igrača“', async () => {
   const home = await client().request('/');
   assert.match(home.text, /Trening po tvojoj mjeri/);
-  assert.match(home.text, /Učimo kroz igru/);
-  for (const f of ['individualni', 'grupni', 'video-analiza', 'konsultacije', 'djeca-slalom', 'djeca-ljestve', 'djeca-mete', 'djeca-hvatanje']) {
-    assert.match(home.text, new RegExp(`/static/img/illustracije/${f}\\.svg`));
+  assert.doesNotMatch(home.text, /Učimo kroz igru|Tenis za djecu/);
+  assert.doesNotMatch(home.text, /2–8 igrača/);
+  for (const f of ['individualni', 'grupni', 'video-analiza', 'konsultacije']) {
+    assert.match(home.text, new RegExp(`src="https://unsplash\\.com/photos/[\\w-]+/download\\?w=800" data-fallback="/static/img/illustracije/${f}\\.svg"`));
     const img = await fetch(`${base}/static/img/illustracije/${f}.svg`);
     assert.equal(img.status, 200);
-    assert.match(img.headers.get('content-type'), /image\/svg\+xml/);
   }
 });
