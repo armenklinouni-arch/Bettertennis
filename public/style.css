@@ -266,3 +266,112 @@ tr.is-selected td { background: var(--primary-soft); }
   .header-inner { gap: 8px; }
   .main-nav { order: 3; flex-basis: 100%; }
 }
+
+/* =====================================================================
+   Moderni izgled: sekcije, kartice s ilustracijama, animacije
+   ===================================================================== */
+:root {
+  --navy-grad: linear-gradient(135deg, #11304c 0%, #1d4a70 100%);
+  --green-grad: linear-gradient(135deg, #8fd14f 0%, #6cad25 100%);
+  --shadow-lg: 0 10px 30px rgba(17, 48, 76, 0.12), 0 2px 6px rgba(17, 48, 76, 0.06);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+
+body { background: radial-gradient(1200px 500px at 85% -10%, rgba(127, 191, 53, 0.10), transparent 60%), var(--bg); }
+
+/* Zaglavlje: ostaje gore pri skrolanju, lagana sjenka nakon skrolanja */
+.site-header { position: sticky; top: 0; z-index: 50; backdrop-filter: saturate(1.4) blur(8px); background: color-mix(in srgb, var(--surface) 88%, transparent); transition: box-shadow .25s var(--ease); }
+.site-header.scrolled { box-shadow: 0 4px 18px rgba(17, 48, 76, 0.10); }
+.main-nav a { transition: background .2s var(--ease), color .2s var(--ease); }
+
+/* Dugmad */
+.btn { transition: transform .2s var(--ease), box-shadow .2s var(--ease), background .2s var(--ease), color .2s var(--ease); }
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: translateY(0); }
+.btn-primary:hover { box-shadow: 0 8px 18px rgba(17, 48, 76, 0.25); }
+.btn-accent { background: var(--green-grad); color: #11304c; box-shadow: 0 4px 12px rgba(127, 191, 53, 0.35); }
+.btn-accent:hover { box-shadow: 0 10px 22px rgba(127, 191, 53, 0.45); }
+.btn-lg { padding: 13px 24px; font-size: 1.05rem; border-radius: 12px; }
+
+/* Hero */
+.hero { position: relative; padding: 36px 0 48px; }
+.hero h1 { letter-spacing: -0.02em; }
+.hero .hl { background: linear-gradient(transparent 62%, rgba(127, 191, 53, 0.45) 62%); padding: 0 .1em; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.hero-text .hero-actions .btn { margin: 0; }
+.hero-chips { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.hero-chips li { font-size: .85rem; font-weight: 600; padding: 5px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--brand-text); }
+.hero-chips li::before { content: "✓"; color: var(--positive); margin-right: 6px; }
+.hero-art { transition: transform .4s var(--ease); }
+.hero-photo { border-radius: 22px; box-shadow: var(--shadow-lg); }
+.court { border-radius: 22px; }
+.hero-badge { position: absolute; left: -14px; bottom: 28px; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 14px; background: var(--surface); color: var(--brand-text); font-weight: 700; box-shadow: var(--shadow-lg); animation: float 4s ease-in-out infinite; }
+.ball-dot { width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ecff8a, #a9d63a); box-shadow: inset -2px -2px 0 rgba(0,0,0,.08); }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+/* Sekcije */
+.section { margin: 56px 0; }
+.section-head { max-width: 680px; margin-bottom: 24px; }
+.section-head h2 { font-size: clamp(1.5rem, 3vw, 2.1rem); letter-spacing: -0.01em; margin-bottom: 8px; }
+.section-head .muted { font-size: 1.05rem; margin: 0; }
+
+/* Kartice koje se lagano podignu na hover */
+.lift { transition: transform .3s var(--ease), box-shadow .3s var(--ease), border-color .3s var(--ease); }
+.lift:hover { transform: translateY(-6px); box-shadow: var(--shadow-lg); border-color: color-mix(in srgb, var(--brand-green) 55%, var(--border)); }
+
+/* Programi */
+.program-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.program-card, .drill-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.program-img, .drill-img { overflow: hidden; background: var(--primary-soft); }
+.program-img img, .drill-img img { display: block; width: 100%; height: auto; transition: transform .5s var(--ease); }
+.lift:hover .program-img img, .lift:hover .drill-img img { transform: scale(1.05); }
+.program-body, .drill-body { padding: 16px 18px 20px; }
+.program-body h3, .drill-body h3 { margin: 8px 0 6px; font-size: 1.15rem; color: var(--brand-text); }
+.program-body p { margin: 0; color: var(--muted); }
+
+/* Zašto mi */
+.features { gap: 18px; }
+.feature { border-radius: 18px; }
+.feature-icon { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 1.4rem; background: var(--primary-soft); margin-bottom: 10px; }
+
+/* Djeca: vježbe */
+.kids { padding: 32px; border-radius: 26px; background: linear-gradient(160deg, color-mix(in srgb, var(--brand-green) 14%, var(--surface)), var(--surface) 70%); border: 1px solid var(--border); }
+.drill-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.drill-no { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--navy-grad); color: #fff; font-size: .9rem; margin-right: 10px; vertical-align: 2px; }
+.drill-facts { margin: 10px 0 0; display: grid; gap: 6px; }
+.drill-facts div { display: grid; grid-template-columns: 76px 1fr; gap: 8px; font-size: .95rem; }
+.drill-facts dt { font-weight: 700; color: var(--positive); }
+.drill-facts dd { margin: 0; color: var(--text); }
+
+/* Formular */
+.form-card { border-radius: 22px; padding: 28px; box-shadow: var(--shadow-lg); border-top: 4px solid var(--brand-green); }
+input, select, textarea { transition: border-color .2s var(--ease), box-shadow .2s var(--ease); }
+input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-green) 25%, transparent); outline: none; }
+
+/* Animacija pri skrolanju (samo kad je JavaScript aktivan) */
+.js .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+.js .reveal.is-visible { opacity: 1; transform: none; }
+.js .reveal.delay-1 { transition-delay: .08s; }
+.js .reveal.delay-2 { transition-delay: .16s; }
+.js .reveal.delay-3 { transition-delay: .24s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .js .reveal { opacity: 1; transform: none; transition: none; }
+  .hero-badge { animation: none; }
+  .btn, .lift, .program-img img, .drill-img img { transition: none; }
+  .btn:hover, .lift:hover { transform: none; }
+  .lift:hover .program-img img, .lift:hover .drill-img img { transform: none; }
+}
+
+@media (max-width: 1000px) { .program-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) {
+  .section { margin: 40px 0; }
+  .kids { padding: 18px; border-radius: 20px; }
+  .drill-grid, .program-grid { grid-template-columns: 1fr; }
+  .hero-badge { left: 10px; bottom: 14px; }
+  .drill-facts div { grid-template-columns: 64px 1fr; }
+}
+@media (prefers-color-scheme: dark) {
+  .hero-chips li { color: var(--text); }
+  .kids { background: linear-gradient(160deg, #1b3326, var(--surface) 70%); }
+}

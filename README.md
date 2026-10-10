@@ -117,6 +117,10 @@ scripts/demo-daten.js
 test/app.test.js
 ```
 
+Illustrationen (Programme und Kinderübungen) liegen als SVG unter `public/img/illustracije/` und sind
+eigens für diese Seite in den Logofarben gezeichnet. Die Startseite nutzt sanfte Scroll- und Hover-Animationen;
+bei der Systemeinstellung „Bewegung reduzieren“ werden sie automatisch abgeschaltet.
+
 Foto auf der Startseite: [Aleksandr Galichkin auf Unsplash](https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc)
 (Unsplash-Lizenz, kostenlos nutzbar, Namensnennung nicht erforderlich – daher auf der Seite ohne Bildnachweis).
 Das Foto liegt lokal unter `public/img/tennisplatz.jpg` und erscheint daher auch ohne Internetverbindung.

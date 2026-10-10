@@ -52,3 +52,29 @@ document.addEventListener('change', (event) => {
   const kind = form.querySelector('select[name="kind"]');
   if (kind) kind.value = 'group';
 });
+
+// Animacija pri skrolanju: elementi s klasom .reveal se pojave kad uđu u vidno polje.
+document.documentElement.classList.add('js');
+document.addEventListener('DOMContentLoaded', () => {
+  const items = document.querySelectorAll('.reveal');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!('IntersectionObserver' in window) || reduce) {
+    items.forEach((el) => el.classList.add('is-visible'));
+  } else {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    items.forEach((el) => observer.observe(el));
+  }
+
+  // Zaglavlje dobija sjenku nakon skrolanja.
+  const header = document.querySelector('.site-header');
+  const onScroll = () => header && header.classList.toggle('scrolled', window.scrollY > 8);
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+});

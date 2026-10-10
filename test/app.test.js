@@ -574,3 +574,15 @@ test('Login akzeptiert versehentliche Leerzeichen um das Passwort', async () => 
   const bad = await client().login('space@test.de', 'mein-pw-123');
   assert.equal(bad.status, 401);
 });
+
+test('Startseite: Programme und Kinderübungen mit Illustrationen', async () => {
+  const home = await client().request('/');
+  assert.match(home.text, /Trening po tvojoj mjeri/);
+  assert.match(home.text, /Učimo kroz igru/);
+  for (const f of ['individualni', 'grupni', 'video-analiza', 'konsultacije', 'djeca-slalom', 'djeca-ljestve', 'djeca-mete', 'djeca-hvatanje']) {
+    assert.match(home.text, new RegExp(`/static/img/illustracije/${f}\\.svg`));
+    const img = await fetch(`${base}/static/img/illustracije/${f}.svg`);
+    assert.equal(img.status, 200);
+    assert.match(img.headers.get('content-type'), /image\/svg\+xml/);
+  }
+});
