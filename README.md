@@ -63,7 +63,12 @@ npm install
 npm start            # http://localhost:3000
 ```
 
-Beim ersten Start wird ein Admin-Konto angelegt und die Zugangsdaten werden in der Konsole
+**Fester Admin-Account (empfohlen):** Kopiere `.env.example` nach `.env` und trage `ADMIN_EMAIL` und
+`ADMIN_PASSWORD` ein. Die Datei `.env` wird nicht auf GitHub hochgeladen. Bei jedem Start wird dieser
+Account angelegt bzw. auf genau diese Zugangsdaten gesetzt – sie ändern sich also nie von selbst.
+Auf einem Hosting-Dienst (z. B. Railway) trägt man dieselben Werte als „Variables“ ein.
+
+Ohne diese Einstellung gilt: Beim ersten Start wird ein Admin-Konto angelegt und die Zugangsdaten werden in der Konsole
 ausgegeben. Alternativ vorher festlegen:
 
 ```bash

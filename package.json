@@ -5,10 +5,10 @@
   "description": "Tennisschule: Interessenten-Anmeldung, Mitgliederbereich mit Wochenplan und Monatsübersicht, Admin-Verwaltung",
   "main": "src/server.js",
   "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning src/server.js",
-    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --watch src/server.js",
     "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
-    "demo": "node --disable-warning=ExperimentalWarning scripts/demo-daten.js"
+    "demo": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/demo-daten.js"
   },
   "engines": {
     "node": ">=22.13"

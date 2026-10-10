@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
-const { hashPassword } = require('./auth');
+const { hashPassword, verifyPassword } = require('./auth');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (
@@ -235,6 +235,20 @@ function sessionSecret(db, fromEnv) {
 // Pri prvom pokretanju kreira administratorski račun ako još ne postoji.
 // Vraća generisanu lozinku ako je nasumično kreirana.
 function ensureAdmin(db, { email, password, name } = {}) {
+  // Fiksni admin iz podešavanja (ADMIN_EMAIL + ADMIN_PASSWORD): pri svakom pokretanju se osigura
+  // da ovaj račun postoji, da je admin i aktivan te da vrijedi zadana lozinka.
+  if (email && password) {
+    const account = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email);
+    if (account) {
+      const hash = verifyPassword(password, account.password_hash) ? account.password_hash : hashPassword(password);
+      db.prepare("UPDATE users SET role = 'admin', active = 1, password_hash = ? WHERE id = ?").run(hash, account.id);
+    } else {
+      db.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'admin')")
+        .run(name || 'Administrator', email, hashPassword(password));
+    }
+    return null;
+  }
+
   const existing = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get();
   if (existing) return null;
   const adminEmail = email || 'admin@bettertennis.local';

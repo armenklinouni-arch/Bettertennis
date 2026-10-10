@@ -546,3 +546,23 @@ test('Finansije: prihodi (uplate članova + ručno), rashodi (treneri + ručno),
   await member.login('jasmin@fin-test.de', 'memberpass1');
   assert.equal((await member.request('/admin/finansije')).status, 403);
 });
+
+test('Fester Admin aus ADMIN_EMAIL/ADMIN_PASSWORD bleibt bei jedem Start gleich', () => {
+  const { openDatabase, ensureAdmin } = require('../src/db');
+  const { verifyPassword } = require('../src/auth');
+  const fresh = openDatabase(':memory:');
+  // Vorher existiert schon ein zufällig erzeugter Admin
+  assert.ok(ensureAdmin(fresh, {}));
+  // Fester Admin wird zusätzlich angelegt
+  assert.equal(ensureAdmin(fresh, { email: 'Chef@Schule.net', password: 'geheim-12345' }), null);
+  let chef = fresh.prepare("SELECT * FROM users WHERE email = 'chef@schule.net' COLLATE NOCASE").get();
+  assert.equal(chef.role, 'admin');
+  assert.ok(verifyPassword('geheim-12345', chef.password_hash));
+  // Passwort wurde geändert / Konto deaktiviert → nach Neustart wieder wie eingestellt
+  fresh.prepare("UPDATE users SET password_hash = 'x', active = 0 WHERE id = ?").run(chef.id);
+  ensureAdmin(fresh, { email: 'chef@schule.net', password: 'geheim-12345' });
+  chef = fresh.prepare('SELECT * FROM users WHERE id = ?').get(chef.id);
+  assert.ok(verifyPassword('geheim-12345', chef.password_hash));
+  assert.equal(chef.active, 1);
+  assert.equal(fresh.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'chef@schule.net' COLLATE NOCASE").get().n, 1);
+});

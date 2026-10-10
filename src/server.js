@@ -16,6 +16,11 @@ const created = ensureAdmin(db, {
   password: process.env.ADMIN_PASSWORD,
   name: process.env.ADMIN_NAME,
 });
+if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+  console.log(`Admin-Konto (fest eingestellt): ${process.env.ADMIN_EMAIL}`);
+} else if (process.env.ADMIN_EMAIL || process.env.ADMIN_PASSWORD) {
+  console.warn('Hinweis: Für einen festen Admin müssen ADMIN_EMAIL und ADMIN_PASSWORD beide gesetzt sein.');
+}
 if (created) {
   console.log('------------------------------------------------------------');
   console.log('Kreiran je administratorski račun:');
