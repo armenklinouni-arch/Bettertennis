@@ -85,12 +85,29 @@ npm run demo
 
 Tests: `npm test`
 
+## Daten dauerhaft speichern (Railway)
+
+Die Daten liegen in einer SQLite-Datei. Auf Railway ist das Dateisystem eines Dienstes **flüchtig**:
+Bei jedem Deploy (also nach jedem Code-Update) startet ein neuer Container, und ohne Volume wäre die
+Datenbank danach leer. Deshalb:
+
+1. Im Railway-Projekt den Dienst anklicken → Rechtsklick/„+“ → **Volume** anlegen und an den Dienst hängen,
+   Mount-Pfad **`/data`**.
+2. Fertig – die App erkennt das Volume automatisch (`RAILWAY_VOLUME_MOUNT_PATH`) und speichert die Datenbank
+   unter `/data/bettertennis.db`. Im Deploy-Log steht `Datenbank: /data/bettertennis.db`.
+   Fehlt das Volume, erscheint im Log eine deutliche Warnung.
+
+Zusätzlich kann der Admin auf der Übersichtsseite unter „Sigurnosna kopija“ jederzeit eine komplette
+Sicherungskopie der Datenbank herunterladen.
+
+Lokal gehen keine Daten verloren, solange der Ordner `data/` nicht gelöscht wird.
+
 ## Konfiguration
 
 | Variable         | Bedeutung                                                         | Standard              |
 |------------------|-------------------------------------------------------------------|-----------------------|
 | `PORT`           | HTTP-Port                                                         | `3000`                |
-| `DB_FILE`        | Pfad der SQLite-Datenbank                                         | `data/bettertennis.db`|
+| `DB_FILE`        | Pfad der SQLite-Datenbank                                         | Railway-Volume, sonst `data/bettertennis.db`|
 | `ADMIN_EMAIL`    | E-Mail des ersten Admins (nur wenn noch kein Admin existiert)     | `admin@bettertennis.local` |
 | `ADMIN_PASSWORD` | Passwort des ersten Admins                                        | zufällig, wird geloggt |
 | `SESSION_SECRET` | Schlüssel für Session-Cookies                                     | wird erzeugt und in der DB gespeichert |

@@ -1,6 +1,9 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const express = require('express');
 const { html } = require('../html');
 const D = require('../dates');
@@ -89,8 +92,31 @@ module.exports = function adminRoutes(db) {
                 <li><strong>${l.name}</strong> · ${l.level || ''} · <a href="mailto:${l.email}">${l.email}</a></li>`)}</ul>
               <a href="/admin/interessenten">Pogledaj sve zainteresovane →</a>`}
         </section>
-      </div>`,
+      </div>
+      <section class="card">
+        <h2>Sigurnosna kopija</h2>
+        <p class="muted">Preuzmi kompletnu bazu podataka (članovi, termini, plaćanja, treneri, finansije) kao jednu datoteku i sačuvaj je na računaru.</p>
+        <a class="btn btn-primary" href="/admin/sigurnosna-kopija">Preuzmi sigurnosnu kopiju</a>
+      </section>`,
     })));
+  });
+
+  // ---------------------------------------------------------------- Sigurnosna kopija
+  // Konzistentna kopija cijele baze (VACUUM INTO) kao preuzimanje.
+  router.get('/sigurnosna-kopija', (req, res, next) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-backup-'));
+    const file = path.join(dir, 'backup.db');
+    const cleanup = () => fs.rmSync(dir, { recursive: true, force: true });
+    try {
+      db.prepare('VACUUM INTO ?').run(file);
+    } catch (err) {
+      cleanup();
+      return next(err);
+    }
+    res.download(file, `bettertennis-${D.todayISO()}.db`, (err) => {
+      cleanup();
+      if (err && !res.headersSent) next(err);
+    });
   });
 
   // ---------------------------------------------------------------- Interessenten

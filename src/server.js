@@ -3,11 +3,15 @@
 // Dani u sedmici i "danas" ravnaju se po srednjoevropskom vremenu.
 process.env.TZ = process.env.TZ || 'Europe/Berlin';
 
+const path = require('node:path');
 const { openDatabase, ensureAdmin } = require('./db');
 const { createApp } = require('./app');
 
 const PORT = Number(process.env.PORT) || 3000;
-const DB_FILE = process.env.DB_FILE || 'data/bettertennis.db';
+// Baza podataka: DB_FILE ima prednost; na Railwayu se automatski koristi priključeni Volume,
+// tako da podaci ostaju sačuvani i nakon novog deploya.
+const VOLUME = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+const DB_FILE = process.env.DB_FILE || (VOLUME ? path.join(VOLUME, 'bettertennis.db') : 'data/bettertennis.db');
 const production = process.env.NODE_ENV === 'production';
 
 // Vrijednosti iz podešavanja (npr. Railway „Variables“): uklanjamo razmake i navodnike
@@ -22,6 +26,14 @@ const adminEmail = cleanEnv('ADMIN_EMAIL');
 const adminPassword = cleanEnv('ADMIN_PASSWORD');
 
 const db = openDatabase(DB_FILE);
+console.log(`Datenbank: ${path.resolve(DB_FILE)}`);
+if (process.env.RAILWAY_ENVIRONMENT && !VOLUME && !process.env.DB_FILE) {
+  console.warn('############################################################');
+  console.warn('ACHTUNG: Kein Railway-Volume angebunden! Alle Daten (Mitglieder,');
+  console.warn('Termine, Zahlungen) gehen bei jedem Deploy verloren.');
+  console.warn('Lösung: Im Railway-Dienst ein Volume mit Mount-Pfad /data anlegen.');
+  console.warn('############################################################');
+}
 const created = ensureAdmin(db, {
   email: adminEmail,
   password: adminPassword,

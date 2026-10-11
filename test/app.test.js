@@ -586,3 +586,15 @@ test('Startseite: Programme mit Unsplash-Fotos und lokalen Ersatzbildern, ohne K
     assert.equal(img.status, 200);
   }
 });
+
+test('Admin kann eine Sicherungskopie der Datenbank herunterladen, andere nicht', async () => {
+  const anon = await client().request('/admin/sigurnosna-kopija');
+  assert.equal(anon.status, 302);
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const home = await admin.request('/admin');
+  assert.match(home.text, /href="\/admin\/sigurnosna-kopija"/);
+  const backup = await admin.request('/admin/sigurnosna-kopija');
+  assert.equal(backup.status, 200);
+  assert.ok(backup.text.startsWith('SQLite format 3'));
+});
