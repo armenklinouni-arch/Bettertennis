@@ -17,6 +17,7 @@ const {
 const { requireAdmin, hashPassword } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
 const { listGroupsWithMembers } = require('./groups');
+const { USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername } = require('../db');
 
 const LEAD_STATUSES = ['novo', 'kontaktiran', 'probni trening', 'član', 'odbijen'];
 const DURATIONS = [30, 45, 60, 90, 120];
@@ -194,11 +195,12 @@ module.exports = function adminRoutes(db) {
       ${members.length === 0
         ? html`<p class="card muted">Još nema kreiranih članova.</p>`
         : html`<div class="table-wrap"><table>
-          <thead><tr><th>Ime</th><th>Kontakt</th><th class="num">Cijena / sat</th><th class="num">Članarina</th><th class="num">${D.monthLabel(month)}</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Ime</th><th>Korisničko ime</th><th>Kontakt</th><th class="num">Cijena / sat</th><th class="num">Članarina</th><th class="num">${D.monthLabel(month)}</th><th>Status</th><th></th></tr></thead>
           <tbody>${members.map((m) => {
             const st = monthlyStatement(db, m, month);
             return html`<tr class="${m.active ? '' : 'is-inactive'}">
               <td><strong>${m.name}</strong></td>
+              <td>${m.username || ''}</td>
               <td>${m.email}${m.phone ? html`<br>${m.phone}` : ''}</td>
               <td class="num">${formatMoney(m.hourly_rate_cents)}</td>
               <td class="num">${formatMoney(m.monthly_fee_cents)}</td>
@@ -233,7 +235,9 @@ module.exports = function adminRoutes(db) {
           ${csrfField(req)}
           ${leadId ? html`<input type="hidden" name="lead_id" value="${leadId}">` : ''}
           <label>Ime i prezime *<input name="name" required maxlength="120" value="${v.name || ''}"></label>
-          <label>E-mail (za prijavu) *<input name="email" type="email" required maxlength="200" value="${v.email || ''}"></label>
+          <label>Korisničko ime (za prijavu) *<input name="username" required minlength="3" maxlength="40" autocapitalize="none" spellcheck="false" value="${v.username || ''}">
+            <span class="small muted">3–40 znakova: slova bez kvačica, brojevi, tačka, crtica, donja crta.</span></label>
+          <label>E-mail *<input name="email" type="email" required maxlength="200" value="${v.email || ''}"></label>
           <label>Telefon<input name="phone" maxlength="50" value="${v.phone || ''}"></label>
           <label>${isNew ? 'Lozinka * (najmanje 8 znakova)' : 'Nova lozinka (ostavi prazno = bez promjene)'}
             <input name="password" type="text" autocomplete="new-password" minlength="8" ${isNew ? 'required' : ''} value="${v.password || ''}">
@@ -266,6 +270,7 @@ module.exports = function adminRoutes(db) {
   function readMemberForm(body, isNew) {
     const values = {
       name: str(body.name, 120),
+      username: normalizeUsername(str(body.username, 200)),
       email: str(body.email, 200),
       phone: str(body.phone, 50),
       password: typeof body.password === 'string' ? body.password : '',
@@ -277,6 +282,7 @@ module.exports = function adminRoutes(db) {
     };
     const errors = [];
     if (!values.name) errors.push('Nedostaje ime.');
+    if (!USERNAME_RE.test(values.username)) errors.push('Neispravno korisničko ime (3–40 znakova: a–z, 0–9, tačka, crtica, donja crta).');
     if (!EMAIL_RE.test(values.email)) errors.push('Neispravna e-mail adresa.');
     if ((isNew || values.password) && values.password.length < 8) errors.push('Lozinka mora imati najmanje 8 znakova.');
     const rate = values.hourly_rate === '' ? 0 : parseMoney(values.hourly_rate);
@@ -287,8 +293,13 @@ module.exports = function adminRoutes(db) {
   }
 
   function emailTaken(email, exceptId = 0) {
-    return !!db.prepare('SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?').get(email, exceptId)
-      || !!db.prepare('SELECT id FROM trainers WHERE email = ? COLLATE NOCASE').get(email);
+    return !!db.prepare('SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?').get(email, exceptId);
+  }
+  function uniquenessErrors(values, exceptId = 0) {
+    const errors = [];
+    if (usernameTaken(db, values.username, { userId: exceptId })) errors.push('Ovo korisničko ime je već zauzeto.');
+    if (emailTaken(values.email, exceptId)) errors.push('Ova e-mail adresa se već koristi.');
+    return errors;
   }
 
   router.get('/mitglieder/neu', (req, res) => {
@@ -298,14 +309,14 @@ module.exports = function adminRoutes(db) {
       active: true,
       billing_mode: 'schedule',
       password: crypto.randomBytes(6).toString('base64url'),
-      ...(lead ? { name: lead.name, email: lead.email, phone: lead.phone || '', notes: [lead.level, lead.availability, lead.message].filter(Boolean).join('\n') } : {}),
+      ...(lead ? { name: lead.name, username: suggestUsername(db, lead.name), email: lead.email, phone: lead.phone || '', notes: [lead.level, lead.availability, lead.message].filter(Boolean).join('\n') } : {}),
     };
     res.send(String(memberForm(req, { values, leadId: lead ? lead.id : null })));
   });
 
   router.post('/mitglieder', (req, res) => {
     const { values, errors, rate, fee } = readMemberForm(req.body, true);
-    if (!errors.length && emailTaken(values.email)) errors.push('Ova e-mail adresa se već koristi.');
+    if (!errors.length) errors.push(...uniquenessErrors(values));
     const leadId = toId(req.body.lead_id);
     if (errors.length) {
       res.status(400);
@@ -313,14 +324,14 @@ module.exports = function adminRoutes(db) {
     }
     const r = db
       .prepare(
-        `INSERT INTO users (name, email, phone, password_hash, role, hourly_rate_cents, monthly_fee_cents, active, notes, billing_mode)
-         VALUES (?, ?, ?, ?, 'member', ?, ?, ?, ?, ?)`
+        `INSERT INTO users (name, username, email, phone, password_hash, role, hourly_rate_cents, monthly_fee_cents, active, notes, billing_mode)
+         VALUES (?, ?, ?, ?, ?, 'member', ?, ?, ?, ?, ?)`
       )
-      .run(values.name, values.email, values.phone || null, hashPassword(values.password), rate, fee, values.active ? 1 : 0, values.notes || null, values.billing_mode);
+      .run(values.name, values.username, values.email, values.phone || null, hashPassword(values.password), rate, fee, values.active ? 1 : 0, values.notes || null, values.billing_mode);
     if (leadId) {
       db.prepare("UPDATE leads SET status = 'član', converted_user_id = ? WHERE id = ?").run(r.lastInsertRowid, leadId);
     }
-    res.flash('success', `Član ${values.name} je kreiran. Prijava: ${values.email} / lozinka: ${values.password}`);
+    res.flash('success', `Član ${values.name} je kreiran. Prijava: ${values.username} / lozinka: ${values.password}`);
     res.redirect(`/admin/mitglieder/${r.lastInsertRowid}`);
   });
 
@@ -329,6 +340,7 @@ module.exports = function adminRoutes(db) {
     if (!member) return notFound(res, 'član');
     const values = {
       name: member.name,
+      username: member.username || '',
       email: member.email,
       phone: member.phone || '',
       hourly_rate: centsToInput(member.hourly_rate_cents),
@@ -344,15 +356,15 @@ module.exports = function adminRoutes(db) {
     const member = getMember.get(toId(req.params.id));
     if (!member) return notFound(res, 'član');
     const { values, errors, rate, fee } = readMemberForm(req.body, false);
-    if (!errors.length && emailTaken(values.email, member.id)) errors.push('Ova e-mail adresa se već koristi.');
+    if (!errors.length) errors.push(...uniquenessErrors(values, member.id));
     if (errors.length) {
       res.status(400);
       return res.send(String(memberForm(req, { member, values, errors })));
     }
     db.prepare(
-      `UPDATE users SET name = ?, email = ?, phone = ?, hourly_rate_cents = ?, monthly_fee_cents = ?, active = ?, notes = ?, billing_mode = ?
+      `UPDATE users SET name = ?, username = ?, email = ?, phone = ?, hourly_rate_cents = ?, monthly_fee_cents = ?, active = ?, notes = ?, billing_mode = ?
         WHERE id = ?`
-    ).run(values.name, values.email, values.phone || null, rate, fee, values.active ? 1 : 0, values.notes || null, values.billing_mode, member.id);
+    ).run(values.name, values.username, values.email, values.phone || null, rate, fee, values.active ? 1 : 0, values.notes || null, values.billing_mode, member.id);
     if (values.password) {
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(values.password), member.id);
     }

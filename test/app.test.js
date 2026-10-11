@@ -139,14 +139,14 @@ test('Geschützte Bereiche erfordern Login bzw. Admin-Rechte', async () => {
   assert.equal(r1.status, 302);
   assert.match(r1.location, /^\/login/);
 
-  db.prepare("INSERT INTO users (name, email, password_hash) VALUES ('Max', 'max@test.de', ?)").run(hashPassword('memberpass1'));
+  db.prepare("INSERT INTO users (name, username, email, password_hash) VALUES ('Max', 'max', 'max@test.de', ?)").run(hashPassword('memberpass1'));
   const member = client();
-  const login = await member.login('max@test.de', 'memberpass1');
+  const login = await member.login('max', 'memberpass1');
   assert.equal(login.location, '/mitglied');
   const r2 = await member.request('/admin');
   assert.equal(r2.status, 403);
 
-  const wrong = await client().login('max@test.de', 'falsch');
+  const wrong = await client().login('max', 'falsch');
   assert.equal(wrong.status, 401);
 });
 
@@ -158,7 +158,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   // Mitglied anlegen (aus Interessent)
   const lead = db.prepare('SELECT id FROM leads WHERE email = ?').get('lea@example.de');
   const created = await admin.post('/admin/mitglieder', {
-    name: 'Lea Neu', email: 'lea@example.de', password: 'geheim1234', hourly_rate: '40,00', monthly_fee: '10', active: '1', lead_id: String(lead.id),
+    name: 'Lea Neu', username: 'Lea', email: 'lea@example.de', password: 'geheim1234', hourly_rate: '40,00', monthly_fee: '10', active: '1', lead_id: String(lead.id),
   }, '/admin/mitglieder/neu');
   assert.equal(created.status, 302);
   const lea = db.prepare('SELECT * FROM users WHERE email = ?').get('lea@example.de');
@@ -186,7 +186,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
 
   // Mitglied loggt sich ein
   const member = client();
-  const ml = await member.login('lea@example.de', 'geheim1234');
+  const ml = await member.login('lea', 'geheim1234');
   assert.equal(ml.location, '/mitglied');
   const week = await member.request('/mitglied?woche=2026-10-07');
   assert.equal(week.status, 200);
@@ -304,7 +304,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
 
   // Admin kann Abrechnungsart „display“ über das Formular setzen
   await admin.post(`/admin/mitglieder/${lea.id}`, {
-    name: 'Lea Neu', email: 'lea@example.de', hourly_rate: '40,00', monthly_fee: '10', active: '1', billing_mode: 'display',
+    name: 'Lea Neu', username: 'lea', email: 'lea@example.de', hourly_rate: '40,00', monthly_fee: '10', active: '1', billing_mode: 'display',
   }, `/admin/mitglieder/${lea.id}`);
   assert.equal(db.prepare('SELECT billing_mode FROM users WHERE id = ?').get(lea.id).billing_mode, 'display');
   db.prepare("UPDATE users SET billing_mode = 'schedule' WHERE id = ?").run(lea.id);
@@ -335,14 +335,14 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   assert.match(article.text, /Turnir u subotu u 10 h\./);
   assert.ok(db.prepare('SELECT read_at FROM news_recipients WHERE news_id = ? AND user_id = ?').get(newsId, lea.id).read_at);
   const maxClient = client();
-  await maxClient.login('max@test.de', 'memberpass1');
+  await maxClient.login('max', 'memberpass1');
   const maxInbox = await maxClient.request('/mitglied/aktuelnosti');
   assert.doesNotMatch(maxInbox.text, /Klupski turnir/);
   assert.equal((await maxClient.request(`/mitglied/aktuelnosti/${newsId}`)).status, 404);
 
   // Deaktiviertes Mitglied kann sich nicht mehr einloggen
   db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(lea.id);
-  const blocked = await client().login('lea@example.de', 'geheim1234');
+  const blocked = await client().login('lea', 'geheim1234');
   assert.equal(blocked.status, 401);
 });
 
@@ -359,10 +359,10 @@ test('Eingaben werden HTML-escaped', async () => {
 test('Trainer: anlegen, Terminen zuordnen, Bericht mit Einzel/Gruppe, Zusatzzahlung', async () => {
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
-  const ids = ['Ana', 'Ben', 'Cem'].map((n) => db.prepare('INSERT INTO users (name, email, password_hash, hourly_rate_cents) VALUES (?, ?, ?, 4000)')
-    .run(n, `${n.toLowerCase()}@trainer-test.de`, hashPassword('memberpass1')).lastInsertRowid);
+  const ids = ['Ana', 'Ben', 'Cem'].map((n) => db.prepare('INSERT INTO users (name, username, email, password_hash, hourly_rate_cents) VALUES (?, ?, ?, ?, 4000)')
+    .run(n, n.toLowerCase(), `${n.toLowerCase()}@trainer-test.de`, hashPassword('memberpass1')).lastInsertRowid);
 
-  const created = await admin.post('/admin/treneri', { name: 'Trener Test', rate_individual: '25,00', rate_group: '30', active: '1' }, '/admin/treneri/neu');
+  const created = await admin.post('/admin/treneri', { name: 'Trener Test', username: 'trener.test', rate_individual: '25,00', rate_group: '30', active: '1' }, '/admin/treneri/neu');
   assert.equal(created.status, 302);
   const trainer = db.prepare("SELECT * FROM trainers WHERE name = 'Trener Test'").get();
   assert.equal(trainer.rate_individual_cents, 2500);
@@ -401,7 +401,7 @@ test('Trainer: anlegen, Terminen zuordnen, Bericht mit Einzel/Gruppe, Zusatzzahl
 
   // Mitglied darf den Trainer NICHT sehen (Wochenplan, Monatsbetrag)
   const ana = client();
-  await ana.login('ana@trainer-test.de', 'memberpass1');
+  await ana.login('ana', 'memberpass1');
   const week = await ana.request('/mitglied?woche=2026-11-02');
   assert.match(week.text, /10:00–11:00/);
   assert.doesNotMatch(week.text, /Trener Test|Trener:/);
@@ -419,27 +419,30 @@ test('Trainer: anlegen, Terminen zuordnen, Bericht mit Einzel/Gruppe, Zusatzzahl
 test('Trainer-Konto: sieht nur eigene Stunden, Gruppen und Spieler; Rollen sind getrennt', async () => {
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
-  const m = ['Dino', 'Edin', 'Faris'].map((n) => db.prepare('INSERT INTO users (name, email, password_hash, hourly_rate_cents) VALUES (?, ?, ?, 3000)')
-    .run(n, `${n.toLowerCase()}@portal-test.de`, hashPassword('memberpass1')).lastInsertRowid);
+  const m = ['Dino', 'Edin', 'Faris'].map((n) => db.prepare('INSERT INTO users (name, username, email, password_hash, hourly_rate_cents) VALUES (?, ?, ?, ?, 3000)')
+    .run(n, n.toLowerCase(), `${n.toLowerCase()}@portal-test.de`, hashPassword('memberpass1')).lastInsertRowid);
 
   // Trainer mit Login anlegen, zweiter Trainer ohne Login
-  await admin.post('/admin/treneri', { name: 'Mirza Trener', email: 'mirza@portal-test.de', password: 'trener1234', rate_individual: '20', rate_group: '30', active: '1' }, '/admin/treneri/neu');
-  await admin.post('/admin/treneri', { name: 'Drugi Trener', rate_individual: '99', rate_group: '99', active: '1' }, '/admin/treneri/neu');
+  await admin.post('/admin/treneri', { name: 'Mirza Trener', username: 'mirza', email: 'mirza@portal-test.de', password: 'trener1234', rate_individual: '20', rate_group: '30', active: '1' }, '/admin/treneri/neu');
+  await admin.post('/admin/treneri', { name: 'Drugi Trener', username: 'drugi', rate_individual: '99', rate_group: '99', active: '1' }, '/admin/treneri/neu');
   const mirza = db.prepare("SELECT * FROM trainers WHERE name = 'Mirza Trener'").get();
   const other = db.prepare("SELECT * FROM trainers WHERE name = 'Drugi Trener'").get();
   assert.ok(mirza.password_hash);
   assert.equal(other.password_hash, null);
 
-  // E-Mail darf nicht doppelt vergeben werden
-  const dup = await admin.post('/admin/treneri', { name: 'Dupli', email: 'dino@portal-test.de', password: 'trener1234', active: '1' }, '/admin/treneri/neu');
+  // Benutzername ist eindeutig – auch über Mitglieder und Trainer hinweg; ohne Benutzername kein Trainer
+  const dup = await admin.post('/admin/treneri', { name: 'Dupli', username: 'Dino', password: 'trener1234', active: '1' }, '/admin/treneri/neu');
   assert.equal(dup.status, 400);
+  assert.match(dup.text, /korisničko ime je već zauzeto/);
+  const noName = await admin.post('/admin/treneri', { name: 'Bez imena', active: '1' }, '/admin/treneri/neu');
+  assert.equal(noName.status, 400);
 
   await admin.post('/admin/termine', { kind: 'individual', trainer_id: String(mirza.id), user_id: String(m[0]), date: '2026-09-07', start_time: '09:00', duration_min: '60' }, '/admin/termine');
   await admin.post('/admin/termine', { kind: 'group', trainer_id: String(mirza.id), user_id: String(m[0]), member_ids: [String(m[1]), String(m[2])], date: '2026-09-08', start_time: '09:00', duration_min: '90', price: '15' }, '/admin/termine');
   await admin.post('/admin/termine', { kind: 'individual', trainer_id: String(other.id), user_id: String(m[1]), date: '2026-09-09', start_time: '11:00', duration_min: '60' }, '/admin/termine');
 
   const t = client();
-  const login = await t.login('mirza@portal-test.de', 'trener1234');
+  const login = await t.login('Mirza', 'trener1234');
   assert.equal(login.location, '/trener');
   const report = await t.request('/trener?monat=2026-09');
   assert.equal(report.status, 200);
@@ -457,20 +460,20 @@ test('Trainer-Konto: sieht nur eigene Stunden, Gruppen und Spieler; Rollen sind 
   assert.equal((await t.request('/admin')).status, 403);
   assert.equal((await t.request('/admin/treneri')).status, 403);
   const member = client();
-  await member.login('dino@portal-test.de', 'memberpass1');
+  await member.login('dino', 'memberpass1');
   assert.equal((await member.request('/trener')).status, 403);
 
   // Zugang entziehen
-  await admin.post(`/admin/treneri/${mirza.id}`, { name: 'Mirza Trener', email: 'mirza@portal-test.de', rate_individual: '20', rate_group: '30', active: '1', revoke: '1' }, `/admin/treneri/${mirza.id}/uredi`);
-  assert.equal((await client().login('mirza@portal-test.de', 'trener1234')).status, 401);
+  await admin.post(`/admin/treneri/${mirza.id}`, { name: 'Mirza Trener', username: 'mirza', email: 'mirza@portal-test.de', rate_individual: '20', rate_group: '30', active: '1', revoke: '1' }, `/admin/treneri/${mirza.id}/uredi`);
+  assert.equal((await client().login('mirza', 'trener1234')).status, 401);
   assert.equal((await t.request('/trener')).status, 302);
 });
 
 test('Stalne grupe: anlegen, im Terminformular auswählbar, bearbeiten, löschen', async () => {
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
-  const ids = ['Goran', 'Hana', 'Ilma'].map((n) => db.prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)')
-    .run(n, `${n.toLowerCase()}@grupe-test.de`, hashPassword('memberpass1')).lastInsertRowid);
+  const ids = ['Goran', 'Hana', 'Ilma'].map((n) => db.prepare('INSERT INTO users (name, username, email, password_hash) VALUES (?, ?, ?, ?)')
+    .run(n, n.toLowerCase(), `${n.toLowerCase()}@grupe-test.de`, hashPassword('memberpass1')).lastInsertRowid);
 
   const tooSmall = await admin.post('/admin/grupe', { name: 'Grupa X', member_ids: String(ids[0]) }, '/admin/grupe');
   assert.equal(tooSmall.status, 400);
@@ -493,7 +496,7 @@ test('Stalne grupe: anlegen, im Terminformular auswählbar, bearbeiten, löschen
 
   // Mitglieder- und Trainerseiten kennen keine Gruppenverwaltung
   const member = client();
-  await member.login('goran@grupe-test.de', 'memberpass1');
+  await member.login('goran', 'memberpass1');
   assert.equal((await member.request('/admin/grupe')).status, 403);
 
   await admin.post(`/admin/grupe/${group.id}/loeschen`, {}, '/admin/grupe');
@@ -505,8 +508,8 @@ test('Finansije: prihodi (uplate članova + ručno), rashodi (treneri + ručno),
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
   const month = '2027-01';
-  const m1 = db.prepare('INSERT INTO users (name, email, password_hash, hourly_rate_cents) VALUES (?, ?, ?, 5000)')
-    .run('Jasmin', 'jasmin@fin-test.de', hashPassword('memberpass1')).lastInsertRowid;
+  const m1 = db.prepare('INSERT INTO users (name, username, email, password_hash, hourly_rate_cents) VALUES (?, ?, ?, ?, 5000)')
+    .run('Jasmin', 'jasmin', 'jasmin@fin-test.de', hashPassword('memberpass1')).lastInsertRowid;
   const t = db.prepare("INSERT INTO trainers (name, rate_individual_cents, rate_group_cents) VALUES ('Fin Trener', 2000, 3000)").run().lastInsertRowid;
   // 2 × 60 min à 50 KM = 100 KM Mitgliedsbetrag; Trainer 2 × 20 KM = 40 KM
   for (const d of ['2027-01-05', '2027-01-12']) {
@@ -543,7 +546,7 @@ test('Finansije: prihodi (uplate članova + ručno), rashodi (treneri + ručno),
 
   // Nur Admin
   const member = client();
-  await member.login('jasmin@fin-test.de', 'memberpass1');
+  await member.login('jasmin', 'memberpass1');
   assert.equal((await member.request('/admin/finansije')).status, 403);
 });
 
@@ -568,10 +571,10 @@ test('Fester Admin aus ADMIN_EMAIL/ADMIN_PASSWORD bleibt bei jedem Start gleich'
 });
 
 test('Login akzeptiert versehentliche Leerzeichen um das Passwort', async () => {
-  db.prepare("INSERT INTO users (name, email, password_hash) VALUES ('Space', 'space@test.de', ?)").run(hashPassword('mein-pw-123!?'));
-  const ok = await client().login(' space@test.de ', ' mein-pw-123!? ');
+  db.prepare("INSERT INTO users (name, username, email, password_hash) VALUES ('Space', 'space', 'space@test.de', ?)").run(hashPassword('mein-pw-123!?'));
+  const ok = await client().login(' space ', ' mein-pw-123!? ');
   assert.equal(ok.status, 302);
-  const bad = await client().login('space@test.de', 'mein-pw-123');
+  const bad = await client().login('space', 'mein-pw-123');
   assert.equal(bad.status, 401);
 });
 
@@ -597,4 +600,70 @@ test('Admin kann eine Sicherungskopie der Datenbank herunterladen, andere nicht'
   const backup = await admin.request('/admin/sigurnosna-kopija');
   assert.equal(backup.status, 200);
   assert.ok(backup.text.startsWith('SQLite format 3'));
+});
+
+test('Login: Mitglieder und Trainer mit Benutzername, Admin weiterhin mit E-Mail', async () => {
+  const page = await client().request('/login');
+  assert.match(page.text, /Korisničko ime/);
+  assert.match(page.text, /name="username"/);
+  assert.doesNotMatch(page.text, /type="email"/);
+
+  db.prepare("INSERT INTO users (name, username, email, password_hash) VALUES ('Nina', 'nina.k', 'nina@login-test.de', ?)").run(hashPassword('nina-pass-1'));
+  // Mitglied: Benutzername (Groß/Klein egal) ja, E-Mail nein
+  assert.equal((await client().login('Nina.K', 'nina-pass-1')).location, '/mitglied');
+  assert.equal((await client().login('nina@login-test.de', 'nina-pass-1')).status, 401);
+  // Admin: wie bisher mit E-Mail (auch über das alte Feld „email“)
+  assert.equal((await client().login('admin@test.de', 'adminpass123')).location, '/admin');
+  const c = client();
+  assert.equal((await c.post('/login', { email: 'admin@test.de', password: 'adminpass123' }, '/login')).location, '/admin');
+
+  // Admin sieht Benutzernamen in der Mitgliederliste; ungültige oder doppelte Namen werden abgelehnt
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  assert.match((await admin.request('/admin/mitglieder')).text, /nina\.k/);
+  const form = { name: 'Neu', email: 'neu@login-test.de', password: 'neu-pass-12', active: '1' };
+  assert.equal((await admin.post('/admin/mitglieder', { ...form, username: 'nina.K' }, '/admin/mitglieder/neu')).status, 400);
+  assert.equal((await admin.post('/admin/mitglieder', { ...form, username: 'mit leerzeichen' }, '/admin/mitglieder/neu')).status, 400);
+  assert.equal((await admin.post('/admin/mitglieder', { ...form, username: '' }, '/admin/mitglieder/neu')).status, 400);
+  const ok = await admin.post('/admin/mitglieder', { ...form, username: 'neu_1' }, '/admin/mitglieder/neu');
+  assert.equal(ok.status, 302);
+  assert.equal((await client().login('neu_1', 'neu-pass-12')).location, '/mitglied');
+});
+
+test('Bestehende Datenbank: Mitglieder und Trainer erhalten automatisch Benutzernamen, Daten bleiben erhalten', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { DatabaseSync } = require('node:sqlite');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-migr-'));
+  const file = path.join(dir, 'alt.db');
+  try {
+    // Alte Struktur (vor den Benutzernamen)
+    const old = new DatabaseSync(file);
+    old.exec(`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, phone TEXT,
+                password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'member', hourly_rate_cents INTEGER NOT NULL DEFAULT 0,
+                monthly_fee_cents INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1, notes TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')));
+              CREATE TABLE trainers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT, email TEXT,
+                rate_individual_cents INTEGER NOT NULL DEFAULT 0, rate_group_cents INTEGER NOT NULL DEFAULT 0,
+                active INTEGER NOT NULL DEFAULT 1, notes TEXT, password_hash TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));`);
+    old.prepare("INSERT INTO users (name, email, password_hash, role) VALUES ('Admin', 'chef@alt.ba', 'h', 'admin')").run();
+    old.prepare("INSERT INTO users (name, email, password_hash, hourly_rate_cents) VALUES ('Amra', 'amra@alt.ba', 'h', 4500)").run();
+    old.prepare("INSERT INTO users (name, email, password_hash) VALUES ('Amra Druga', 'Amra@drugi.ba', 'h')").run();
+    old.prepare("INSERT INTO trainers (name, email, password_hash) VALUES ('Šaćir Đulić', NULL, 'h')").run();
+    old.close();
+
+    const migrated = openDatabase(file);
+    const rows = migrated.prepare('SELECT email, username, hourly_rate_cents FROM users ORDER BY id').all();
+    assert.deepEqual(rows.map((r) => [r.email, r.username]), [['chef@alt.ba', null], ['amra@alt.ba', 'amra'], ['Amra@drugi.ba', 'amra2']]);
+    assert.equal(rows[1].hourly_rate_cents, 4500);
+    assert.equal(migrated.prepare('SELECT username FROM trainers').get().username, 'sacir.djulic');
+    migrated.close();
+    // Erneutes Öffnen ändert nichts mehr
+    const again = openDatabase(file);
+    assert.equal(again.prepare("SELECT username FROM users WHERE email = 'amra@alt.ba'").get().username, 'amra');
+    again.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -202,7 +202,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
     })));
   });
 
-  function loginPage(req, { email = '', error = null, next = '' } = {}) {
+  function loginPage(req, { username = '', error = null, next = '' } = {}) {
     return layout(req, {
       title: 'Prijava',
       body: html`
@@ -214,14 +214,15 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
         <form method="post" action="/login" class="stack">
           ${csrfField(req)}
           <input type="hidden" name="weiter" value="${next}">
-          <label>E-mail
-            <input name="email" type="email" required autocomplete="username" value="${email}" autofocus>
+          <label>Korisničko ime
+            <input name="username" type="text" required maxlength="200" autocomplete="username" autocapitalize="none" spellcheck="false" value="${username}" autofocus>
           </label>
           <label>Lozinka
             <input name="password" type="password" required autocomplete="current-password">
           </label>
           <button class="btn btn-primary" type="submit">Prijavi se</button>
         </form>
+        <p class="muted small">Administrator se prijavljuje svojom e-mail adresom.</p>
         <p class="muted small">Još nisi član? <a href="/#anmeldung">Prijavi se ovdje bez obaveze.</a></p>
       </section>`,
     });
@@ -232,23 +233,25 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
     res.send(String(loginPage(req, { next: str(req.query.weiter, 300) })));
   });
 
-  const findUser = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE');
-  const findTrainer = db.prepare('SELECT * FROM trainers WHERE email = ? COLLATE NOCASE AND password_hash IS NOT NULL');
+  // Članovi i treneri: korisničko ime. Administrator: e-mail adresa (kao i do sada).
+  const findMember = db.prepare("SELECT * FROM users WHERE role = 'member' AND username = ? COLLATE NOCASE");
+  const findTrainer = db.prepare('SELECT * FROM trainers WHERE username = ? COLLATE NOCASE AND password_hash IS NOT NULL');
+  const findAdmin = db.prepare("SELECT * FROM users WHERE role = 'admin' AND email = ? COLLATE NOCASE");
 
   router.post('/login', (req, res) => {
-    const email = str(req.body.email, 200);
+    const username = str(req.body.username ?? req.body.email, 200);
     const password = typeof req.body.password === 'string' ? req.body.password : '';
     const next = str(req.body.weiter, 300);
     const key = req.ip;
 
     if (loginLimiter.isBlocked(key)) {
       res.status(429);
-      return res.send(String(loginPage(req, { email, next, error: 'Previše neuspjelih pokušaja. Molimo sačekaj nekoliko minuta.' })));
+      return res.send(String(loginPage(req, { username, next, error: 'Previše neuspjelih pokušaja. Molimo sačekaj nekoliko minuta.' })));
     }
 
-    // Prvo članovi/admin, zatim treneri s aktiviranim pristupom.
-    const user = findUser.get(email);
-    const trainer = user ? null : findTrainer.get(email);
+    // Prvo članovi, zatim treneri s aktiviranim pristupom, na kraju administrator po e-mail adresi.
+    const user = findMember.get(username) || (username.includes('@') ? findAdmin.get(username) : null);
+    const trainer = user ? null : findTrainer.get(username);
     const account = user || trainer;
     // Pri kopiranju lozinke često se slučajno doda razmak na početku ili kraju – i to dozvoljavamo.
     const hash = account ? account.password_hash : DUMMY_HASH;
@@ -257,7 +260,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
     if (!valid) {
       loginLimiter.fail(key);
       res.status(401);
-      return res.send(String(loginPage(req, { email, next, error: 'E-mail ili lozinka nisu ispravni.' })));
+      return res.send(String(loginPage(req, { username, next, error: 'Korisničko ime ili lozinka nisu ispravni.' })));
     }
 
     loginLimiter.reset(key);

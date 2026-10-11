@@ -28,8 +28,8 @@ const insertLesson = db.prepare(
 for (const m of members) {
   if (db.prepare('SELECT id FROM users WHERE email = ?').get(m.email)) continue;
   const { lastInsertRowid: id } = db
-    .prepare('INSERT INTO users (name, email, password_hash, hourly_rate_cents, monthly_fee_cents) VALUES (?, ?, ?, ?, ?)')
-    .run(m.name, m.email, hashPassword('tennis123'), m.rate, m.fee);
+    .prepare('INSERT INTO users (name, username, email, password_hash, hourly_rate_cents, monthly_fee_cents) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(m.name, m.email.split('@')[0], m.email, hashPassword('tennis123'), m.rate, m.fee);
   for (let week = -2; week < 6; week++) {
     for (const [day, time, duration] of m.slots) {
       insertLesson.run(id, D.addDays(monday, week * 7 + day), time, duration, String(1 + (id % 3)), lessonPrice(m.rate, duration));
@@ -68,10 +68,10 @@ if (!db.prepare('SELECT COUNT(*) AS n FROM training_groups').get().n) {
 // Dva trenera; termini se naizmjenično dodjeljuju (grupe uvijek prvom treneru).
 if (!db.prepare('SELECT COUNT(*) AS n FROM trainers').get().n) {
   const insertTrainer = db.prepare(
-    'INSERT INTO trainers (name, phone, email, password_hash, rate_individual_cents, rate_group_cents) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO trainers (name, phone, username, email, password_hash, rate_individual_cents, rate_group_cents) VALUES (?, ?, ?, ?, ?, ?, ?)'
   );
-  const t1 = insertTrainer.run('Haris Mujić', '061 222 333', 'haris@example.ba', hashPassword('trener123'), 2500, 3500).lastInsertRowid;
-  const t2 = insertTrainer.run('Ivana Perić', '062 444 555', 'ivana@example.ba', hashPassword('trener123'), 2000, 3000).lastInsertRowid;
+  const t1 = insertTrainer.run('Haris Mujić', '061 222 333', 'haris', 'haris@example.ba', hashPassword('trener123'), 2500, 3500).lastInsertRowid;
+  const t2 = insertTrainer.run('Ivana Perić', '062 444 555', 'ivana', 'ivana@example.ba', hashPassword('trener123'), 2000, 3000).lastInsertRowid;
   db.prepare("UPDATE lessons SET trainer_id = ? WHERE kind = 'group'").run(t1);
   db.prepare("UPDATE lessons SET trainer_id = CASE WHEN id % 2 = 0 THEN ? ELSE ? END WHERE kind = 'individual'").run(t1, t2);
   db.prepare("INSERT INTO trainer_bonuses (trainer_id, month, description, amount_cents) VALUES (?, ?, 'Nagrada za klupski turnir', 5000)")

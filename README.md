@@ -11,7 +11,7 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
 3. **Admin-Bereich** – Verwaltung von allem:
    - **Interessenten**: Status pflegen (neu, kontaktiert, Probestunde, Mitglied, abgelehnt),
      mit einem Klick als Mitglied anlegen, löschen
-   - **Mitglieder**: anlegen, bearbeiten, Passwort setzen, aktiv/inaktiv, löschen;
+   - **Mitglieder**: anlegen, bearbeiten, Benutzername und Passwort setzen, aktiv/inaktiv, löschen;
      Stundenpreis, optionale monatliche Grundgebühr und **Abrechnungsart**:
      - „Prema rasporedu“: Termine werden automatisch berechnet
      - „Raspored s prikazom, bez obračuna“: Termine werden in der Abrechnung angezeigt, aber nicht berechnet
@@ -75,15 +75,25 @@ ausgegeben. Alternativ vorher festlegen:
 ADMIN_EMAIL=chef@meine-tennisschule.de ADMIN_PASSWORD='ein-sicheres-passwort' npm start
 ```
 
-Beispieldaten zum Ausprobieren (3 Mitglieder mit Terminen, 2 Interessenten; Logins `amina@example.ba`,
-`emir@example.ba`, `lejla@example.ba`, Passwort `tennis123`; Trainer `haris@example.ba`,
-`ivana@example.ba`, Passwort `trener123`):
+Beispieldaten zum Ausprobieren (3 Mitglieder mit Terminen, 2 Interessenten; Benutzernamen `amina`,
+`emir`, `lejla`, Passwort `tennis123`; Trainer `haris`, `ivana`, Passwort `trener123`):
 
 ```bash
 npm run demo
 ```
 
 Tests: `npm test`
+
+## Anmeldung
+
+- **Mitglieder und Trainer** melden sich mit **Benutzername** („Korisničko ime“) und Passwort an.
+  Der Benutzername wird vom Admin beim Anlegen vergeben, ist eindeutig (über Mitglieder und Trainer
+  hinweg, Groß-/Kleinschreibung egal) und besteht aus 3–40 Zeichen: a–z, 0–9, Punkt, Bindestrich, Unterstrich.
+- **Admin** meldet sich im selben Formular wie bisher mit seiner **E-Mail-Adresse** an.
+- Bestehende Mitglieder und Trainer aus der Zeit der E-Mail-Anmeldung bekommen beim ersten Start
+  automatisch einen Benutzernamen (aus dem Teil der E-Mail vor dem „@“, bei Trainern ohne E-Mail aus dem
+  Namen; bei Doppelungen mit Zahl, z. B. `amra2`). Der Admin sieht ihn in der Mitgliederliste bzw. beim
+  Trainer und kann ihn jederzeit ändern. Sonst bleiben alle Daten unverändert.
 
 ## Daten dauerhaft speichern (Railway)
 

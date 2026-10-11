@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   id                INTEGER PRIMARY KEY,
   name              TEXT NOT NULL,
   email             TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  username          TEXT COLLATE NOCASE,
   phone             TEXT,
   password_hash     TEXT NOT NULL,
   role              TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS trainers (
   name                  TEXT NOT NULL,
   phone                 TEXT,
   email                 TEXT,
+  username              TEXT COLLATE NOCASE,
   rate_individual_cents INTEGER NOT NULL DEFAULT 0,
   rate_group_cents      INTEGER NOT NULL DEFAULT 0,
   active                INTEGER NOT NULL DEFAULT 1,
@@ -151,7 +153,53 @@ function openDatabase(file) {
   db.exec('CREATE INDEX IF NOT EXISTS lessons_group ON lessons (group_id);');
   db.exec('CREATE INDEX IF NOT EXISTS lessons_trainer ON lessons (trainer_id, date);');
   migrateLeadStatuses(db);
+  assignMissingUsernames(db);
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_username ON users (username COLLATE NOCASE) WHERE username IS NOT NULL;");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS trainers_username ON trainers (username COLLATE NOCASE) WHERE username IS NOT NULL;");
   return db;
+}
+
+// ---------------------------------------------------------------- Korisnička imena
+// Članovi i treneri se prijavljuju korisničkim imenom (admin i dalje e-mail adresom).
+const USERNAME_RE = /^[a-z0-9._-]{3,40}$/;
+
+function normalizeUsername(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+// Korisničko ime mora biti jedinstveno među članovima i trenerima zajedno.
+function usernameTaken(db, username, { userId = 0, trainerId = 0 } = {}) {
+  return !!db.prepare('SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?').get(username, userId)
+    || !!db.prepare('SELECT id FROM trainers WHERE username = ? COLLATE NOCASE AND id != ?').get(username, trainerId);
+}
+
+// Prijedlog korisničkog imena iz e-maila ili imena (bez dijakritika, jedinstven).
+function suggestUsername(db, source) {
+  let base = String(source || '').split('@')[0].toLowerCase()
+    .replace(/đ/g, 'dj').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '').replace(/^[._-]+|[._-]+$/g, '').slice(0, 34);
+  if (base.length < 3) base = `clan${base}`.slice(0, 34).padEnd(3, '0');
+  let candidate = base;
+  for (let i = 2; usernameTaken(db, candidate); i += 1) candidate = `${base}${i}`;
+  return candidate;
+}
+
+// Postojeći članovi i treneri (iz vremena prijave e-mailom) jednom dobiju korisničko ime – podaci ostaju netaknuti.
+function assignMissingUsernames(db) {
+  const members = db.prepare("SELECT id, email FROM users WHERE role = 'member' AND (username IS NULL OR username = '') ORDER BY id").all();
+  const trainers = db.prepare("SELECT id, email, name FROM trainers WHERE username IS NULL OR username = '' ORDER BY id").all();
+  if (members.length === 0 && trainers.length === 0) return;
+  const setUser = db.prepare('UPDATE users SET username = ? WHERE id = ?');
+  const setTrainer = db.prepare('UPDATE trainers SET username = ? WHERE id = ?');
+  db.exec('BEGIN');
+  try {
+    for (const m of members) setUser.run(suggestUsername(db, m.email), m.id);
+    for (const t of trainers) setTrainer.run(suggestUsername(db, t.email || t.name), t.id);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
 }
 
 // Starije baze nemaju nove kolone – dodajemo ih bez gubitka podataka.
@@ -162,6 +210,8 @@ const NEW_COLUMNS = [
   ['lessons', 'trainer_id', 'INTEGER REFERENCES trainers(id) ON DELETE SET NULL'],
   ['trainers', 'password_hash', 'TEXT'],
   ['payments', 'released', 'INTEGER NOT NULL DEFAULT 0'],
+  ['users', 'username', 'TEXT COLLATE NOCASE'],
+  ['trainers', 'username', 'TEXT COLLATE NOCASE'],
 ];
 
 function addMissingColumns(db) {
@@ -258,4 +308,7 @@ function ensureAdmin(db, { email, password, name } = {}) {
   return password ? null : { email: adminEmail, password: adminPassword };
 }
 
-module.exports = { openDatabase, getSetting, setSetting, sessionSecret, ensureAdmin };
+module.exports = {
+  openDatabase, getSetting, setSetting, sessionSecret, ensureAdmin,
+  USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername,
+};
