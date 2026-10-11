@@ -12,7 +12,8 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
    - **Interessenten**: Status pflegen (neu, kontaktiert, Probestunde, Mitglied, abgelehnt),
      mit einem Klick als Mitglied anlegen, löschen
    - **Mitglieder**: anlegen, bearbeiten, Benutzername und Passwort setzen, aktiv/inaktiv, löschen;
-     Stundenpreis, optionale monatliche Grundgebühr und **Abrechnungsart**:
+     Stundenpreis und optionale monatliche Grundgebühr. Die **Abrechnungsart** wird **pro Mitglied und
+     pro Monat** einzeln auf der Seite „Mjesečni iznos“ gewählt:
      - „Prema rasporedu“: Termine werden automatisch berechnet
      - „Raspored s prikazom, bez obračuna“: Termine werden in der Abrechnung angezeigt, aber nicht berechnet
      - „Ručni unos“: Termine erscheinen nicht, der Betrag wird nur manuell als Posten eingetragen
@@ -53,6 +54,15 @@ Monatsbetrag = Grundgebühr + Preise aller „Realizovan“-Termine des Monats +
 (bei manueller Abrechnung nur Grundgebühr + Zusatzposten). Der Terminpreis wird beim Anlegen aus dem
 Stundenpreis berechnet und kann pro Termin überschrieben werden; bei Gruppentraining gilt er pro Person.
 Alle Beträge in Konvertibler Mark (KM).
+
+**Abgeschlossene Monate:** Sobald ein Monat vorbei ist, wird seine Abrechnung automatisch abgeschlossen und
+gespeichert (Abrechnungsart, Grundgebühr, Termine, Posten, Betrag). Spätere Änderungen an Preisen, Grundgebühr,
+Terminen oder anderen Monaten verändern ihn nicht mehr; der Admin sieht nur einen Hinweis, falls sich der
+Plan seither geändert hat. Will der Admin einen vergangenen Monat bewusst ändern, klickt er auf
+„Retroaktivno izmijeni ovaj mjesec“, nimmt die Änderungen vor und schließt den Monat mit „Zaključaj mjesec ponovo“
+wieder ab. Bestehende Daten: Beim ersten Start nach dem Update werden alle vergangenen Monate genau so
+abgeschlossen, wie sie bis dahin berechnet wurden; laufende und künftige Monate übernehmen die bisherige
+Abrechnungsart des Mitglieds, bis man sie für einen Monat ändert.
 
 ## Starten
 

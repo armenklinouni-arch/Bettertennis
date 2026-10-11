@@ -284,7 +284,8 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   assert.deepEqual(db.prepare("SELECT cancelled FROM lessons WHERE kind = 'group'").all().map((r) => r.cancelled), [1, 1]);
 
   // Manueller Obračun: Termine zählen nicht, nur Grundgebühr + Posten
-  db.prepare("UPDATE users SET billing_mode = 'manual' WHERE id = ?").run(lea.id);
+  const setMode = (mode, month = '2026-10') => admin.post(`/admin/abrechnung/${lea.id}/nacin`, { month, billing_mode: mode }, `/admin/abrechnung/${lea.id}?monat=${month}`);
+  await setMode('manual');
   const manualBill = await member.request('/mitglied/abrechnung?monat=2026-10');
   assert.match(manualBill.text, /15,50/); // 10 KM Grundgebühr + 5,50 KM Posten
   assert.match(manualBill.text, /Ručni obračun/);
@@ -295,19 +296,15 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   assert.match((await member.request('/mitglied/abrechnung?monat=2026-10')).text, /15,50/); // noch manuell
 
   // Prikaz bez obračuna: termini sichtbar, aber nicht berechnet
-  db.prepare("UPDATE users SET billing_mode = 'display' WHERE id = ?").run(lea.id);
+  await setMode('display');
   const displayBill = await member.request('/mitglied/abrechnung?monat=2026-10');
   assert.match(displayBill.text, /15,50/);
   assert.match(displayBill.text, /samo prikaz, bez obračuna/);
   assert.match(displayBill.text, /17:30–19:00/);
-  db.prepare("UPDATE users SET billing_mode = 'schedule' WHERE id = ?").run(lea.id);
-
-  // Admin kann Abrechnungsart „display“ über das Formular setzen
-  await admin.post(`/admin/mitglieder/${lea.id}`, {
-    name: 'Lea Neu', username: 'lea', email: 'lea@example.de', hourly_rate: '40,00', monthly_fee: '10', active: '1', billing_mode: 'display',
-  }, `/admin/mitglieder/${lea.id}`);
-  assert.equal(db.prepare('SELECT billing_mode FROM users WHERE id = ?').get(lea.id).billing_mode, 'display');
-  db.prepare("UPDATE users SET billing_mode = 'schedule' WHERE id = ?").run(lea.id);
+  // Andere Monate bleiben unberührt
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM billing_months WHERE user_id = ? AND month != '2026-10' AND mode != 'schedule'").get(lea.id).n, 0);
+  assert.match((await admin.request(`/admin/abrechnung/${lea.id}?monat=2026-11`)).text, /value="schedule" selected/);
+  await setMode('schedule');
 
   // Plaćeno / nije plaćeno: standardmäßig offen, Admin markiert als bezahlt
   let billNow = await member.request('/mitglied/abrechnung?monat=2026-10');
@@ -666,4 +663,97 @@ test('Bestehende Datenbank: Mitglieder und Trainer erhalten automatisch Benutzer
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('Abrechnungsart pro Monat; abgeschlossene Monate bleiben eingefroren, außer bei bewusster rückwirkender Änderung', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const id = db.prepare("INSERT INTO users (name, username, email, password_hash, hourly_rate_cents, monthly_fee_cents) VALUES ('Mona', 'mona', 'mona@monat-test.de', ?, 4000, 1000)")
+    .run(hashPassword('memberpass1')).lastInsertRowid;
+  const lesson = (date) => db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, ?, '10:00', 60, 4000)").run(id, date);
+  lesson('2026-08-04'); lesson('2026-09-01'); lesson('2026-09-08'); lesson('2026-10-06'); lesson('2026-11-03');
+  const { monthlyStatement, closeElapsedMonths } = require('../src/billing');
+  const mona = () => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const page = (month) => admin.request(`/admin/abrechnung/${id}?monat=${month}`);
+  const setMode = (month, mode) => admin.post(`/admin/abrechnung/${id}/nacin`, { month, billing_mode: mode }, `/admin/abrechnung/${id}?monat=${month}`);
+
+  // Vor Monatsende: August und September werden abgeschlossen (so wie sie berechnet wurden)
+  closeElapsedMonths(db, '2026-10');
+  assert.equal(monthlyStatement(db, mona(), '2026-09').total, 1000 + 2 * 4000);
+  assert.ok(monthlyStatement(db, mona(), '2026-09').closed);
+  assert.ok(!monthlyStatement(db, mona(), '2026-10').closed);
+
+  // Oktober manuell, November nach Plan – jeder Monat für sich
+  await setMode('2026-10', 'manual');
+  await admin.post(`/admin/abrechnung/${id}/posten`, { month: '2026-10', description: 'Paušal oktobar', amount: '70' }, `/admin/abrechnung/${id}?monat=2026-10`);
+  assert.equal(monthlyStatement(db, mona(), '2026-10').total, 1000 + 7000);
+  assert.equal(monthlyStatement(db, mona(), '2026-11').mode, 'schedule');
+  assert.equal(monthlyStatement(db, mona(), '2026-11').total, 1000 + 4000);
+  await setMode('2026-11', 'display');
+  assert.equal(monthlyStatement(db, mona(), '2026-10').mode, 'manual');
+  assert.equal(monthlyStatement(db, mona(), '2026-11').total, 1000);
+  // Die Bezeichnungen der drei Arten stehen unverändert im Formular
+  const oct = await page('2026-10');
+  assert.match(oct.text, /Prema rasporedu \(realizovani treninzi se automatski obračunavaju\)/);
+  assert.match(oct.text, /Raspored s prikazom, bez obračuna \(termini se vide, ali se ne naplaćuju\)/);
+  assert.match(oct.text, /Ručni unos \(bez rasporeda – iznos unosiš kao stavke\)/);
+  assert.match(oct.text, /value="manual" selected/);
+
+  // Spätere Änderungen (Preis, Grundgebühr, Termine) verändern abgeschlossene Monate nicht
+  db.prepare('UPDATE users SET monthly_fee_cents = 2500 WHERE id = ?').run(id);
+  db.prepare("UPDATE lessons SET price_cents = 9999 WHERE user_id = ? AND date = '2026-09-01'").run(id);
+  lesson('2026-09-15');
+  assert.equal(monthlyStatement(db, mona(), '2026-09').total, 9000);
+  assert.equal(monthlyStatement(db, mona(), '2026-08').total, 5000);
+  let sep = await page('2026-09');
+  assert.match(sep.text, /Mjesec je zaključen/);
+  assert.match(sep.text, /ponovni obračun bi iznosio/);
+  assert.doesNotMatch(sep.text, /Dodaj stavku/);
+  // Gesperrt: keine Änderung der Art und keine Posten ohne bewusstes Öffnen
+  await setMode('2026-09', 'manual');
+  await admin.post(`/admin/abrechnung/${id}/posten`, { month: '2026-09', description: 'X', amount: '1' }, `/admin/abrechnung/${id}?monat=2026-09`);
+  assert.equal(monthlyStatement(db, mona(), '2026-09').total, 9000);
+  assert.equal(monthlyStatement(db, mona(), '2026-09').mode, 'schedule');
+
+  // Bewusst rückwirkend ändern: öffnen, Art wählen, wieder abschließen
+  await admin.post(`/admin/abrechnung/${id}/otkljucaj`, { month: '2026-09' }, `/admin/abrechnung/${id}?monat=2026-09`);
+  closeElapsedMonths(db, '2026-10'); // automatisches Abschließen lässt geöffnete Monate in Ruhe
+  sep = await page('2026-09');
+  assert.match(sep.text, /otključan za retroaktivne izmjene/);
+  await setMode('2026-09', 'manual');
+  await admin.post(`/admin/abrechnung/${id}/posten`, { month: '2026-09', description: 'Korekcija', amount: '50' }, `/admin/abrechnung/${id}?monat=2026-09`);
+  assert.equal(monthlyStatement(db, mona(), '2026-09').total, 2500 + 5000);
+  await admin.post(`/admin/abrechnung/${id}/zakljucaj`, { month: '2026-09' }, `/admin/abrechnung/${id}?monat=2026-09`);
+  db.prepare('UPDATE users SET monthly_fee_cents = 0 WHERE id = ?').run(id);
+  const sepClosed = monthlyStatement(db, mona(), '2026-09');
+  assert.ok(sepClosed.closed);
+  assert.equal(sepClosed.total, 7500);
+  assert.equal(sepClosed.mode, 'manual');
+  // August blieb die ganze Zeit unverändert
+  assert.equal(monthlyStatement(db, mona(), '2026-08').total, 5000);
+  // Aktueller Monat kann nicht abgeschlossen werden
+  await admin.post(`/admin/abrechnung/${id}/zakljucaj`, { month: '2026-10' }, `/admin/abrechnung/${id}?monat=2026-10`);
+  assert.ok(!monthlyStatement(db, mona(), '2026-10').closed);
+
+  // Mitglied sieht den eingefrorenen Betrag
+  db.prepare("INSERT INTO payments (user_id, month, released) VALUES (?, '2026-09', 1)").run(id);
+  const m = client();
+  await m.login('mona', 'memberpass1');
+  assert.match((await m.request('/mitglied/abrechnung?monat=2026-09')).text, /75,00/);
+});
+
+test('Bestehende Datenbank: bisherige Abrechnungsart bleibt für vergangene und laufende Monate erhalten', () => {
+  const { monthlyStatement, closeElapsedMonths } = require('../src/billing');
+  const fresh = openDatabase(':memory:');
+  const id = fresh.prepare("INSERT INTO users (name, username, email, password_hash, billing_mode, monthly_fee_cents, created_at) VALUES ('Alt', 'alt', 'alt@x.ba', 'h', 'manual', 3000, '2026-07-15 10:00:00')").run().lastInsertRowid;
+  fresh.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, '2026-08', 'Paušal', 6000)").run(id);
+  fresh.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-08-05', '10:00', 60, 4000)").run(id);
+  assert.equal(closeElapsedMonths(fresh, '2026-10'), 3); // Juli, August, September
+  const user = fresh.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const aug = monthlyStatement(fresh, user, '2026-08');
+  assert.equal(aug.mode, 'manual');
+  assert.equal(aug.total, 9000);
+  assert.ok(aug.closed);
+  assert.equal(monthlyStatement(fresh, user, '2026-10').mode, 'manual');
+  assert.equal(closeElapsedMonths(fresh, '2026-10'), 0); // nichts doppelt
 });

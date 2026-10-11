@@ -4,6 +4,8 @@ const path = require('node:path');
 const express = require('express');
 const { sessionMiddleware, loadUser, csrfProtection, createLoginLimiter } = require('./auth');
 const { sessionSecret } = require('./db');
+const { closeElapsedMonths } = require('./billing');
+const D = require('./dates');
 const publicRoutes = require('./routes/public');
 const memberRoutes = require('./routes/member');
 const adminRoutes = require('./routes/admin');
@@ -25,6 +27,17 @@ function createApp(db, { secret, secureCookies = false, trustProxy = false } = {
       'Content-Security-Policy',
       "default-src 'self'; img-src 'self' data: https://unsplash.com https://images.unsplash.com; style-src 'self'; script-src 'self'; form-action 'self'; frame-ancestors 'none'"
     );
+    next();
+  });
+
+  // Na početku svakog novog mjeseca se završeni mjeseci automatski zaključavaju (obračun ostaje kakav je bio).
+  let closedUpTo = null;
+  app.use((req, res, next) => {
+    const current = D.monthOf(D.todayISO());
+    if (current !== closedUpTo) {
+      closeElapsedMonths(db, current);
+      closedUpTo = current;
+    }
     next();
   });
 

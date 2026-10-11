@@ -10,6 +10,7 @@ const D = require('../dates');
 const { formatMoney, centsToInput, parseMoney, lessonPrice, CURRENCY_SYMBOL } = require('../money');
 const {
   monthlyStatement, setPaid, setReleased, formatHours, BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,
+  setMonthMode, closeMonth, reopenMonth, isMonthClosed, liveTotal,
 } = require('../billing');
 const {
   layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES,
@@ -244,11 +245,8 @@ module.exports = function adminRoutes(db) {
           </label>
           <label>Cijena po satu (${CURRENCY_SYMBOL})<input name="hourly_rate" inputmode="decimal" placeholder="npr. 45,00" value="${v.hourly_rate || ''}"></label>
           <label>Mjesečna članarina (${CURRENCY_SYMBOL})<input name="monthly_fee" inputmode="decimal" placeholder="npr. 0,00" value="${v.monthly_fee || ''}"></label>
-          <label class="span-2">Način obračuna
-            <select name="billing_mode">
-              ${Object.entries(BILLING_MODES).map(([k, label]) => html`<option value="${k}"${v.billing_mode === k ? ' selected' : ''}>${label}</option>`)}
-            </select>
-          </label>
+          <p class="span-2 muted small">Način obračuna se podešava za svaki mjesec posebno – na stranici
+            ${isNew ? '„Mjesečni iznos“' : html`<a href="/admin/abrechnung/${member.id}">„Mjesečni iznos“</a>`} ovog člana.</p>
           <label class="span-2">Interne bilješke<textarea name="notes" rows="3" maxlength="2000">${v.notes || ''}</textarea></label>
           <label class="check"><input type="checkbox" name="active" value="1"${v.active ? ' checked' : ''}><span>Aktivan (smije se prijaviti)</span></label>
           ${isNew ? '' : html`<label class="check"><input type="checkbox" name="reprice" value="1"><span>Ponovo izračunaj cijene svih budućih termina prema novoj cijeni po satu</span></label>`}
@@ -278,7 +276,6 @@ module.exports = function adminRoutes(db) {
       monthly_fee: str(body.monthly_fee, 20),
       notes: str(body.notes, 2000),
       active: body.active === '1',
-      billing_mode: BILLING_MODES[body.billing_mode] ? body.billing_mode : 'schedule',
     };
     const errors = [];
     if (!values.name) errors.push('Nedostaje ime.');
@@ -307,7 +304,6 @@ module.exports = function adminRoutes(db) {
     const lead = leadId ? db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId) : null;
     const values = {
       active: true,
-      billing_mode: 'schedule',
       password: crypto.randomBytes(6).toString('base64url'),
       ...(lead ? { name: lead.name, username: suggestUsername(db, lead.name), email: lead.email, phone: lead.phone || '', notes: [lead.level, lead.availability, lead.message].filter(Boolean).join('\n') } : {}),
     };
@@ -324,10 +320,10 @@ module.exports = function adminRoutes(db) {
     }
     const r = db
       .prepare(
-        `INSERT INTO users (name, username, email, phone, password_hash, role, hourly_rate_cents, monthly_fee_cents, active, notes, billing_mode)
-         VALUES (?, ?, ?, ?, ?, 'member', ?, ?, ?, ?, ?)`
+        `INSERT INTO users (name, username, email, phone, password_hash, role, hourly_rate_cents, monthly_fee_cents, active, notes)
+         VALUES (?, ?, ?, ?, ?, 'member', ?, ?, ?, ?)`
       )
-      .run(values.name, values.username, values.email, values.phone || null, hashPassword(values.password), rate, fee, values.active ? 1 : 0, values.notes || null, values.billing_mode);
+      .run(values.name, values.username, values.email, values.phone || null, hashPassword(values.password), rate, fee, values.active ? 1 : 0, values.notes || null);
     if (leadId) {
       db.prepare("UPDATE leads SET status = 'član', converted_user_id = ? WHERE id = ?").run(r.lastInsertRowid, leadId);
     }
@@ -347,7 +343,6 @@ module.exports = function adminRoutes(db) {
       monthly_fee: centsToInput(member.monthly_fee_cents),
       notes: member.notes || '',
       active: !!member.active,
-      billing_mode: member.billing_mode,
     };
     res.send(String(memberForm(req, { member, values })));
   });
@@ -362,9 +357,9 @@ module.exports = function adminRoutes(db) {
       return res.send(String(memberForm(req, { member, values, errors })));
     }
     db.prepare(
-      `UPDATE users SET name = ?, username = ?, email = ?, phone = ?, hourly_rate_cents = ?, monthly_fee_cents = ?, active = ?, notes = ?, billing_mode = ?
+      `UPDATE users SET name = ?, username = ?, email = ?, phone = ?, hourly_rate_cents = ?, monthly_fee_cents = ?, active = ?, notes = ?
         WHERE id = ?`
-    ).run(values.name, values.username, values.email, values.phone || null, rate, fee, values.active ? 1 : 0, values.notes || null, values.billing_mode, member.id);
+    ).run(values.name, values.username, values.email, values.phone || null, rate, fee, values.active ? 1 : 0, values.notes || null, member.id);
     if (values.password) {
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(values.password), member.id);
     }
@@ -786,7 +781,8 @@ module.exports = function adminRoutes(db) {
         <tbody>${rows.length === 0
           ? html`<tr><td colspan="10" class="empty">Nema članova.</td></tr>`
           : rows.map(({ member: m, st }) => html`<tr class="${m.active ? '' : 'is-inactive'}">
-            <td><strong>${m.name}</strong>${st.mode !== 'schedule' ? html` <span class="tag">${BILLING_MODE_SHORT[st.mode]}</span>` : ''}</td>
+            <td><strong>${m.name}</strong>${st.mode !== 'schedule' ? html` <span class="tag">${BILLING_MODE_SHORT[st.mode]}</span>` : ''}${
+              st.closed ? html` <span class="tag">zaključen</span>` : st.reopened ? html` <span class="tag tag-pending">otključan</span>` : ''}</td>
             <td class="num">${st.manual ? '–' : st.lessonCount}</td>
             <td class="num">${formatHours(st.hours)}</td>
             <td class="num">${formatMoney(st.fee)}</td>
@@ -813,6 +809,8 @@ module.exports = function adminRoutes(db) {
     if (!member) return notFound(res, 'član');
     const month = D.isValidMonth(req.query.monat) ? req.query.monat : D.monthOf(D.todayISO());
     const st = monthlyStatement(db, member, month);
+    const changedSinceClose = st.closed && liveTotal(db, member, month) !== st.total;
+    const back = `/admin/abrechnung/${member.id}?monat=${month}`;
     res.send(String(layout(req, {
       title: `Iznos: ${member.name}`,
       body: html`
@@ -824,16 +822,51 @@ module.exports = function adminRoutes(db) {
       <div class="summary-tile big">
         <span class="label">Ukupno ${D.monthLabel(month)} · ${releaseBadge(st)} · ${paymentBadge(st)}</span>
         <span class="value">${formatMoney(st.total)}</span>
-        <span class="hint">${formatMoney(member.hourly_rate_cents)} po satu · članarina ${formatMoney(member.monthly_fee_cents)} · ${BILLING_MODE_SHORT[st.mode]}</span>
+        <span class="hint">${st.closed
+          ? html`Zaključen obračun · članarina ${formatMoney(st.fee)} · ${BILLING_MODE_SHORT[st.mode]}`
+          : html`${formatMoney(member.hourly_rate_cents)} po satu · članarina ${formatMoney(member.monthly_fee_cents)} · ${BILLING_MODE_SHORT[st.mode]}`}</span>
       </div>
-      <div class="btn-row payment-row">${releaseToggle(req, member, st, `/admin/abrechnung/${member.id}?monat=${month}`)}${paidToggle(req, member, st, `/admin/abrechnung/${member.id}?monat=${month}`)}</div>
+      ${st.closed ? html`
+      <section class="card month-lock">
+        <h2>Mjesec je zaključen</h2>
+        <p class="muted">Obračun za ${D.monthLabel(month)} je zaključen i sačuvan (način obračuna:
+          <strong>${BILLING_MODES[st.mode]}</strong>). Kasnije promjene cijena, članarine ili drugih mjeseci ga ne mijenjaju.</p>
+        ${changedSinceClose ? html`<p class="notice">Raspored ili stavke za ovaj mjesec su u međuvremenu promijenjeni – ponovni obračun bi iznosio
+          <strong>${formatMoney(liveTotal(db, member, month))}</strong>. Zaključani iznos ostaje ${formatMoney(st.total)}, dok ga ne izmijeniš retroaktivno.</p>` : ''}
+        <form method="post" action="/admin/abrechnung/${member.id}/otkljucaj" class="inline-form"
+          data-confirm="Retroaktivno otvoriti ${D.monthLabel(month)} za izmjene? Obračun će se ponovo računati iz trenutnih podataka.">
+          ${csrfField(req)}<input type="hidden" name="month" value="${month}">
+          <button class="btn btn-ghost btn-sm" type="submit">Retroaktivno izmijeni ovaj mjesec</button>
+        </form>
+      </section>` : html`
+      <section class="card month-mode">
+        <h2>Način obračuna za ${D.monthLabel(month)}</h2>
+        ${st.reopened ? html`<p class="notice">Ovaj završeni mjesec je <strong>otključan za retroaktivne izmjene</strong> i računa se iz trenutnih podataka.
+          Kad završiš, zaključaj ga ponovo.</p>` : ''}
+        <form method="post" action="/admin/abrechnung/${member.id}/nacin" class="stack">
+          ${csrfField(req)}<input type="hidden" name="month" value="${month}">
+          <label>Način obračuna
+            <select name="billing_mode">
+              ${Object.entries(BILLING_MODES).map(([k, label]) => html`<option value="${k}"${st.mode === k ? ' selected' : ''}>${label}</option>`)}
+            </select>
+          </label>
+          <p class="muted small">Vrijedi samo za ${D.monthLabel(month)} – ostali mjeseci se ne mijenjaju.</p>
+          <div class="btn-row"><button class="btn btn-primary btn-sm" type="submit">Sačuvaj za ${D.monthLabel(month)}</button></div>
+        </form>
+        ${st.reopened ? html`
+        <form method="post" action="/admin/abrechnung/${member.id}/zakljucaj" class="inline-form" data-confirm="Ponovo zaključati ${D.monthLabel(month)} s trenutnim iznosom?">
+          ${csrfField(req)}<input type="hidden" name="month" value="${month}">
+          <button class="btn btn-primary btn-sm" type="submit">Zaključaj mjesec ponovo</button>
+        </form>` : ''}
+      </section>`}
+      <div class="btn-row payment-row">${releaseToggle(req, member, st, back)}${paidToggle(req, member, st, back)}</div>
       ${st.released ? '' : html`<p class="notice">Ovaj obračun je <strong>u pripremi</strong> – član umjesto iznosa vidi „Obračun u pripremi“.</p>`}
-      ${st.mode === 'manual' ? html`<p class="notice">Ovaj član ima <strong>ručni obračun</strong>: treninzi iz rasporeda se ne prikazuju i ne obračunavaju.
-        Iznos za mjesec unesi ispod kao stavku. Način obračuna mijenjaš kod <a href="/admin/mitglieder/${member.id}">člana</a>.</p>` : ''}
-      ${st.mode === 'display' ? html`<p class="notice">Ovaj član ima <strong>raspored s prikazom, bez obračuna</strong>: termini se prikazuju,
-        ali se ne naplaćuju. Iznos unesi ispod kao stavku. Način obračuna mijenjaš kod <a href="/admin/mitglieder/${member.id}">člana</a>.</p>` : ''}
-      ${statementTable(st, { adminDelete: true, req })}
-      <section class="card">
+      ${st.mode === 'manual' && !st.closed ? html`<p class="notice">Za ${D.monthLabel(month)} vrijedi <strong>ručni obračun</strong>: treninzi iz rasporeda se ne prikazuju i ne obračunavaju.
+        Iznos za mjesec unesi ispod kao stavku.</p>` : ''}
+      ${st.mode === 'display' && !st.closed ? html`<p class="notice">Za ${D.monthLabel(month)} vrijedi <strong>raspored s prikazom, bez obračuna</strong>: termini se prikazuju,
+        ali se ne naplaćuju. Iznos unesi ispod kao stavku.</p>` : ''}
+      ${statementTable(st, { adminDelete: !st.closed, req })}
+      ${st.closed ? '' : html`<section class="card">
         <h2>Dodaj stavku</h2>
         <p class="muted small">Npr. mašina za loptice, najam terena, popust. Negativni iznosi su odobrenja.
           Cijene treninga mijenjaš direktno na <a href="/admin/termine?mitglied=${member.id}">terminu</a>.</p>
@@ -844,7 +877,7 @@ module.exports = function adminRoutes(db) {
           <label>Iznos (${CURRENCY_SYMBOL}) *<input name="amount" required inputmode="decimal" placeholder="npr. 15,00 ili -10,00"></label>
           <div class="span-2"><button class="btn btn-primary" type="submit">Dodaj stavku</button></div>
         </form>
-      </section>`,
+      </section>`}`,
     })));
   });
 
@@ -892,7 +925,9 @@ module.exports = function adminRoutes(db) {
     const month = D.isValidMonth(req.body.month) ? req.body.month : D.monthOf(D.todayISO());
     const description = str(req.body.description, 200);
     const amount = parseMoney(req.body.amount);
-    if (!description || amount === null) {
+    if (isMonthClosed(db, member, month)) {
+      res.flash('error', `${D.monthLabel(month)} je zaključen. Za izmjenu ga prvo retroaktivno otvori.`);
+    } else if (!description || amount === null) {
       res.flash('error', 'Molimo unesi opis i ispravan iznos.');
     } else {
       db.prepare('INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, ?, ?, ?)')
@@ -902,9 +937,56 @@ module.exports = function adminRoutes(db) {
     res.redirect(`/admin/abrechnung/${member.id}?monat=${month}`);
   });
 
+  // Način obračuna za jedan mjesec.
+  router.post('/abrechnung/:id/nacin', (req, res) => {
+    const member = getMember.get(toId(req.params.id));
+    if (!member) return notFound(res, 'član');
+    const month = req.body.month;
+    if (!D.isValidMonth(month) || !BILLING_MODES[req.body.billing_mode]) return res.status(400).send('Neispravan unos.');
+    if (isMonthClosed(db, member, month)) {
+      res.flash('error', `${D.monthLabel(month)} je zaključen. Za izmjenu ga prvo retroaktivno otvori.`);
+    } else {
+      setMonthMode(db, member.id, month, req.body.billing_mode);
+      res.flash('success', `${member.name}, ${D.monthLabel(month)}: način obračuna je sačuvan (${BILLING_MODE_SHORT[req.body.billing_mode]}).`);
+    }
+    res.redirect(`/admin/abrechnung/${member.id}?monat=${month}`);
+  });
+
+  // Retroaktivna izmjena: admin svjesno otvara zaključan (završen) mjesec.
+  router.post('/abrechnung/:id/otkljucaj', (req, res) => {
+    const member = getMember.get(toId(req.params.id));
+    if (!member) return notFound(res, 'član');
+    const month = req.body.month;
+    if (!D.isValidMonth(month)) return res.status(400).send('Neispravan mjesec.');
+    if (isMonthClosed(db, member, month)) {
+      reopenMonth(db, member.id, month);
+      res.flash('success', `${D.monthLabel(month)} je otključan za retroaktivne izmjene. Kad završiš, zaključaj ga ponovo.`);
+    }
+    res.redirect(`/admin/abrechnung/${member.id}?monat=${month}`);
+  });
+
+  router.post('/abrechnung/:id/zakljucaj', (req, res) => {
+    const member = getMember.get(toId(req.params.id));
+    if (!member) return notFound(res, 'član');
+    const month = req.body.month;
+    if (!D.isValidMonth(month)) return res.status(400).send('Neispravan mjesec.');
+    if (month >= D.monthOf(D.todayISO())) {
+      res.flash('error', 'Zaključiti se mogu samo završeni mjeseci.');
+    } else {
+      closeMonth(db, member, month);
+      res.flash('success', `${D.monthLabel(month)} je ponovo zaključen.`);
+    }
+    res.redirect(`/admin/abrechnung/${member.id}?monat=${month}`);
+  });
+
   router.post('/posten/:id/loeschen', (req, res) => {
     const adj = db.prepare('SELECT * FROM adjustments WHERE id = ?').get(toId(req.params.id));
     if (!adj) return notFound(res, 'stavka');
+    const owner = getMember.get(adj.user_id);
+    if (owner && isMonthClosed(db, owner, adj.month)) {
+      res.flash('error', `${D.monthLabel(adj.month)} je zaključen. Za izmjenu ga prvo retroaktivno otvori.`);
+      return res.redirect(`/admin/abrechnung/${adj.user_id}?monat=${adj.month}`);
+    }
     db.prepare('DELETE FROM adjustments WHERE id = ?').run(adj.id);
     res.flash('success', 'Stavka je obrisana.');
     res.redirect(`/admin/abrechnung/${adj.user_id}?monat=${adj.month}`);

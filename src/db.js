@@ -113,6 +113,18 @@ CREATE TABLE IF NOT EXISTS payments (
   PRIMARY KEY (user_id, month)
 );
 
+-- Obračun po mjesecu: vlastiti način obračuna i, za završene mjesece, sačuvani (zaključani) obračun.
+CREATE TABLE IF NOT EXISTS billing_months (
+  user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  month     TEXT NOT NULL,
+  mode      TEXT,
+  closed    INTEGER NOT NULL DEFAULT 0,
+  reopened  INTEGER NOT NULL DEFAULT 0,
+  snapshot  TEXT,
+  closed_at TEXT,
+  PRIMARY KEY (user_id, month)
+);
+
 CREATE TABLE IF NOT EXISTS news (
   id         INTEGER PRIMARY KEY,
   title      TEXT NOT NULL,
