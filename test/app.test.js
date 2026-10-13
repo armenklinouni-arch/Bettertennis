@@ -758,3 +758,66 @@ test('Bestehende Datenbank: bisherige Abrechnungsart bleibt für vergangene und 
   assert.equal(monthlyStatement(fresh, user, '2026-10').mode, 'manual');
   assert.equal(closeElapsedMonths(fresh, '2026-10'), 0); // nichts doppelt
 });
+
+test('Masseneinpflege: mehrere Mitglieder auf einmal mit Benutzername und Zufallspasswort', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  // Link in „Članovi“ und Formular
+  assert.match((await admin.request('/admin/mitglieder')).text, /href="\/admin\/mitglieder\/vise"[^>]*>[^<]*Dodaj više članova/);
+  const form = await admin.request('/admin/mitglieder/vise');
+  assert.equal(form.status, 200);
+  assert.match(form.text, /<textarea name="lines"/);
+
+  // Ein Trainer belegt bereits „ana.maric“ → das Mitglied bekommt einen anderen Namen
+  db.prepare("INSERT INTO trainers (name, username) VALUES ('Ana Trener', 'ana.maric')").run();
+  const before = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'member'").get().n;
+  const res = await admin.post('/admin/mitglieder/vise', {
+    lines: 'Emir, Hadžić\r\nAna Marić\n\n   Emir ,  Hadžić  \nĐuro; Šarić\n',
+  }, '/admin/mitglieder/vise');
+  assert.equal(res.status, 200);
+  const created = db.prepare("SELECT * FROM users WHERE role = 'member' ORDER BY id DESC LIMIT 4").all().reverse();
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'member'").get().n, before + 4);
+  assert.deepEqual(created.map((u) => u.name), ['Emir Hadžić', 'Ana Marić', 'Emir Hadžić', 'Đuro Šarić']);
+  assert.deepEqual(created.map((u) => u.username), ['emir.hadzic', 'ana.maric2', 'emir.hadzic2', 'djuro.saric']);
+  assert.ok(created.every((u) => u.active === 1 && u.role === 'member'));
+
+  // Übersicht: Name, Benutzername und Passwort im Klartext – gespeichert wird nur der Hash
+  const rows = [...res.text.matchAll(/<tr class="bulk-row"><td>([^<]+)<\/td><td><code>([^<]+)<\/code><\/td><td><code>([^<]+)<\/code><\/td><\/tr>/g)];
+  assert.equal(rows.length, 4);
+  const { verifyPassword } = require('../src/auth');
+  const passwords = new Set();
+  for (const [, name, username, password] of rows) {
+    const u = created.find((x) => x.username === username);
+    assert.ok(u, username);
+    assert.equal(u.name, name);
+    assert.ok(password.length >= 12);
+    assert.notEqual(u.password_hash, password);
+    assert.ok(verifyPassword(password, u.password_hash));
+    passwords.add(password);
+  }
+  assert.equal(passwords.size, 4);
+  // Anmeldung mit den angezeigten Zugangsdaten funktioniert
+  const [, , firstUser, firstPw] = rows[0];
+  assert.equal((await client().login(firstUser, firstPw)).location, '/mitglied');
+
+  // Ungültige Zeile (nur ein Name) → nichts wird angelegt, Fehler mit Zeilennummer
+  const count = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+  const bad = await admin.post('/admin/mitglieder/vise', { lines: 'Mirza, Begić\nSamoime\n' }, '/admin/mitglieder/vise');
+  assert.equal(bad.status, 400);
+  assert.match(bad.text, /Red 2/);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, count);
+  const empty = await admin.post('/admin/mitglieder/vise', { lines: '  \n ' }, '/admin/mitglieder/vise');
+  assert.equal(empty.status, 400);
+
+  // Nur für Admins
+  const member = client();
+  await member.login(firstUser, firstPw);
+  assert.equal((await member.request('/admin/mitglieder/vise')).status, 403);
+  assert.equal((await member.post('/admin/mitglieder/vise', { lines: 'X, Y' }, '/mitglied')).status, 403);
+
+  // Einzelnes Anlegen funktioniert weiterhin wie bisher
+  const single = await admin.post('/admin/mitglieder', {
+    name: 'Jedan Član', username: 'jedan', email: 'jedan@bulk-test.de', password: 'jedan-pass-1', active: '1',
+  }, '/admin/mitglieder/neu');
+  assert.equal(single.status, 302);
+});

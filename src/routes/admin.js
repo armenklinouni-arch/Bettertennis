@@ -26,6 +26,23 @@ const MAX_REPEAT_WEEKS = 52;
 const GROUP_MIN = 2; // grupni trening: najmanje 2 …
 const GROUP_MAX = 8; // … i najviše 8 članova
 
+// Sigurna nasumična lozinka (bez sličnih znakova poput l/1, O/0).
+const PASSWORD_ALPHABET = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function randomPassword(length = 12) {
+  let out = '';
+  for (let i = 0; i < length; i += 1) out += PASSWORD_ALPHABET[crypto.randomInt(PASSWORD_ALPHABET.length)];
+  return out;
+}
+
+// Članovi kreirani preko liste nemaju e-mail; baza zahtijeva jedinstven e-mail, pa dobijaju zamjensku adresu.
+const PLACEHOLDER_DOMAIN = 'bez-emaila.bettertennis.local';
+function placeholderEmail(username) {
+  return `${username}@${PLACEHOLDER_DOMAIN}`;
+}
+function isPlaceholderEmail(email) {
+  return typeof email === 'string' && email.toLowerCase().endsWith(`@${PLACEHOLDER_DOMAIN}`);
+}
+
 function toId(v) {
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : null;
@@ -191,7 +208,10 @@ module.exports = function adminRoutes(db) {
       body: html`
       <div class="page-head">
         <h1>Članovi</h1>
-        <a class="btn btn-primary" href="/admin/mitglieder/neu">+ Novi član</a>
+        <div class="btn-row">
+          <a class="btn btn-ghost" href="/admin/mitglieder/vise">Dodaj više članova</a>
+          <a class="btn btn-primary" href="/admin/mitglieder/neu">+ Novi član</a>
+        </div>
       </div>
       ${members.length === 0
         ? html`<p class="card muted">Još nema kreiranih članova.</p>`
@@ -202,7 +222,7 @@ module.exports = function adminRoutes(db) {
             return html`<tr class="${m.active ? '' : 'is-inactive'}">
               <td><strong>${m.name}</strong></td>
               <td>${m.username || ''}</td>
-              <td>${m.email}${m.phone ? html`<br>${m.phone}` : ''}</td>
+              <td>${isPlaceholderEmail(m.email) ? html`<span class="muted">bez e-maila</span>` : m.email}${m.phone ? html`<br>${m.phone}` : ''}</td>
               <td class="num">${formatMoney(m.hourly_rate_cents)}</td>
               <td class="num">${formatMoney(m.monthly_fee_cents)}</td>
               <td class="num">${formatMoney(st.total)}<br><span class="small muted">${st.manual ? BILLING_MODE_SHORT.manual : `Termini: ${st.lessonCount}`}</span> ${paymentBadge(st)}</td>
@@ -298,6 +318,97 @@ module.exports = function adminRoutes(db) {
     if (emailTaken(values.email, exceptId)) errors.push('Ova e-mail adresa se već koristi.');
     return errors;
   }
+
+  // ---------------------------------------------------------------- Dodaj više članova
+  // Lista „Ime, Prezime“ (jedan član po redu). Svaki član dobija jedinstveno korisničko ime i
+  // nasumičnu lozinku; lozinke se prikazuju samo jednom, a u bazi se čuva samo hash.
+  const BULK_MAX = 200;
+
+  function bulkPage(req, { lines = '', errors = [], created = null } = {}) {
+    return layout(req, {
+      title: 'Dodaj više članova',
+      body: html`
+      <div class="page-head">
+        <h1>Dodaj više članova</h1>
+        <a class="btn btn-ghost" href="/admin/mitglieder">← Svi članovi</a>
+      </div>
+      ${created ? html`
+      <section class="card">
+        <h2>Kreirani članovi (${created.length})</h2>
+        <p class="notice"><strong>Lozinke se prikazuju samo sada.</strong> Zapiši ili odštampaj pristupne podatke i predaj ih članovima –
+          kasnije se lozinke ne mogu ponovo vidjeti (može se samo postaviti nova kod člana).</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Ime i prezime</th><th>Korisničko ime</th><th>Lozinka</th></tr></thead>
+          <tbody>${created.map((c) => html`<tr class="bulk-row"><td>${c.name}</td><td><code>${c.username}</code></td><td><code>${c.password}</code></td></tr>`)}</tbody>
+        </table></div>
+      </section>` : ''}
+      <section class="card">
+        ${errorList(errors)}
+        <form method="post" action="/admin/mitglieder/vise" class="stack">
+          ${csrfField(req)}
+          <label>Lista članova – jedan član po redu: ime i prezime (npr. odvojeno zarezom)
+            <textarea name="lines" rows="10" required maxlength="20000" placeholder="Amina, Hodžić&#10;Emir, Begić&#10;Lejla Kovačević">${lines}</textarea>
+          </label>
+          <p class="muted small">Za svakog člana se automatski kreira jedinstveno korisničko ime (npr. <code>amina.hodzic</code>) i sigurna nasumična lozinka.
+            Članovi su aktivni, bez cijene po satu i članarine – to možeš kasnije podesiti kod svakog člana. Najviše ${BULK_MAX} članova odjednom.</p>
+          <div class="btn-row"><button class="btn btn-primary" type="submit">Kreiraj članove</button></div>
+        </form>
+      </section>`,
+    });
+  }
+
+  // Red „Ime, Prezime“, „Ime; Prezime“, „Ime<Tab>Prezime“ ili „Ime Prezime“.
+  function parseBulkLines(text) {
+    const people = [];
+    const errors = [];
+    String(text || '').split(/\r?\n/).forEach((raw, i) => {
+      const line = raw.trim();
+      if (!line) return;
+      const parts = /[,;\t]/.test(line)
+        ? line.split(/[,;\t]/).map((p) => p.trim()).filter(Boolean)
+        : line.split(/\s+/);
+      const name = parts.join(' ').replace(/\s+/g, ' ');
+      if (parts.length < 2) errors.push(`Red ${i + 1}: potrebni su ime i prezime („${line}“).`);
+      else if (name.length > 120) errors.push(`Red ${i + 1}: ime je predugo.`);
+      else people.push(name);
+    });
+    if (!errors.length && people.length === 0) errors.push('Unesi barem jednog člana.');
+    if (people.length > BULK_MAX) errors.push(`Najviše ${BULK_MAX} članova odjednom.`);
+    return { people, errors };
+  }
+
+  router.get('/mitglieder/vise', (req, res) => {
+    res.send(String(bulkPage(req)));
+  });
+
+  router.post('/mitglieder/vise', (req, res) => {
+    const lines = typeof req.body.lines === 'string' ? req.body.lines.slice(0, 20000) : '';
+    const { people, errors } = parseBulkLines(lines);
+    if (errors.length) {
+      res.status(400);
+      return res.send(String(bulkPage(req, { lines, errors })));
+    }
+    const insert = db.prepare(
+      "INSERT INTO users (name, username, email, password_hash, role, active) VALUES (?, ?, ?, ?, 'member', 1)"
+    );
+    const created = [];
+    db.exec('BEGIN');
+    try {
+      for (const name of people) {
+        const username = suggestUsername(db, name);
+        const password = randomPassword();
+        insert.run(name, username, placeholderEmail(username), hashPassword(password));
+        created.push({ name, username, password });
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    // Stranica s lozinkama u čistom tekstu ne smije ostati u kešu preglednika.
+    res.set('Cache-Control', 'no-store');
+    res.send(String(bulkPage(req, { created })));
+  });
 
   router.get('/mitglieder/neu', (req, res) => {
     const leadId = toId(req.query.interessent);

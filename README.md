@@ -12,6 +12,8 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
    - **Interessenten**: Status pflegen (neu, kontaktiert, Probestunde, Mitglied, abgelehnt),
      mit einem Klick als Mitglied anlegen, löschen
    - **Mitglieder**: anlegen, bearbeiten, Benutzername und Passwort setzen, aktiv/inaktiv, löschen;
+     **„Dodaj više članova“**: Liste einfügen (pro Zeile „Vorname, Nachname“) – Benutzername und sicheres
+     Zufallspasswort werden automatisch erzeugt und einmalig in einer Übersicht angezeigt (gespeichert wird nur der Hash);
      Stundenpreis und optionale monatliche Grundgebühr. Die **Abrechnungsart** wird **pro Mitglied und
      pro Monat** einzeln auf der Seite „Mjesečni iznos“ gewählt:
      - „Prema rasporedu“: Termine werden automatisch berechnet
