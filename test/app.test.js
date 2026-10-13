@@ -580,6 +580,7 @@ test('Startseite: Programme mit Unsplash-Fotos und lokalen Ersatzbildern, ohne K
   assert.match(home.text, /Trening po tvojoj mjeri/);
   assert.doesNotMatch(home.text, /Učimo kroz igru|Tenis za djecu/);
   assert.doesNotMatch(home.text, /2–8 igrača/);
+  assert.doesNotMatch(home.text, /probni trening/i);
   for (const f of ['individualni', 'grupni', 'video-analiza', 'konsultacije']) {
     assert.match(home.text, new RegExp(`src="https://unsplash\\.com/photos/[\\w-]+/download\\?w=800" data-fallback="/static/img/illustracije/${f}\\.svg"`));
     const img = await fetch(`${base}/static/img/illustracije/${f}.svg`);

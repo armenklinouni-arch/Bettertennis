@@ -25,17 +25,17 @@ function isValidPhone(phone) {
 // Za drugu fotografiju dovoljno je zamijeniti `photo` ID-om s unsplash.com/photos/<…-ID>.
 const unsplash = (id) => `https://unsplash.com/photos/${id}/download?w=800`;
 const PROGRAMS = [
-  { photo: '8N0-G_EftOA', img: 'individualni.svg', tag: 'Jedan na jedan', title: 'Individualni trening',
-    alt: 'Igračica na teniskom terenu tokom treninga',
+  { photo: 'aIvWY0mxiDc', img: 'individualni.svg', tag: 'Jedan na jedan', title: 'Individualni trening',
+    alt: 'Igrač udara tenisku lopticu reketom',
     text: 'Trening jedan na jedan, potpuno prilagođen tvom tempu i ciljevima – najbrži napredak u tehnici i taktici.' },
-  { photo: 'Dhdck86QmyE', img: 'grupni.svg', tag: 'Mala grupa', title: 'Grupni trening',
-    alt: 'Grupa igrača na teniskom terenu',
+  { photo: 'Z4Sxy1_3wdY', img: 'grupni.svg', tag: 'Mala grupa', title: 'Grupni trening',
+    alt: 'Četiri igrača igraju dubl na teniskom terenu',
     text: 'Trening u maloj grupi igrača sličnog nivoa. Više igre, motivacije i druženja.' },
-  { photo: 'Hmoz8oI53wo', img: 'video-analiza.svg', tag: 'Tehnika', title: 'Video analiza',
-    alt: 'Mobitel na stativu snima trening',
+  { photo: 'AldB5IWh8l4', img: 'video-analiza.svg', tag: 'Tehnika', title: 'Video analiza',
+    alt: 'Igrač servira tenisku lopticu',
     text: 'Snimamo tvoje udarce i analiziramo ih usporeno, kadar po kadar – vidiš tačno šta i kako popraviti.' },
-  { photo: 'MznNvPMu9d0', img: 'konsultacije.svg', tag: 'Plan i savjeti', title: 'Konsultacije',
-    alt: 'Igrači razgovaraju na teniskom terenu',
+  { photo: 'LwxVG0VQ3RY', img: 'konsultacije.svg', tag: 'Plan i savjeti', title: 'Konsultacije',
+    alt: 'Teniske loptice na terenu pored mreže',
     text: 'Razgovaramo o tvojim ciljevima, planu treninga, opremi i pripremi za turnire.' },
 ];
 
@@ -60,8 +60,8 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
           <img class="logo-full hero-logo" src="/static/img/logo.png" alt="BetterTennis – teniska škola" width="96" height="127">
           <p class="eyebrow">Teniska škola</p>
           <h1>Igraj <span class="hl">bolji tenis</span> – uz trening koji ti odgovara.</h1>
-          <p class="lead">Individualni i grupni časovi za sve nivoe znanja. Prijavi se bez obaveze,
-            javit ćemo ti se i dogovoriti probni trening.</p>
+          <p class="lead">Individualni i grupni časovi za sve nivoe znanja. Prijavi se bez obaveze
+            i javit ćemo ti se u najkraćem roku.</p>
           <div class="hero-actions">
             <a class="btn btn-accent btn-lg" href="#anmeldung">Prijavi se sada</a>
             <a class="btn btn-ghost btn-lg" href="/login">Već sam član</a>
@@ -74,7 +74,6 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
           <div class="court" aria-hidden="true"><span></span></div>
           <img class="hero-photo" src="${HERO_PHOTO_SRC}" alt="Teniski teren od šljake s bijelim linijama"
             width="366" height="488" loading="eager">
-          <div class="hero-badge" aria-hidden="true"><span class="ball-dot"></span>Probni trening</div>
         </figure>
       </section>
 
