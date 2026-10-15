@@ -155,6 +155,9 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
   }
 
   router.get('/', (req, res) => {
+    // Startseite deaktiviert: direkt zum Login (bzw. eingeloggt zur eigenen Seite).
+    // 302 statt 301, damit Browser die Umleitung nicht dauerhaft speichern.
+    if (!req.app.locals.publicHomepage) return res.redirect(302, req.user ? homeFor(req.user) : '/login');
     res.send(String(homePage(req)));
   });
 
@@ -222,7 +225,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
           <button class="btn btn-primary" type="submit">Prijavi se</button>
         </form>
         <p class="muted small">Administrator se prijavljuje svojom e-mail adresom.</p>
-        <p class="muted small">Još nisi član? <a href="/#anmeldung">Prijavi se ovdje bez obaveze.</a></p>
+        ${req.app.locals.publicHomepage ? html`<p class="muted small">Još nisi član? <a href="/#anmeldung">Prijavi se ovdje bez obaveze.</a></p>` : ''}
       </section>`,
     });
   }

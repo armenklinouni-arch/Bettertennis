@@ -60,6 +60,8 @@ const app = createApp(db, {
   secureCookies: production,
   // Hinter einem Proxy (z. B. Railway) die echte Besucher-IP verwenden (wichtig für die Login-Sperre).
   trustProxy: process.env.TRUST_PROXY === '1' || !!process.env.RAILWAY_ENVIRONMENT,
+  // Öffentliche Startseite nur mit PUBLIC_HOMEPAGE=1, sonst landet man direkt beim Login.
+  publicHomepage: cleanEnv('PUBLIC_HOMEPAGE') === '1',
 });
 
 app.listen(PORT, () => {

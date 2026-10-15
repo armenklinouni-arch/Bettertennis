@@ -29,7 +29,9 @@ function layout(req, { title, body, wide = false }) {
 
   let nav;
   if (!user) {
-    nav = html`${navLink('/', 'Početna', true)} ${navLink('/login', 'Prijava za članove')}`;
+    nav = req.app.locals.publicHomepage
+      ? html`${navLink('/', 'Početna', true)} ${navLink('/login', 'Prijava za članove')}`
+      : html`${navLink('/login', 'Prijava za članove')}`;
   } else if (user.role === 'admin') {
     nav = html`
       ${navLink('/admin', 'Pregled', true)}

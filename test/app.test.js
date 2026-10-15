@@ -19,7 +19,8 @@ before(async () => {
   mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-09T10:00:00') });
   db = openDatabase(':memory:');
   ensureAdmin(db, { email: 'admin@test.de', password: 'adminpass123' });
-  const app = createApp(db, { secret: 'test-secret' });
+  // Hauptinstanz mit eingeschalteter Startseite (deren Tests bleiben so erhalten).
+  const app = createApp(db, { secret: 'test-secret', publicHomepage: true });
   await new Promise((resolve) => {
     server = app.listen(0, resolve);
   });
@@ -1150,4 +1151,44 @@ test('Wochenfreigabe: automatische Freigabe pro Woche ausschalten; manuelle Frei
   assert.equal((await admin.post('/admin/termine/sedmica/objavi', { monday: '2026-10-27' }, back)).status, 400); // kein Montag
   assert.equal((await m.post('/admin/termine/sedmica/objavi', { monday: '2026-11-02' }, '/mitglied')).status, 403);
   assert.doesNotMatch((await m.request('/mitglied?woche=2026-11-02')).text, /18:20/);
+});
+
+test('Startseite deaktiviert (Standard): bettertennis.net leitet direkt zum Login, Startseite bleibt per Schalter aktivierbar', async () => {
+  const fresh = openDatabase(':memory:');
+  ensureAdmin(fresh, { email: 'chef@start.test', password: 'chefpass123' });
+  fresh.prepare("INSERT INTO users (name, username, email, password_hash) VALUES ('Start Član', 'start.clan', 'start@x.ba', ?)").run(hashPassword('memberpass1'));
+  const app = createApp(fresh, { secret: 'start-secret' }); // ohne Option = wie in Produktion ohne PUBLIC_HOMEPAGE
+  const srv = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+  const url = `http://127.0.0.1:${srv.address().port}`;
+  try {
+    // Anonym: / → /login (temporäre Umleitung, damit die Startseite später wieder aktiviert werden kann)
+    const root = await fetch(`${url}/`, { redirect: 'manual' });
+    assert.equal(root.status, 302);
+    assert.equal(root.headers.get('location'), '/login');
+    // Login-Seite ohne Verweise auf die Startseite / Anmeldung für Interessenten
+    const login = await (await fetch(`${url}/login`)).text();
+    assert.match(login, /Korisničko ime/);
+    assert.doesNotMatch(login, /href="\/#anmeldung"|>Početna</);
+    assert.doesNotMatch(login, /hero-photo|Trening po tvojoj mjeri/);
+
+    // Login funktioniert unverändert; eingeloggt führt / zur eigenen Startseite
+    const page = await fetch(`${url}/login`);
+    const cookie = page.headers.get('set-cookie').split(';')[0];
+    const csrf = /name="_csrf" value="([^"]+)"/.exec(await page.text())[1];
+    const res = await fetch(`${url}/login`, {
+      method: 'POST', redirect: 'manual',
+      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ _csrf: csrf, username: 'start.clan', password: 'memberpass1' }).toString(),
+    });
+    assert.equal(res.headers.get('location'), '/mitglied');
+    const session = res.headers.get('set-cookie').split(';')[0];
+    const home = await fetch(`${url}/`, { redirect: 'manual', headers: { cookie: session } });
+    assert.equal(home.headers.get('location'), '/mitglied');
+    // Statische Dateien (Logo, CSS) weiterhin erreichbar
+    assert.equal((await fetch(`${url}/static/img/logo.png`)).status, 200);
+  } finally {
+    srv.close();
+  }
+  // Mit Schalter ist die bisherige Startseite unverändert da
+  assert.match((await client().request('/')).text, /Trening po tvojoj mjeri/);
 });

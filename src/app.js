@@ -14,8 +14,11 @@ const trainerPortalRoutes = require('./routes/trainer-portal');
 const groupRoutes = require('./routes/groups');
 const financeRoutes = require('./routes/finance');
 
-function createApp(db, { secret, secureCookies = false, trustProxy = false } = {}) {
+function createApp(db, { secret, secureCookies = false, trustProxy = false, publicHomepage = false } = {}) {
   const app = express();
+  // Öffentliche Startseite (Početna): standardmäßig aus – „/“ führt dann direkt zum Login.
+  // Die Startseite bleibt im Code erhalten und lässt sich mit PUBLIC_HOMEPAGE=1 wieder einschalten.
+  app.locals.publicHomepage = publicHomepage;
   app.disable('x-powered-by');
   if (trustProxy) app.set('trust proxy', 1);
 

@@ -98,6 +98,10 @@ Tests: `npm test`
 
 ## Anmeldung
 
+- Die öffentliche Startseite ist **standardmäßig deaktiviert**: Wer bettertennis.net aufruft, landet direkt
+  auf der Login-Seite (eingeloggt auf der eigenen Seite). Die Startseite ist nicht gelöscht – mit der Variable
+  `PUBLIC_HOMEPAGE=1` (z. B. in Railway → Variables) ist sie samt Anmeldeformular für Interessenten wieder da.
+
 - **Mitglieder und Trainer** melden sich mit **Benutzername** („Korisničko ime“) und Passwort an.
   Der Benutzername wird vom Admin beim Anlegen vergeben, ist eindeutig (über Mitglieder und Trainer
   hinweg, Groß-/Kleinschreibung egal) und besteht aus 3–40 Zeichen: a–z, 0–9, Punkt, Bindestrich, Unterstrich.
@@ -158,6 +162,7 @@ Lokal gehen keine Daten verloren, solange der Ordner `data/` nicht gelöscht wir
 | `NODE_ENV`       | `production` setzt Cookies auf `Secure` (HTTPS nötig)             | –                     |
 | `TRUST_PROXY`    | `1`, wenn die App hinter einem Reverse-Proxy läuft                | –                     |
 | `CURRENCY`       | Währung der Beträge, z. B. `BAM` (Konvertible Mark, „KM“) oder `EUR` | `BAM`              |
+| `PUBLIC_HOMEPAGE` | `1` = öffentliche Startseite (Početna) anzeigen; sonst leitet `/` direkt zum Login | aus |
 | `TZ`             | Zeitzone für „heute“ und Wochenbeginn                             | `Europe/Berlin`       |
 
 ## Aufbau
