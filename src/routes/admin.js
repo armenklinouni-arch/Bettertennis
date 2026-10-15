@@ -23,7 +23,6 @@ const {
 } = require('../weeks');
 const {
   USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername, placeholderEmail, isPlaceholderEmail,
-  CHILDREN_LIMIT_DEFAULT,
 } = require('../db');
 
 const LEAD_STATUSES = ['novo', 'kontaktiran', 'probni trening', 'član', 'odbijen'];
@@ -270,9 +269,6 @@ module.exports = function adminRoutes(db) {
           <label>Mjesečna članarina (${CURRENCY_SYMBOL})<input name="monthly_fee" inputmode="decimal" placeholder="npr. 0,00" value="${v.monthly_fee || ''}"></label>
           <p class="span-2 muted small">Način obračuna se podešava za svaki mjesec posebno – na stranici
             ${isNew ? '„Mjesečni iznos“' : html`<a href="/admin/abrechnung/${member.id}">„Mjesečni iznos“</a>`} ovog člana.</p>
-          ${isNew || member.parent_id ? '' : html`<label>Maksimalan broj dječijih računa
-            <input name="children_limit" type="number" min="0" max="20" step="1" placeholder="${CHILDREN_LIMIT_DEFAULT} (standard)" value="${v.children_limit ?? ''}">
-            <span class="small muted">Prazno = standard (${CHILDREN_LIMIT_DEFAULT}). Povećaj samo ako član izuzetno treba više djece.</span></label>`}
           <label class="span-2">Interne bilješke<textarea name="notes" rows="3" maxlength="2000">${v.notes || ''}</textarea></label>
           <label class="check"><input type="checkbox" name="active" value="1"${v.active ? ' checked' : ''}><span>Aktivan (smije se prijaviti)</span></label>
           ${isNew ? '' : html`<label class="check"><input type="checkbox" name="reprice" value="1"><span>Ponovo izračunaj cijene svih budućih termina prema novoj cijeni po satu</span></label>`}
@@ -455,7 +451,6 @@ module.exports = function adminRoutes(db) {
       name: member.name,
       username: member.username || '',
       email: member.email,
-      children_limit: member.children_limit ?? '',
       phone: member.phone || '',
       hourly_rate: centsToInput(member.hourly_rate_cents),
       monthly_fee: centsToInput(member.monthly_fee_cents),
@@ -470,20 +465,10 @@ module.exports = function adminRoutes(db) {
     if (!member) return notFound(res, 'član');
     const { values, errors, rate, fee } = readMemberForm(req.body, false);
     if (!errors.length) errors.push(...uniquenessErrors(values, member.id));
-    // Limit dječijih računa (samo kod roditelja; prazno = standard).
-    const limitInput = typeof req.body.children_limit === 'string' ? req.body.children_limit.trim() : null;
-    let childrenLimit = member.children_limit;
-    if (limitInput !== null && !member.parent_id) {
-      values.children_limit = limitInput;
-      if (limitInput === '') childrenLimit = null;
-      else if (/^\d{1,2}$/.test(limitInput) && Number(limitInput) <= 20) childrenLimit = Number(limitInput);
-      else errors.push('Maksimalan broj dječijih računa mora biti broj od 0 do 20 (ili prazno za standard).');
-    }
     if (errors.length) {
       res.status(400);
       return res.send(String(memberForm(req, { member, values, errors })));
     }
-    db.prepare('UPDATE users SET children_limit = ? WHERE id = ?').run(childrenLimit, member.id);
     db.prepare(
       `UPDATE users SET name = ?, username = ?, email = ?, phone = ?, hourly_rate_cents = ?, monthly_fee_cents = ?, active = ?, notes = ?
         WHERE id = ?`

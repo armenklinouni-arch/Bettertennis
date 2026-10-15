@@ -10,7 +10,7 @@ const {
 } = require('../views');
 const { requireMember, hashPassword, verifyPassword } = require('../auth');
 const { isWeekReleased } = require('../weeks');
-const { USERNAME_RE, normalizeUsername, usernameTaken, placeholderEmail, childrenLimit } = require('../db');
+const { USERNAME_RE, normalizeUsername, usernameTaken, placeholderEmail, CHILDREN_LIMIT } = require('../db');
 
 function text(v, max) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
@@ -227,11 +227,11 @@ module.exports = function memberRoutes(db) {
     return Number.isInteger(id) ? myChild.get(id, req.user.id) : null;
   };
 
-  const limitNotice = (limit) => `Možeš imati najviše ${limit} dječija računa. Ako ti treba još jedan, javi se teniskoj školi – rado ćemo pomoći.`;
+  const LIMIT_NOTICE = 'Možeš imati najviše jedan dječiji račun, a već ga imaš. Postojeći račun možeš i dalje uređivati – '
+    + 'postaviti novu lozinku ili ga obrisati i napraviti novi.';
 
   function childrenPage(req, { values = {}, errors = [] } = {}) {
     const children = myChildren.all(req.user.id);
-    const limit = childrenLimit(req.user);
     return layout(req, {
       title: 'Djeca',
       body: html`
@@ -266,7 +266,7 @@ module.exports = function memberRoutes(db) {
       <section class="card">
         <h2>Novi dječiji račun</h2>
         ${errorList(errors)}
-        ${children.length >= limit ? html`<p class="notice">${limitNotice(limit)}</p>` : html`
+        ${children.length >= CHILDREN_LIMIT ? html`<p class="notice">${LIMIT_NOTICE}</p>` : html`
         <form method="post" action="/mitglied/djeca" class="form-grid">
           ${csrfField(req)}
           <label>Ime i prezime djeteta *<input name="name" required maxlength="120" value="${values.name || ''}"></label>
@@ -287,8 +287,7 @@ module.exports = function memberRoutes(db) {
     const values = { name: text(req.body.name, 120), username: normalizeUsername(text(req.body.username, 200)) };
     const password = typeof req.body.password === 'string' ? req.body.password : '';
     const errors = [];
-    const limit = childrenLimit(req.user);
-    if (myChildren.all(req.user.id).length >= limit) {
+    if (myChildren.all(req.user.id).length >= CHILDREN_LIMIT) {
       res.status(400);
       return res.send(String(childrenPage(req, { values })));
     }

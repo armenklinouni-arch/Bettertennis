@@ -210,11 +210,8 @@ function suggestUsername(db, source) {
 
 // Članovi bez e-maila (lista članova, dječiji računi): baza zahtijeva jedinstven e-mail,
 // pa dobijaju internu zamjensku adresu.
-// Standardni broj dječijih računa po članu; admin ga za pojedinog člana može povećati.
-const CHILDREN_LIMIT_DEFAULT = 2;
-function childrenLimit(user) {
-  return Number.isInteger(user.children_limit) ? user.children_limit : CHILDREN_LIMIT_DEFAULT;
-}
+// Svaki član smije imati najviše jedan dječiji račun – fiksno za sve, bez izuzetaka.
+const CHILDREN_LIMIT = 1;
 
 const PLACEHOLDER_DOMAIN = 'bez-emaila.bettertennis.local';
 function placeholderEmail(username) {
@@ -254,7 +251,8 @@ const NEW_COLUMNS = [
   ['trainers', 'username', 'TEXT COLLATE NOCASE'],
   // Dječiji račun: član kojeg je kreirao roditelj (vidi samo svoj sedmični raspored).
   ['users', 'parent_id', 'INTEGER REFERENCES users(id) ON DELETE CASCADE'],
-  // Koliko dječijih računa član smije napraviti (NULL = standard, vidi CHILDREN_LIMIT_DEFAULT); mijenja samo admin.
+  // Ranije: individualni limit dječijih računa. Više se ne koristi (limit je fiksan, vidi CHILDREN_LIMIT),
+  // kolona ostaje da postojeći podaci ostanu netaknuti.
   ['users', 'children_limit', 'INTEGER'],
 ];
 
@@ -355,5 +353,5 @@ function ensureAdmin(db, { email, password, name } = {}) {
 module.exports = {
   openDatabase, getSetting, setSetting, sessionSecret, ensureAdmin,
   USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername, placeholderEmail, isPlaceholderEmail,
-  CHILDREN_LIMIT_DEFAULT, childrenLimit,
+  CHILDREN_LIMIT,
 };
