@@ -111,6 +111,8 @@ Tests: `npm test`
 
 - Ein Mitglied (Elternteil) legt unter **„Djeca“** für jedes Kind einen eigenen Zugang an (Name, Benutzername,
   Passwort), kann das Passwort neu setzen und das Konto löschen. Es sieht und verwaltet nur seine eigenen Kinder.
+  Standardmäßig sind **höchstens 2 Kinder-Konten** pro Mitglied möglich. Der Admin kann das Limit beim Mitglied
+  („Maksimalan broj dječijih računa“) für einzelne Mitglieder erhöhen; leer = Standard.
 - Ein Kind meldet sich mit seinem Benutzernamen an und sieht **nur seinen eigenen Wochenplan** (Wochen, Termine,
   Trainings). Beträge, Zahlungen, Abrechnung, Aktuelnosti und Einstellungen sind für Kinder gesperrt.
 - Im Admin-Bereich erscheinen Kinder wie normale Mitglieder (Hinweis „dijete · roditelj: …“), damit man ihnen

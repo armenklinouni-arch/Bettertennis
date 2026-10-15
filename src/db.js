@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
   active            INTEGER NOT NULL DEFAULT 1,
   billing_mode      TEXT NOT NULL DEFAULT 'schedule',
   parent_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  children_limit    INTEGER,
   notes             TEXT,
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -200,6 +201,12 @@ function suggestUsername(db, source) {
 
 // Članovi bez e-maila (lista članova, dječiji računi): baza zahtijeva jedinstven e-mail,
 // pa dobijaju internu zamjensku adresu.
+// Standardni broj dječijih računa po članu; admin ga za pojedinog člana može povećati.
+const CHILDREN_LIMIT_DEFAULT = 2;
+function childrenLimit(user) {
+  return Number.isInteger(user.children_limit) ? user.children_limit : CHILDREN_LIMIT_DEFAULT;
+}
+
 const PLACEHOLDER_DOMAIN = 'bez-emaila.bettertennis.local';
 function placeholderEmail(username) {
   return `${username}@${PLACEHOLDER_DOMAIN}`;
@@ -238,6 +245,8 @@ const NEW_COLUMNS = [
   ['trainers', 'username', 'TEXT COLLATE NOCASE'],
   // Dječiji račun: član kojeg je kreirao roditelj (vidi samo svoj sedmični raspored).
   ['users', 'parent_id', 'INTEGER REFERENCES users(id) ON DELETE CASCADE'],
+  // Koliko dječijih računa član smije napraviti (NULL = standard, vidi CHILDREN_LIMIT_DEFAULT); mijenja samo admin.
+  ['users', 'children_limit', 'INTEGER'],
 ];
 
 function addMissingColumns(db) {
@@ -337,4 +346,5 @@ function ensureAdmin(db, { email, password, name } = {}) {
 module.exports = {
   openDatabase, getSetting, setSetting, sessionSecret, ensureAdmin,
   USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername, placeholderEmail, isPlaceholderEmail,
+  CHILDREN_LIMIT_DEFAULT, childrenLimit,
 };

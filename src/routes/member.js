@@ -9,7 +9,7 @@ const {
   layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, lessonTimeRange, lessonKindLabel,
 } = require('../views');
 const { requireMember, hashPassword, verifyPassword } = require('../auth');
-const { USERNAME_RE, normalizeUsername, usernameTaken, placeholderEmail } = require('../db');
+const { USERNAME_RE, normalizeUsername, usernameTaken, placeholderEmail, childrenLimit } = require('../db');
 
 function text(v, max) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
@@ -212,8 +212,11 @@ module.exports = function memberRoutes(db) {
     return Number.isInteger(id) ? myChild.get(id, req.user.id) : null;
   };
 
+  const limitNotice = (limit) => `Možeš imati najviše ${limit} dječija računa. Ako ti treba još jedan, javi se teniskoj školi – rado ćemo pomoći.`;
+
   function childrenPage(req, { values = {}, errors = [] } = {}) {
     const children = myChildren.all(req.user.id);
+    const limit = childrenLimit(req.user);
     return layout(req, {
       title: 'Djeca',
       body: html`
@@ -248,6 +251,7 @@ module.exports = function memberRoutes(db) {
       <section class="card">
         <h2>Novi dječiji račun</h2>
         ${errorList(errors)}
+        ${children.length >= limit ? html`<p class="notice">${limitNotice(limit)}</p>` : html`
         <form method="post" action="/mitglied/djeca" class="form-grid">
           ${csrfField(req)}
           <label>Ime i prezime djeteta *<input name="name" required maxlength="120" value="${values.name || ''}"></label>
@@ -255,7 +259,7 @@ module.exports = function memberRoutes(db) {
             <span class="small muted">3–40 znakova: slova bez kvačica, brojevi, tačka, crtica, donja crta.</span></label>
           <label>Lozinka * (najmanje 8 znakova)<input name="password" type="text" required minlength="8" autocomplete="new-password"></label>
           <div class="span-2"><button class="btn btn-primary" type="submit">Napravi račun</button></div>
-        </form>
+        </form>`}
       </section>`,
     });
   }
@@ -268,6 +272,11 @@ module.exports = function memberRoutes(db) {
     const values = { name: text(req.body.name, 120), username: normalizeUsername(text(req.body.username, 200)) };
     const password = typeof req.body.password === 'string' ? req.body.password : '';
     const errors = [];
+    const limit = childrenLimit(req.user);
+    if (myChildren.all(req.user.id).length >= limit) {
+      res.status(400);
+      return res.send(String(childrenPage(req, { values })));
+    }
     if (!values.name) errors.push('Unesi ime djeteta.');
     if (!USERNAME_RE.test(values.username)) errors.push('Neispravno korisničko ime (3–40 znakova: a–z, 0–9, tačka, crtica, donja crta).');
     else if (usernameTaken(db, values.username)) errors.push('Ovo korisničko ime je već zauzeto.');

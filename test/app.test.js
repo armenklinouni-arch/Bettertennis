@@ -968,3 +968,64 @@ test('Ein Mitglied sieht niemals Daten oder Kinder-Konten eines anderen Mitglied
   const list = await admin.request('/admin/mitglieder');
   assert.match(list.text, /Bojanovo Dijete[\s\S]*dijete · roditelj: Bojan Drugi/);
 });
+
+test('Kinder-Konten: höchstens zwei pro Mitglied; Admin kann das Limit für ein Mitglied erhöhen', async () => {
+  const parentId = makeMember('Roditelj Limit', 'roditelj.limit');
+  const parent = client();
+  await parent.login('roditelj.limit', 'memberpass1');
+  const add = (username) => parent.post('/mitglied/djeca', { name: `Dijete ${username}`, username, password: 'dijete-pass1' }, '/mitglied/djeca');
+  const count = () => db.prepare('SELECT COUNT(*) AS n FROM users WHERE parent_id = ?').get(parentId).n;
+
+  assert.equal((await add('limit.kid1')).status, 302);
+  assert.equal((await add('limit.kid2')).status, 302);
+  assert.equal(count(), 2);
+  // Drittes Kind: abgelehnt, freundlicher Hinweis, nichts angelegt
+  const third = await add('limit.kid3');
+  assert.equal(third.status, 400);
+  assert.match(third.text, /najviše 2 dječija računa/);
+  assert.equal(count(), 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM users WHERE username = 'limit.kid3'").get().n, 0);
+  // Formular zum Anlegen wird gar nicht mehr angeboten, nur der Hinweis
+  const page = await parent.request('/mitglied/djeca');
+  assert.match(page.text, /najviše 2 dječija računa/);
+  assert.doesNotMatch(page.text, /<form method="post" action="\/mitglied\/djeca" /);
+  // Nach dem Löschen eines Kindes ist wieder Platz
+  const kid1 = db.prepare("SELECT id FROM users WHERE username = 'limit.kid1'").get().id;
+  await parent.post(`/mitglied/djeca/${kid1}/obrisi`, {}, '/mitglied/djeca');
+  assert.equal((await add('limit.kid3')).status, 302);
+  assert.equal(count(), 2);
+
+  // Ein Mitglied kann sein Limit nicht selbst ändern
+  const token = await parent.csrf('/mitglied/djeca');
+  await parent.request('/mitglied/djeca', { method: 'POST', form: { _csrf: token, name: 'X', username: 'limit.kid4', password: 'dijete-pass1', children_limit: '10' } });
+  assert.equal(count(), 2);
+
+  // Admin erhöht das Limit für genau dieses Mitglied auf 3
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const edit = await admin.request(`/admin/mitglieder/${parentId}`);
+  assert.match(edit.text, /name="children_limit"/);
+  const saved = await admin.post(`/admin/mitglieder/${parentId}`, {
+    name: 'Roditelj Limit', username: 'roditelj.limit', email: 'roditelj.limit@kids-test.de', active: '1', children_limit: '3',
+  }, `/admin/mitglieder/${parentId}`);
+  assert.equal(saved.status, 302);
+  assert.equal((await add('limit.kid4')).status, 302);
+  assert.equal(count(), 3);
+  assert.equal((await add('limit.kid5')).status, 400);
+  assert.match((await parent.request('/mitglied/djeca')).text, /najviše 3 dječija računa/);
+  // Andere Mitglieder behalten das Standardlimit 2
+  const otherId = makeMember('Drugi Limit', 'drugi.limit');
+  assert.equal(db.prepare('SELECT children_limit FROM users WHERE id = ?').get(otherId).children_limit, null);
+  // Leeres Feld = wieder Standard (2); ungültige Werte werden abgelehnt
+  const bad = await admin.post(`/admin/mitglieder/${parentId}`, {
+    name: 'Roditelj Limit', username: 'roditelj.limit', email: 'roditelj.limit@kids-test.de', active: '1', children_limit: '-1',
+  }, `/admin/mitglieder/${parentId}`);
+  assert.equal(bad.status, 400);
+  await admin.post(`/admin/mitglieder/${parentId}`, {
+    name: 'Roditelj Limit', username: 'roditelj.limit', email: 'roditelj.limit@kids-test.de', active: '1', children_limit: '',
+  }, `/admin/mitglieder/${parentId}`);
+  assert.equal(db.prepare('SELECT children_limit FROM users WHERE id = ?').get(parentId).children_limit, null);
+  // Bestehende Kinder bleiben erhalten, auch wenn es jetzt mehr als das Limit sind
+  assert.equal(count(), 3);
+  assert.equal((await add('limit.kid6')).status, 400);
+});
