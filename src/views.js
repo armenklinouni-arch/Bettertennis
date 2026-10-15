@@ -46,11 +46,15 @@ function layout(req, { title, body, wide = false }) {
       ${navLink('/trener', 'Moj izvještaj', true)}
       ${navLink('/trener/raspored', 'Moj raspored')}
       ${navLink('/trener/lozinka', 'Lozinka')}`;
+  } else if (user.parent_id) {
+    // Dječiji račun: samo sedmični raspored (bez iznosa, plaćanja i obračuna).
+    nav = html`${navLink('/mitglied', 'Moj raspored', true)}`;
   } else {
     nav = html`
       ${navLink('/mitglied', 'Sedmični raspored', true)}
       ${navLink('/mitglied/abrechnung', 'Mjesečni iznos')}
       ${navLink('/mitglied/aktuelnosti', html`Aktuelnosti${req.unreadNews ? html` <span class="count" aria-label="nepročitano">${req.unreadNews}</span>` : ''}`)}
+      ${navLink('/mitglied/djeca', 'Djeca')}
       ${navLink('/mitglied/passwort', 'Lozinka')}`;
   }
 

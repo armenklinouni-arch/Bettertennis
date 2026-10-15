@@ -9,10 +9,25 @@ const {
   layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, lessonTimeRange, lessonKindLabel,
 } = require('../views');
 const { requireMember, hashPassword, verifyPassword } = require('../auth');
+const { USERNAME_RE, normalizeUsername, usernameTaken, placeholderEmail } = require('../db');
+
+function text(v, max) {
+  return typeof v === 'string' ? v.trim().slice(0, max) : '';
+}
 
 module.exports = function memberRoutes(db) {
   const router = express.Router();
   router.use(requireMember);
+
+  // Dječiji račun (kreirao ga je roditelj) smije vidjeti samo svoj sedmični raspored –
+  // nikakve iznose, plaćanja, obračune, aktuelnosti ni postavke.
+  router.use((req, res, next) => {
+    if (req.user.parent_id && !(req.method === 'GET' && req.path === '/')) {
+      res.status(403);
+      return res.send('Nemate pristup: dječiji račun vidi samo svoj sedmični raspored.');
+    }
+    next();
+  });
 
   const weekLessons = db.prepare(
     // Namjerno bez imena trenera: članovi ne smiju vidjeti koji trener radi s njima.
@@ -33,7 +48,8 @@ module.exports = function memberRoutes(db) {
     const monday = D.mondayOf(requested);
     const lessons = weekLessons.all(req.user.id, monday, D.addDays(monday, 6));
     const month = D.monthOf(today);
-    const statement = monthlyStatement(db, req.user, month);
+    const isChild = !!req.user.parent_id;
+    const statement = isChild ? null : monthlyStatement(db, req.user, month);
     const upcoming = upcomingLessons.all(req.user.id, today);
     const weekMinutes = lessons.filter((l) => !l.cancelled).reduce((s, l) => s + l.duration_min, 0);
 
@@ -47,7 +63,7 @@ module.exports = function memberRoutes(db) {
           <p class="muted">Tvoji treninzi ove sedmice: ${lessons.filter((l) => !l.cancelled).length}
             (${formatHours(weekMinutes / 60)})</p>
         </div>
-        ${statement.released
+        ${isChild ? '' : statement.released
           ? html`<a class="summary-tile" href="/mitglied/abrechnung?monat=${month}">
               <span class="label">Iznos za ${D.monthLabel(month)}</span>
               <span class="value">${formatMoney(statement.total)}</span>
@@ -59,7 +75,7 @@ module.exports = function memberRoutes(db) {
               <span class="hint">Iznos će biti vidljiv kad ga škola odobri.</span>
             </a>`}
       </div>
-      ${req.unreadNews
+      ${req.unreadNews && !isChild
         ? html`<a class="notice notice-link" href="/mitglied/aktuelnosti">📬 Imaš nepročitane aktuelnosti: <strong>${req.unreadNews}</strong> – otvori sandučić →</a>`
         : ''}
       ${weekView({ monday, lessons, baseUrl: '/mitglied', today })}
@@ -177,6 +193,116 @@ module.exports = function memberRoutes(db) {
         <div class="pre">${item.body}</div>
       </article>`,
     })));
+  });
+
+  // ---------------------------------------------------------------- Djeca (dječiji računi)
+  // Roditelj (običan član) kreira i upravlja samo svojim dječijim računima. Svi upiti su vezani
+  // za parent_id prijavljenog člana – tuđi računi se ne mogu ni vidjeti ni mijenjati.
+  function requireParent(req, res, next) {
+    if (req.user.role !== 'member' || req.user.parent_id) {
+      res.status(403);
+      return res.send('Nemate pristup.');
+    }
+    next();
+  }
+  const myChildren = db.prepare("SELECT * FROM users WHERE parent_id = ? AND role = 'member' ORDER BY name COLLATE NOCASE, id");
+  const myChild = db.prepare("SELECT * FROM users WHERE id = ? AND parent_id = ? AND role = 'member'");
+  const childOf = (req) => {
+    const id = Number(req.params.id);
+    return Number.isInteger(id) ? myChild.get(id, req.user.id) : null;
+  };
+
+  function childrenPage(req, { values = {}, errors = [] } = {}) {
+    const children = myChildren.all(req.user.id);
+    return layout(req, {
+      title: 'Djeca',
+      body: html`
+      <div class="page-head"><div>
+        <h1>Dječiji računi</h1>
+        <p class="muted">Za svako dijete možeš napraviti vlastiti pristup. Dijete nakon prijave vidi samo
+          svoj sedmični raspored treninga – bez iznosa, plaćanja i obračuna.</p>
+      </div></div>
+      <section class="card">
+        <h2>Moja djeca</h2>
+        ${children.length === 0
+          ? html`<p class="muted">Još nisi napravio/la nijedan dječiji račun.</p>`
+          : html`<div class="table-wrap"><table>
+            <thead><tr><th>Ime</th><th>Korisničko ime</th><th>Nova lozinka</th><th></th></tr></thead>
+            <tbody>${children.map((c) => html`<tr>
+              <td><strong>${c.name}</strong></td>
+              <td><code>${c.username}</code></td>
+              <td>
+                <form method="post" action="/mitglied/djeca/${c.id}/lozinka" class="inline-form">
+                  ${csrfField(req)}
+                  <input name="password" type="text" minlength="8" required autocomplete="new-password" placeholder="najmanje 8 znakova" aria-label="Nova lozinka za ${c.name}">
+                  <button class="btn btn-ghost btn-sm" type="submit">Postavi</button>
+                </form>
+              </td>
+              <td class="actions">
+                <form method="post" action="/mitglied/djeca/${c.id}/obrisi" class="inline-form" data-confirm="Trajno obrisati račun za ${c.name}?">
+                  ${csrfField(req)}<button class="btn btn-danger btn-sm" type="submit">Obriši</button>
+                </form>
+              </td>
+            </tr>`)}</tbody></table></div>`}
+      </section>
+      <section class="card">
+        <h2>Novi dječiji račun</h2>
+        ${errorList(errors)}
+        <form method="post" action="/mitglied/djeca" class="form-grid">
+          ${csrfField(req)}
+          <label>Ime i prezime djeteta *<input name="name" required maxlength="120" value="${values.name || ''}"></label>
+          <label>Korisničko ime *<input name="username" required minlength="3" maxlength="40" autocapitalize="none" spellcheck="false" value="${values.username || ''}">
+            <span class="small muted">3–40 znakova: slova bez kvačica, brojevi, tačka, crtica, donja crta.</span></label>
+          <label>Lozinka * (najmanje 8 znakova)<input name="password" type="text" required minlength="8" autocomplete="new-password"></label>
+          <div class="span-2"><button class="btn btn-primary" type="submit">Napravi račun</button></div>
+        </form>
+      </section>`,
+    });
+  }
+
+  router.get('/djeca', requireParent, (req, res) => {
+    res.send(String(childrenPage(req)));
+  });
+
+  router.post('/djeca', requireParent, (req, res) => {
+    const values = { name: text(req.body.name, 120), username: normalizeUsername(text(req.body.username, 200)) };
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+    const errors = [];
+    if (!values.name) errors.push('Unesi ime djeteta.');
+    if (!USERNAME_RE.test(values.username)) errors.push('Neispravno korisničko ime (3–40 znakova: a–z, 0–9, tačka, crtica, donja crta).');
+    else if (usernameTaken(db, values.username)) errors.push('Ovo korisničko ime je već zauzeto.');
+    if (password.length < 8) errors.push('Lozinka mora imati najmanje 8 znakova.');
+    if (errors.length) {
+      res.status(400);
+      return res.send(String(childrenPage(req, { values, errors })));
+    }
+    db.prepare(
+      `INSERT INTO users (name, username, email, password_hash, role, hourly_rate_cents, monthly_fee_cents, active, parent_id)
+       VALUES (?, ?, ?, ?, 'member', 0, 0, 1, ?)`
+    ).run(values.name, values.username, placeholderEmail(values.username), hashPassword(password), req.user.id);
+    res.flash('success', `Račun za ${values.name} je napravljen. Prijava: ${values.username}`);
+    res.redirect('/mitglied/djeca');
+  });
+
+  router.post('/djeca/:id/lozinka', requireParent, (req, res) => {
+    const child = childOf(req);
+    if (!child) return res.status(404).send('Nije pronađeno.');
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+    if (password.length < 8) {
+      res.flash('error', 'Lozinka mora imati najmanje 8 znakova.');
+    } else {
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ? AND parent_id = ?').run(hashPassword(password), child.id, req.user.id);
+      res.flash('success', `Nova lozinka za ${child.name} je postavljena.`);
+    }
+    res.redirect('/mitglied/djeca');
+  });
+
+  router.post('/djeca/:id/obrisi', requireParent, (req, res) => {
+    const child = childOf(req);
+    if (!child) return res.status(404).send('Nije pronađeno.');
+    db.prepare('DELETE FROM users WHERE id = ? AND parent_id = ?').run(child.id, req.user.id);
+    res.flash('success', `Račun za ${child.name} je obrisan.`);
+    res.redirect('/mitglied/djeca');
   });
 
   function passwordPage(req, errors = []) {

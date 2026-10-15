@@ -18,7 +18,9 @@ const {
 const { requireAdmin, hashPassword } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
 const { listGroupsWithMembers } = require('./groups');
-const { USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername } = require('../db');
+const {
+  USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername, placeholderEmail, isPlaceholderEmail,
+} = require('../db');
 
 const LEAD_STATUSES = ['novo', 'kontaktiran', 'probni trening', 'član', 'odbijen'];
 const DURATIONS = [30, 45, 60, 90, 120];
@@ -34,15 +36,6 @@ function randomPassword(length = 12) {
   return out;
 }
 
-// Članovi kreirani preko liste nemaju e-mail; baza zahtijeva jedinstven e-mail, pa dobijaju zamjensku adresu.
-const PLACEHOLDER_DOMAIN = 'bez-emaila.bettertennis.local';
-function placeholderEmail(username) {
-  return `${username}@${PLACEHOLDER_DOMAIN}`;
-}
-function isPlaceholderEmail(email) {
-  return typeof email === 'string' && email.toLowerCase().endsWith(`@${PLACEHOLDER_DOMAIN}`);
-}
-
 function toId(v) {
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : null;
@@ -54,6 +47,11 @@ module.exports = function adminRoutes(db) {
 
   const getMember = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'member'");
   const allMembers = db.prepare("SELECT * FROM users WHERE role = 'member' ORDER BY active DESC, name COLLATE NOCASE");
+  // Za aktuelnosti: dječiji računi ne vide sandučić, pa ne primaju ni novosti.
+  const newsMembers = db.prepare("SELECT * FROM users WHERE role = 'member' AND active = 1 AND parent_id IS NULL ORDER BY name COLLATE NOCASE");
+  const parentNames = () => new Map(db.prepare(
+    "SELECT c.id, p.name FROM users c JOIN users p ON p.id = c.parent_id WHERE c.parent_id IS NOT NULL"
+  ).all().map((r) => [r.id, r.name]));
   const activeMembers = db.prepare("SELECT * FROM users WHERE role = 'member' AND active = 1 ORDER BY name COLLATE NOCASE");
   const activeTrainers = db.prepare('SELECT * FROM trainers WHERE active = 1 ORDER BY name COLLATE NOCASE');
   const getTrainer = db.prepare('SELECT * FROM trainers WHERE id = ?');
@@ -202,6 +200,7 @@ module.exports = function adminRoutes(db) {
   router.get('/mitglieder', (req, res) => {
     const month = D.monthOf(D.todayISO());
     const members = allMembers.all();
+    const parents = parentNames();
     res.send(String(layout(req, {
       title: 'Članovi',
       wide: true,
@@ -220,7 +219,7 @@ module.exports = function adminRoutes(db) {
           <tbody>${members.map((m) => {
             const st = monthlyStatement(db, m, month);
             return html`<tr class="${m.active ? '' : 'is-inactive'}">
-              <td><strong>${m.name}</strong></td>
+              <td><strong>${m.name}</strong>${m.parent_id ? html`<br><span class="tag">dijete · roditelj: ${parents.get(m.id) || ''}</span>` : ''}</td>
               <td>${m.username || ''}</td>
               <td>${isPlaceholderEmail(m.email) ? html`<span class="muted">bez e-maila</span>` : m.email}${m.phone ? html`<br>${m.phone}` : ''}</td>
               <td class="num">${formatMoney(m.hourly_rate_cents)}</td>
@@ -278,7 +277,7 @@ module.exports = function adminRoutes(db) {
       <section class="card danger-zone">
         <h2>Brisanje člana</h2>
         <p class="muted">Briše člana zajedno sa svim terminima i stavkama. Umjesto toga ga možeš gore označiti kao „neaktivan“.</p>
-        <form method="post" action="/admin/mitglieder/${member.id}/loeschen" data-confirm="Trajno obrisati člana ${member.name} sa svim terminima?">
+        <form method="post" action="/admin/mitglieder/${member.id}/loeschen" data-confirm="Trajno obrisati člana ${member.name} sa svim terminima i dječijim računima koje je napravio?">
           ${csrfField(req)}<button class="btn btn-danger" type="submit">Trajno obriši</button>
         </form>
       </section>`}`,
@@ -1107,7 +1106,7 @@ module.exports = function adminRoutes(db) {
   // Aktuelnosti su interni „sandučić“: admin šalje novost odabranim ili svim aktivnim članovima,
   // a članovi je vide u svom profilu (bez slanja e-maila).
   function newsPage(req, { values = {}, errors = [] } = {}) {
-    const members = activeMembers.all();
+    const members = newsMembers.all();
     const items = db.prepare(
       `SELECT n.*, COUNT(r.user_id) AS recipients, COUNT(r.read_at) AS readers
          FROM news n LEFT JOIN news_recipients r ON r.news_id = n.id
@@ -1175,8 +1174,8 @@ module.exports = function adminRoutes(db) {
     if (!values.title) errors.push('Naslov je obavezan.');
     if (!values.body) errors.push('Tekst je obavezan.');
     const recipients = values.audience === 'all'
-      ? activeMembers.all()
-      : values.member_ids.map((id) => getMember.get(id)).filter(Boolean);
+      ? newsMembers.all()
+      : values.member_ids.map((id) => getMember.get(id)).filter((m) => m && !m.parent_id);
     if (recipients.length === 0) errors.push('Odaberi barem jednog primaoca.');
     if (errors.length) {
       res.status(400);

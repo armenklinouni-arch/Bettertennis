@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
   monthly_fee_cents INTEGER NOT NULL DEFAULT 0,
   active            INTEGER NOT NULL DEFAULT 1,
   billing_mode      TEXT NOT NULL DEFAULT 'schedule',
+  parent_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
   notes             TEXT,
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -166,6 +167,7 @@ function openDatabase(file) {
   db.exec('CREATE INDEX IF NOT EXISTS lessons_trainer ON lessons (trainer_id, date);');
   migrateLeadStatuses(db);
   assignMissingUsernames(db);
+  db.exec('CREATE INDEX IF NOT EXISTS users_parent ON users (parent_id);');
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_username ON users (username COLLATE NOCASE) WHERE username IS NOT NULL;");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS trainers_username ON trainers (username COLLATE NOCASE) WHERE username IS NOT NULL;");
   return db;
@@ -196,6 +198,16 @@ function suggestUsername(db, source) {
   return candidate;
 }
 
+// Članovi bez e-maila (lista članova, dječiji računi): baza zahtijeva jedinstven e-mail,
+// pa dobijaju internu zamjensku adresu.
+const PLACEHOLDER_DOMAIN = 'bez-emaila.bettertennis.local';
+function placeholderEmail(username) {
+  return `${username}@${PLACEHOLDER_DOMAIN}`;
+}
+function isPlaceholderEmail(email) {
+  return typeof email === 'string' && email.toLowerCase().endsWith(`@${PLACEHOLDER_DOMAIN}`);
+}
+
 // Postojeći članovi i treneri (iz vremena prijave e-mailom) jednom dobiju korisničko ime – podaci ostaju netaknuti.
 function assignMissingUsernames(db) {
   const members = db.prepare("SELECT id, email FROM users WHERE role = 'member' AND (username IS NULL OR username = '') ORDER BY id").all();
@@ -224,6 +236,8 @@ const NEW_COLUMNS = [
   ['payments', 'released', 'INTEGER NOT NULL DEFAULT 0'],
   ['users', 'username', 'TEXT COLLATE NOCASE'],
   ['trainers', 'username', 'TEXT COLLATE NOCASE'],
+  // Dječiji račun: član kojeg je kreirao roditelj (vidi samo svoj sedmični raspored).
+  ['users', 'parent_id', 'INTEGER REFERENCES users(id) ON DELETE CASCADE'],
 ];
 
 function addMissingColumns(db) {
@@ -322,5 +336,5 @@ function ensureAdmin(db, { email, password, name } = {}) {
 
 module.exports = {
   openDatabase, getSetting, setSetting, sessionSecret, ensureAdmin,
-  USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername,
+  USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername, placeholderEmail, isPlaceholderEmail,
 };

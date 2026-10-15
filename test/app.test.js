@@ -821,3 +821,150 @@ test('Masseneinpflege: mehrere Mitglieder auf einmal mit Benutzername und Zufall
   }, '/admin/mitglieder/neu');
   assert.equal(single.status, 302);
 });
+
+// Hilfsfunktion: Mitglied direkt anlegen
+function makeMember(name, username, { fee = 0, rate = 4000 } = {}) {
+  return db.prepare('INSERT INTO users (name, username, email, password_hash, hourly_rate_cents, monthly_fee_cents) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(name, username, `${username}@kids-test.de`, hashPassword('memberpass1'), rate, fee).lastInsertRowid;
+}
+
+test('Kinder-Konten: Elternteil legt an, setzt Passwort zurück, löscht; Kind meldet sich an und sieht nur seinen Plan', async () => {
+  const parentId = makeMember('Roditelj Jedan', 'roditelj1', { fee: 2000 });
+  const parent = client();
+  assert.equal((await parent.login('roditelj1', 'memberpass1')).location, '/mitglied');
+  // Der Elternbereich bleibt wie bisher (Monatsbetrag sichtbar) und hat zusätzlich „Djeca“
+  const home = await parent.request('/mitglied');
+  assert.match(home.text, /Iznos za/);
+  assert.match(home.text, /href="\/mitglied\/djeca"/);
+  assert.equal((await parent.request('/mitglied/djeca')).status, 200);
+
+  // Anlegen: ungültig / doppelt / gültig
+  assert.equal((await parent.post('/mitglied/djeca', { name: 'Dijete', username: 'x', password: 'dijete-pass1' }, '/mitglied/djeca')).status, 400);
+  assert.equal((await parent.post('/mitglied/djeca', { name: 'Dijete', username: 'roditelj1', password: 'dijete-pass1' }, '/mitglied/djeca')).status, 400);
+  assert.equal((await parent.post('/mitglied/djeca', { name: 'Dijete', username: 'dijete.jedan', password: 'kratko' }, '/mitglied/djeca')).status, 400);
+  const ok = await parent.post('/mitglied/djeca', { name: 'Dino Jedan', username: 'Dijete.Jedan', password: 'dijete-pass1' }, '/mitglied/djeca');
+  assert.equal(ok.status, 302);
+  const kid = db.prepare("SELECT * FROM users WHERE username = 'dijete.jedan'").get();
+  assert.equal(kid.parent_id, parentId);
+  assert.equal(kid.role, 'member');
+  assert.notEqual(kid.password_hash, 'dijete-pass1');
+  assert.match((await parent.request('/mitglied/djeca')).text, /Dino Jedan[\s\S]*dijete\.jedan/);
+
+  // Termine: Kind hat eigenes Training, Elternteil eigenes
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '15:00', 60, 3000)").run(kid.id);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-07', '19:00', 60, 4000)").run(parentId);
+
+  // Kind meldet sich an und sieht nur seinen Wochenplan
+  const child = client();
+  assert.equal((await child.login('dijete.jedan', 'dijete-pass1')).location, '/mitglied');
+  const plan = await child.request('/mitglied?woche=2026-10-05');
+  assert.equal(plan.status, 200);
+  assert.match(plan.text, /15:00–16:00/);
+  assert.doesNotMatch(plan.text, /19:00–20:00/); // nicht der Plan des Elternteils
+  assert.match(plan.text, /href="\/mitglied\?woche=2026-09-28"/); // Wochen-Navigation
+
+  // Passwort zurücksetzen
+  assert.equal((await parent.post(`/mitglied/djeca/${kid.id}/lozinka`, { password: 'novo-pass-22' }, '/mitglied/djeca')).status, 302);
+  assert.equal((await client().login('dijete.jedan', 'dijete-pass1')).status, 401);
+  assert.equal((await client().login('dijete.jedan', 'novo-pass-22')).location, '/mitglied');
+
+  // Löschen
+  assert.equal((await parent.post(`/mitglied/djeca/${kid.id}/obrisi`, {}, '/mitglied/djeca')).status, 302);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users WHERE id = ?').get(kid.id).n, 0);
+  assert.equal((await client().login('dijete.jedan', 'novo-pass-22')).status, 401);
+  assert.equal((await child.request('/mitglied')).status, 302); // Sitzung des gelöschten Kindes ist ungültig
+  // Elternteil bleibt unverändert
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users WHERE id = ?').get(parentId).n, 1);
+});
+
+test('Kind-Konto hat keinerlei Zugriff auf Finanzen (Beträge, Zahlungen, Abrechnung)', async () => {
+  const parentId = makeMember('Roditelj Dva', 'roditelj2', { fee: 2500 });
+  const parent = client();
+  await parent.login('roditelj2', 'memberpass1');
+  await parent.post('/mitglied/djeca', { name: 'Lana Dva', username: 'lana.dva', password: 'lana-pass-1' }, '/mitglied/djeca');
+  const kid = db.prepare("SELECT * FROM users WHERE username = 'lana.dva'").get();
+  // Admin hat Beträge, Zahlungen und Freigaben für Kind und Elternteil erfasst
+  db.prepare('UPDATE users SET hourly_rate_cents = 3700, monthly_fee_cents = 1100 WHERE id = ?').run(kid.id);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-08', '16:00', 60, 3700)").run(kid.id);
+  db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, '2026-10', 'Tajna stavka', 999)").run(kid.id);
+  db.prepare("INSERT INTO payments (user_id, month, paid, paid_at, released) VALUES (?, '2026-10', 1, '2026-10-05', 1)").run(kid.id);
+  db.prepare("INSERT INTO payments (user_id, month, paid, paid_at, released) VALUES (?, '2026-10', 1, '2026-10-05', 1)").run(parentId);
+  db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, '2026-10', 'Roditeljska stavka', 777)").run(parentId);
+
+  const child = client();
+  await child.login('lana.dva', 'lana-pass-1');
+  const home = await child.request('/mitglied?woche=2026-10-05');
+  assert.equal(home.status, 200);
+  assert.match(home.text, /16:00–17:00/);
+  for (const re of [/KM/, /Iznos/i, /Obračun/i, /plaćen/i, /\/mitglied\/abrechnung/, /\/mitglied\/djeca/, /Aktuelnosti/, /37,00|11,00|9,99|7,77|25,00/]) {
+    assert.doesNotMatch(home.text, re, `Kind sieht ${re}`);
+  }
+  // Alle Finanz- und Verwaltungsseiten gesperrt (auch mit Parametern / per POST)
+  for (const path of ['/mitglied/abrechnung', '/mitglied/abrechnung?monat=2026-10', '/mitglied/djeca', '/mitglied/aktuelnosti', '/mitglied/passwort',
+    '/admin', '/admin/abrechnung', '/admin/finansije', '/trener']) {
+    const r = await child.request(path);
+    assert.ok(r.status === 403 || r.status === 302, `${path}: ${r.status}`);
+    assert.doesNotMatch(r.text, /Tajna stavka|Roditeljska stavka|KM/);
+  }
+  const token = await child.csrf('/mitglied');
+  assert.equal((await child.request('/mitglied/djeca', { method: 'POST', form: { _csrf: token, name: 'X Y', username: 'xy.kid', password: 'xy-pass-123' } })).status, 403);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM users WHERE username = 'xy.kid'").get().n, 0);
+  // Fremde Wochen (z. B. die des Elternteils) gibt es für das Kind nicht – nur eigene Termine
+  assert.doesNotMatch((await child.request('/mitglied?woche=2026-10-05')).text, /Roditelj Dva/);
+});
+
+test('Ein Mitglied sieht niemals Daten oder Kinder-Konten eines anderen Mitglieds', async () => {
+  const aId = makeMember('Alma Prva', 'alma.prva', { fee: 1500 });
+  const bId = makeMember('Bojan Drugi', 'bojan.drugi', { fee: 8800 });
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '11:00', 60, 4000)").run(aId);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '13:00', 90, 6600)").run(bId);
+  db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, '2026-10', 'Bojanova stavka', 1234)").run(bId);
+  db.prepare("INSERT INTO payments (user_id, month, released) VALUES (?, '2026-10', 1)").run(aId);
+  db.prepare("INSERT INTO payments (user_id, month, released) VALUES (?, '2026-10', 1)").run(bId);
+
+  const a = client();
+  await a.login('alma.prva', 'memberpass1');
+  const b = client();
+  await b.login('bojan.drugi', 'memberpass1');
+  await b.post('/mitglied/djeca', { name: 'Bojanovo Dijete', username: 'bojan.kid', password: 'bojan-kid-1' }, '/mitglied/djeca');
+  const bKid = db.prepare("SELECT * FROM users WHERE username = 'bojan.kid'").get();
+  assert.equal(bKid.parent_id, bId);
+
+  // A sieht nur eigene Termine, Beträge und Kinder
+  const pages = [
+    await a.request('/mitglied?woche=2026-10-05'),
+    await a.request('/mitglied/abrechnung?monat=2026-10'),
+    await a.request('/mitglied/djeca'),
+    // Versuch, fremde Daten über Parameter zu erreichen
+    await a.request(`/mitglied/abrechnung?monat=2026-10&user=${bId}&id=${bId}`),
+    await a.request(`/mitglied?woche=2026-10-05&user_id=${bId}`),
+  ];
+  for (const p of pages) {
+    assert.doesNotMatch(p.text, /Bojan|bojan|13:00–14:30|Bojanova stavka|12,34|88,00|66,00/);
+  }
+  assert.match(pages[0].text, /11:00–12:00/);
+  assert.match(pages[1].text, /55,00/); // 15 KM + 40 KM – nur Almas eigener Betrag
+
+  // Fremdes Kind: weder Passwort zurücksetzen noch löschen möglich
+  const hashBefore = bKid.password_hash;
+  assert.equal((await a.post(`/mitglied/djeca/${bKid.id}/lozinka`, { password: 'gehackt-123' }, '/mitglied/djeca')).status, 404);
+  assert.equal((await a.post(`/mitglied/djeca/${bKid.id}/obrisi`, {}, '/mitglied/djeca')).status, 404);
+  // Auch das andere Mitglied selbst lässt sich nicht als „Kind“ ansprechen
+  assert.equal((await a.post(`/mitglied/djeca/${bId}/lozinka`, { password: 'gehackt-123' }, '/mitglied/djeca')).status, 404);
+  assert.equal((await a.post(`/mitglied/djeca/${bId}/obrisi`, {}, '/mitglied/djeca')).status, 404);
+  assert.equal(db.prepare('SELECT password_hash FROM users WHERE id = ?').get(bKid.id).password_hash, hashBefore);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users WHERE id IN (?, ?)').get(bKid.id, bId).n, 2);
+  assert.equal((await client().login('bojan.kid', 'gehackt-123')).status, 401);
+  assert.equal((await client().login('bojan.drugi', 'gehackt-123')).status, 401);
+
+  // Kind von B sieht nur sich, nicht B
+  const kid = client();
+  await kid.login('bojan.kid', 'bojan-kid-1');
+  assert.doesNotMatch((await kid.request('/mitglied?woche=2026-10-05')).text, /13:00–14:30|11:00–12:00/);
+
+  // Admin sieht weiterhin alle Mitglieder inkl. Kind, mit Hinweis auf Elternteil
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const list = await admin.request('/admin/mitglieder');
+  assert.match(list.text, /Bojanovo Dijete[\s\S]*dijete · roditelj: Bojan Drugi/);
+});

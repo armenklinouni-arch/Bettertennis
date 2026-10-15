@@ -107,6 +107,15 @@ Tests: `npm test`
   Namen; bei Doppelungen mit Zahl, z. B. `amra2`). Der Admin sieht ihn in der Mitgliederliste bzw. beim
   Trainer und kann ihn jederzeit ändern. Sonst bleiben alle Daten unverändert.
 
+## Kinder-Konten
+
+- Ein Mitglied (Elternteil) legt unter **„Djeca“** für jedes Kind einen eigenen Zugang an (Name, Benutzername,
+  Passwort), kann das Passwort neu setzen und das Konto löschen. Es sieht und verwaltet nur seine eigenen Kinder.
+- Ein Kind meldet sich mit seinem Benutzernamen an und sieht **nur seinen eigenen Wochenplan** (Wochen, Termine,
+  Trainings). Beträge, Zahlungen, Abrechnung, Aktuelnosti und Einstellungen sind für Kinder gesperrt.
+- Im Admin-Bereich erscheinen Kinder wie normale Mitglieder (Hinweis „dijete · roditelj: …“), damit man ihnen
+  Termine und Gruppen zuordnen kann. Wird das Elternkonto gelöscht, werden auch seine Kinder-Konten gelöscht.
+
 ## Daten dauerhaft speichern (Railway)
 
 Die Daten liegen in einer SQLite-Datei. Auf Railway ist das Dateisystem eines Dienstes **flüchtig**:
