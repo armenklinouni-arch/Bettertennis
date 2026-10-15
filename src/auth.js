@@ -210,9 +210,29 @@ function createLoginLimiter({ maxAttempts = 10, windowMs = 15 * 60 * 1000 } = {}
   };
 }
 
+// Lesbare Zufallspasswörter für neue Mitglieder: ein Wort + drei Ziffern, z. B. „Teren482“.
+// Leicht weiterzugeben und einzutippen (keine Sonderzeichen, keine Kvačice), aber zufällig
+// (kryptografischer Zufall; 60 Wörter × 1000 Zahlen). Fehlversuche begrenzt der Login-Limiter.
+const PASSWORD_WORDS = [
+  'Tenis', 'Teren', 'Reket', 'Loptica', 'Servis', 'Volej', 'Forhend', 'Bekend', 'Pobjeda', 'Trener',
+  'Turnir', 'Sunce', 'Zvijezda', 'Planina', 'Rijeka', 'Jabuka', 'Medvjed', 'Sokol', 'Vjetar', 'Oblak',
+  'Munja', 'Tigar', 'Delfin', 'Kamen', 'Jezero', 'Dolina', 'Breza', 'Javor', 'Kometa', 'Raketa',
+  'Gitara', 'Bubanj', 'Vulkan', 'Ostrvo', 'Talas', 'Lavina', 'Polje', 'Cvijet', 'Pahulja', 'Dugme',
+  'Snijeg', 'Lisica', 'Galeb', 'Labud', 'Vjeverica', 'Zebra', 'Panda', 'Koala', 'Banana', 'Limun',
+  'Breskva', 'Visnja', 'Malina', 'Kokos', 'Mango', 'Sidro', 'Jedro', 'Kompas', 'Svemir', 'Planet',
+];
+
+function readablePassword() {
+  const word = PASSWORD_WORDS[crypto.randomInt(PASSWORD_WORDS.length)];
+  const digits = String(crypto.randomInt(1000)).padStart(3, '0');
+  return `${word}${digits}`;
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
+  readablePassword,
+  PASSWORD_WORDS,
   DUMMY_HASH,
   sessionMiddleware,
   loadUser,

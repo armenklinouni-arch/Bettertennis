@@ -795,7 +795,7 @@ test('Masseneinpflege: mehrere Mitglieder auf einmal mit Benutzername und Zufall
     const u = created.find((x) => x.username === username);
     assert.ok(u, username);
     assert.equal(u.name, name);
-    assert.ok(password.length >= 12);
+    assert.match(password, /^[A-Z][a-z]{4,}\d{3}$/); // gut lesbar: Wort + Ziffern, z. B. „Teren482“
     assert.notEqual(u.password_hash, password);
     assert.ok(verifyPassword(password, u.password_hash));
     passwords.add(password);
@@ -1191,4 +1191,29 @@ test('Startseite deaktiviert (Standard): bettertennis.net leitet direkt zum Logi
   }
   // Mit Schalter ist die bisherige Startseite unverändert da
   assert.match((await client().request('/')).text, /Trening po tvojoj mjeri/);
+});
+
+test('Lesbare Zufallspasswörter: Wort + drei Ziffern, ohne Sonderzeichen, zufällig und unterschiedlich', async () => {
+  const { readablePassword, PASSWORD_WORDS } = require('../src/auth');
+  const seen = new Set();
+  for (let i = 0; i < 500; i++) {
+    const pw = readablePassword();
+    assert.match(pw, /^[A-Z][a-z]{4,}\d{3}$/, pw);
+    assert.ok(pw.length >= 8, pw); // erfüllt die Mindestlänge für Passwörter
+    seen.add(pw);
+  }
+  assert.ok(seen.size > 450, `zu wenig verschiedene Passwörter: ${seen.size}`);
+  assert.ok(PASSWORD_WORDS.length >= 40);
+  assert.ok(PASSWORD_WORDS.every((w) => /^[A-Z][a-z]{4,}$/.test(w)), 'nur Wörter ohne Kvačice/Sonderzeichen');
+  // Auch das Formular „Novi član“ schlägt ein lesbares Passwort vor
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const form = await admin.request('/admin/mitglieder/neu');
+  assert.match(form.text, /name="password" type="text"[^>]*value="[A-Z][a-z]{4,}\d{3}"/);
+  // Innerhalb einer Massenanlage ist jedes Passwort verschieden
+  const lines = Array.from({ length: 30 }, (_, i) => `Lozinka${String.fromCharCode(97 + (i % 26))}, Test${i}`).join('\n');
+  const res = await admin.post('/admin/mitglieder/vise', { lines }, '/admin/mitglieder/vise');
+  const pws = [...res.text.matchAll(/<tr class="bulk-row"><td>[^<]+<\/td><td><code>[^<]+<\/code><\/td><td><code>([^<]+)<\/code>/g)].map((m) => m[1]);
+  assert.equal(pws.length, 30);
+  assert.equal(new Set(pws).size, 30);
 });

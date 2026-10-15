@@ -15,7 +15,7 @@ const {
 const {
   layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES,
 } = require('../views');
-const { requireAdmin, hashPassword } = require('../auth');
+const { requireAdmin, hashPassword, readablePassword } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
 const { listGroupsWithMembers } = require('./groups');
 const {
@@ -30,14 +30,6 @@ const DURATIONS = [30, 45, 60, 90, 120];
 const MAX_REPEAT_WEEKS = 52;
 const GROUP_MIN = 2; // grupni trening: najmanje 2 …
 const GROUP_MAX = 8; // … i najviše 8 članova
-
-// Sigurna nasumična lozinka (bez sličnih znakova poput l/1, O/0).
-const PASSWORD_ALPHABET = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-function randomPassword(length = 12) {
-  let out = '';
-  for (let i = 0; i < length; i += 1) out += PASSWORD_ALPHABET[crypto.randomInt(PASSWORD_ALPHABET.length)];
-  return out;
-}
 
 function toId(v) {
   const n = Number(v);
@@ -351,7 +343,7 @@ module.exports = function adminRoutes(db) {
           <label>Lista članova – jedan član po redu: ime i prezime (npr. odvojeno zarezom)
             <textarea name="lines" rows="10" required maxlength="20000" placeholder="Amina, Hodžić&#10;Emir, Begić&#10;Lejla Kovačević">${lines}</textarea>
           </label>
-          <p class="muted small">Za svakog člana se automatski kreira jedinstveno korisničko ime (npr. <code>amina.hodzic</code>) i sigurna nasumična lozinka.
+          <p class="muted small">Za svakog člana se automatski kreira jedinstveno korisničko ime (npr. <code>amina.hodzic</code>) i nasumična, lako čitljiva lozinka (npr. <code>Teren482</code>).
             Članovi su aktivni, bez cijene po satu i članarine – to možeš kasnije podesiti kod svakog člana. Najviše ${BULK_MAX} članova odjednom.</p>
           <div class="btn-row"><button class="btn btn-primary" type="submit">Kreiraj članove</button></div>
         </form>
@@ -398,7 +390,7 @@ module.exports = function adminRoutes(db) {
     try {
       for (const name of people) {
         const username = suggestUsername(db, name);
-        const password = randomPassword();
+        const password = readablePassword();
         insert.run(name, username, placeholderEmail(username), hashPassword(password));
         created.push({ name, username, password });
       }
@@ -417,7 +409,7 @@ module.exports = function adminRoutes(db) {
     const lead = leadId ? db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId) : null;
     const values = {
       active: true,
-      password: crypto.randomBytes(6).toString('base64url'),
+      password: readablePassword(),
       ...(lead ? { name: lead.name, username: suggestUsername(db, lead.name), email: lead.email, phone: lead.phone || '', notes: [lead.level, lead.availability, lead.message].filter(Boolean).join('\n') } : {}),
     };
     res.send(String(memberForm(req, { values, leadId: lead ? lead.id : null })));
