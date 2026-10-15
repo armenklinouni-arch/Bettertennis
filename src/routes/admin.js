@@ -19,6 +19,9 @@ const { requireAdmin, hashPassword } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
 const { listGroupsWithMembers } = require('./groups');
 const {
+  weekStatus, releaseWeek, hideWeek, setAutoRelease, isMonday,
+} = require('../weeks');
+const {
   USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername, placeholderEmail, isPlaceholderEmail,
   CHILDREN_LIMIT_DEFAULT,
 } = require('../db');
@@ -727,6 +730,7 @@ module.exports = function adminRoutes(db) {
           <button class="btn btn-ghost btn-sm" type="submit">Filtriraj</button>
         </form>
       </div>
+      ${weekReleasePanel(req, monday, back)}
       ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, actions, showPrice: true, extraQuery })}
       <section class="card">
         <h2>Novi termin</h2>
@@ -746,6 +750,63 @@ module.exports = function adminRoutes(db) {
       </section>`,
     })));
   });
+
+  // ---------------------------------------------------------------- Objava sedmice
+  const sarajevoTime = (ms) => {
+    const f = new Intl.DateTimeFormat('bs-BA', { timeZone: 'Europe/Sarajevo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    const p = Object.fromEntries(f.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+    return `${p.day}.${p.month}.${p.year}. u ${p.hour}:${p.minute}`;
+  };
+
+  function weekReleasePanel(req, monday, back) {
+    const st = weekStatus(db, monday);
+    const hidden = html`<input type="hidden" name="monday" value="${monday}"><input type="hidden" name="back" value="${back}">`;
+    return html`
+      <section class="card week-release ${st.released ? 'is-released' : 'is-hidden'}">
+        <div class="week-release-status">
+          <strong>Status sedmice: ${st.released ? html`<span class="tag tag-done">Objavljena</span>` : html`<span class="tag tag-pending">Skrivena</span>`}</strong>
+          <span class="muted small">${st.released
+            ? (st.releasedBy === 'auto' ? `Objavljena automatski ${sarajevoTime(st.autoAt)}.` : `Objavljena ručno ${sarajevoTime(Date.parse(st.releasedAt))}.`)
+            : st.auto
+              ? `Članovi je ne vide. Objava: automatski u nedjelju ${sarajevoTime(st.autoAt)} (sarajevsko vrijeme) ili ručno.`
+              : 'Članovi je ne vide. Automatska objava je isključena – sedmica ostaje skrivena dok je ručno ne objaviš.'}</span>
+        </div>
+        <div class="btn-row">
+          ${st.released
+            ? html`<form method="post" action="/admin/termine/sedmica/sakrij" class="inline-form" data-confirm="Ponovo sakriti ovu sedmicu od članova?">
+                ${csrfField(req)}${hidden}<button class="btn btn-ghost btn-sm" type="submit">Sakrij ponovo</button></form>`
+            : html`<form method="post" action="/admin/termine/sedmica/objavi" class="inline-form">
+                ${csrfField(req)}${hidden}<button class="btn btn-primary btn-sm" type="submit">Objavi sedmicu sada</button></form>`}
+          ${st.released ? '' : html`<form method="post" action="/admin/termine/sedmica/auto" class="inline-form">
+                ${csrfField(req)}${hidden}<input type="hidden" name="auto" value="${st.auto ? '0' : '1'}">
+                <button class="btn btn-ghost btn-sm" type="submit">${st.auto ? 'Isključi automatsku objavu' : 'Uključi automatsku objavu (nedjelja 17:00)'}</button></form>`}
+        </div>
+      </section>`;
+  }
+
+  function weekAction(fn) {
+    return (req, res) => {
+      const monday = req.body.monday;
+      if (!isMonday(monday)) return res.status(400).send('Neispravna sedmica.');
+      const message = fn(monday, req);
+      res.flash('success', message);
+      const back = typeof req.body.back === 'string' && req.body.back.startsWith('/admin/termine') ? req.body.back : `/admin/termine?woche=${monday}`;
+      res.redirect(back);
+    };
+  }
+  router.post('/termine/sedmica/objavi', weekAction((monday) => {
+    releaseWeek(db, monday);
+    return `Sedmica od ${D.formatDate(monday)} je objavljena – članovi je sada vide.`;
+  }));
+  router.post('/termine/sedmica/sakrij', weekAction((monday) => {
+    const autoOff = hideWeek(db, monday);
+    return `Sedmica od ${D.formatDate(monday)} je ponovo skrivena.${autoOff ? ' Automatska objava za nju je isključena.' : ''}`;
+  }));
+  router.post('/termine/sedmica/auto', weekAction((monday, req) => {
+    const on = req.body.auto === '1';
+    setAutoRelease(db, monday, on);
+    return on ? `Automatska objava za sedmicu od ${D.formatDate(monday)} je uključena.` : `Automatska objava za sedmicu od ${D.formatDate(monday)} je isključena.`;
+  }));
 
   router.post('/termine', (req, res) => {
     const { v, errors, participants } = readLessonForm(req.body);

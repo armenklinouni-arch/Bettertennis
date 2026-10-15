@@ -217,6 +217,10 @@ function statementTable(statement, { adminDelete, req } = {}) {
           : ''}
       </tr>`);
   }
+  if (statement.unpublishedCount) {
+    rows.push(html`
+      <tr><td>Termini iz sedmica čiji raspored još nije objavljen</td><td>Termini: ${statement.unpublishedCount}</td><td class="num"></td>${adminDelete ? html`<td></td>` : ''}</tr>`);
+  }
   if (rows.length === 0) {
     rows.push(html`<tr><td colspan="${adminDelete ? 4 : 3}" class="empty">Za ovaj mjesec nema stavki.</td></tr>`);
   }

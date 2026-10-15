@@ -363,3 +363,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 @media (prefers-color-scheme: dark) {
   .hero-chips li { color: var(--text); }
 }
+
+/* Objava sedmice (admin, Termini) */
+.week-release { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; padding: 14px 18px; }
+.week-release-status { display: flex; flex-direction: column; gap: 4px; }
+.week-release.is-hidden { border-left: 4px solid var(--accent); }
+.week-release.is-released { border-left: 4px solid var(--primary); }

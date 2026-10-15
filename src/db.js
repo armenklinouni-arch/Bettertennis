@@ -127,6 +127,15 @@ CREATE TABLE IF NOT EXISTS billing_months (
   PRIMARY KEY (user_id, month)
 );
 
+-- Objava sedmičnog rasporeda (monday = ponedjeljak sedmice). Bez reda: skrivena do automatske objave.
+CREATE TABLE IF NOT EXISTS week_releases (
+  monday       TEXT PRIMARY KEY,
+  released     INTEGER NOT NULL DEFAULT 0,
+  released_by  TEXT,
+  released_at  TEXT,
+  auto_release INTEGER NOT NULL DEFAULT 1
+);
+
 CREATE TABLE IF NOT EXISTS news (
   id         INTEGER PRIMARY KEY,
   title      TEXT NOT NULL,

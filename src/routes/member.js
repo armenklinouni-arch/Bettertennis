@@ -9,6 +9,7 @@ const {
   layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, lessonTimeRange, lessonKindLabel,
 } = require('../views');
 const { requireMember, hashPassword, verifyPassword } = require('../auth');
+const { isWeekReleased } = require('../weeks');
 const { USERNAME_RE, normalizeUsername, usernameTaken, placeholderEmail, childrenLimit } = require('../db');
 
 function text(v, max) {
@@ -38,19 +39,29 @@ module.exports = function memberRoutes(db) {
   );
   const upcomingLessons = db.prepare(
     `SELECT * FROM lessons WHERE user_id = ? AND date >= ? AND cancelled = 0
-      ORDER BY date, start_time LIMIT 5`
+      ORDER BY date, start_time LIMIT 200`
   );
+  // Članovi i djeca vide samo termine iz objavljenih sedmica.
+  const visibleOnly = (lessons) => {
+    const cache = new Map();
+    return lessons.filter((l) => {
+      const monday = D.mondayOf(l.date);
+      if (!cache.has(monday)) cache.set(monday, isWeekReleased(db, monday));
+      return cache.get(monday);
+    });
+  };
 
   // Sedmični raspored ponedjeljak–nedjelja
   router.get('/', (req, res) => {
     const today = D.todayISO();
     const requested = D.isValidDate(req.query.woche) ? req.query.woche : today;
     const monday = D.mondayOf(requested);
-    const lessons = weekLessons.all(req.user.id, monday, D.addDays(monday, 6));
+    const weekReleased = isWeekReleased(db, monday);
+    const lessons = weekReleased ? weekLessons.all(req.user.id, monday, D.addDays(monday, 6)) : [];
     const month = D.monthOf(today);
     const isChild = !!req.user.parent_id;
     const statement = isChild ? null : monthlyStatement(db, req.user, month);
-    const upcoming = upcomingLessons.all(req.user.id, today);
+    const upcoming = visibleOnly(upcomingLessons.all(req.user.id, today)).slice(0, 5);
     const weekMinutes = lessons.filter((l) => !l.cancelled).reduce((s, l) => s + l.duration_min, 0);
 
     res.send(String(layout(req, {
@@ -78,6 +89,7 @@ module.exports = function memberRoutes(db) {
       ${req.unreadNews && !isChild
         ? html`<a class="notice notice-link" href="/mitglied/aktuelnosti">📬 Imaš nepročitane aktuelnosti: <strong>${req.unreadNews}</strong> – otvori sandučić →</a>`
         : ''}
+      ${weekReleased ? '' : html`<p class="notice">Raspored za ovu sedmicu još nije objavljen. Bit će vidljiv čim ga teniska škola objavi.</p>`}
       ${weekView({ monday, lessons, baseUrl: '/mitglied', today })}
       <section class="card">
         <h2>Sljedeći termini</h2>
@@ -98,7 +110,10 @@ module.exports = function memberRoutes(db) {
     let month = D.isValidMonth(req.query.monat) ? req.query.monat : max;
     if (month < min) month = min;
     if (month > max) month = max;
-    const statement = monthlyStatement(db, req.user, month);
+    const full = monthlyStatement(db, req.user, month);
+    // Termini iz još neobjavljenih sedmica se ne navode pojedinačno (iznos ostaje u ukupnom zbiru).
+    const shown = visibleOnly(full.lessons);
+    const statement = { ...full, lessons: shown, unpublishedCount: full.lessons.length - shown.length };
     const history = [];
     for (let m = max; m >= min; m = D.addMonths(m, -1)) history.push(monthlyStatement(db, req.user, m));
     res.send(String(layout(req, {

@@ -107,6 +107,17 @@ Tests: `npm test`
   Namen; bei Doppelungen mit Zahl, z. B. `amra2`). Der Admin sieht ihn in der Mitgliederliste bzw. beim
   Trainer und kann ihn jederzeit ändern. Sonst bleiben alle Daten unverändert.
 
+## Wochenfreigabe (Trainingsplan)
+
+- Jede Woche (Mo–So) ist entweder **versteckt** oder **freigegeben**. Mitglieder und Kinder-Konten sehen Termine
+  einer Woche nur, wenn sie freigegeben ist – auch nicht in „Sljedeći termini“ oder als einzelne Zeilen in der
+  Abrechnung. Der Admin sieht immer alles; Trainer sehen ihren Plan wie bisher.
+- **Automatisch:** am Sonntag vor der Woche um **17:00 Uhr Sarajevo-Zeit** (Sommer-/Winterzeit wird berücksichtigt).
+- Unter **Termini** zeigt ein Panel den Status der Woche mit den Knöpfen „Objavi sedmicu sada“ (manuell freigeben),
+  „Sakrij ponovo“ und „Isključi / Uključi automatsku objavu“ (nur für diese eine Woche).
+- Bestehende Daten: vergangene und die laufende Woche sind sofort freigegeben (ihr Sonntag 17 Uhr ist vorbei),
+  künftige Wochen erscheinen ab ihrem Sonntag 17 Uhr oder nach manueller Freigabe.
+
 ## Kinder-Konten
 
 - Ein Mitglied (Elternteil) legt unter **„Djeca“** für jedes Kind einen eigenen Zugang an (Name, Benutzername,

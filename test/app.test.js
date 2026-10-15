@@ -220,6 +220,9 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
 
   // Status: neue Termine sind „Realizovan“, abgesagte „Otkazan“
   assert.match(week.text, /Realizovan/);
+  // Kommende Woche sieht das Mitglied erst nach der Freigabe
+  assert.doesNotMatch((await member.request('/mitglied?woche=2026-10-12')).text, /Otkazan/);
+  await admin.post('/admin/termine/sedmica/objavi', { monday: '2026-10-12' }, '/admin/termine?woche=2026-10-12');
   const cancelledWeek = await member.request('/mitglied?woche=2026-10-12');
   assert.match(cancelledWeek.text, /Otkazan/);
 
@@ -397,6 +400,7 @@ test('Trainer: anlegen, Terminen zuordnen, Bericht mit Einzel/Gruppe, Zusatzzahl
   assert.match(detail.text, /Nagrada/);
 
   // Mitglied darf den Trainer NICHT sehen (Wochenplan, Monatsbetrag)
+  await admin.post('/admin/termine/sedmica/objavi', { monday: '2026-11-02' }, '/admin/termine?woche=2026-11-02');
   const ana = client();
   await ana.login('ana', 'memberpass1');
   const week = await ana.request('/mitglied?woche=2026-11-02');
@@ -1028,4 +1032,128 @@ test('Kinder-Konten: höchstens zwei pro Mitglied; Admin kann das Limit für ein
   // Bestehende Kinder bleiben erhalten, auch wenn es jetzt mehr als das Limit sind
   assert.equal(count(), 3);
   assert.equal((await add('limit.kid6')).status, 400);
+});
+
+// Uhr vorübergehend auf einen Zeitpunkt stellen (danach wieder auf den festen Testzeitpunkt).
+async function atTime(iso, fn) {
+  mock.timers.setTime(new Date(iso).getTime());
+  try {
+    return await fn();
+  } finally {
+    mock.timers.setTime(new Date('2026-10-09T10:00:00').getTime());
+  }
+}
+
+test('Wochenfreigabe: Zeitpunkt ist Sonntag vor der Woche, 17 Uhr Sarajevo (Sommer- und Winterzeit)', () => {
+  const { autoReleaseAt } = require('../src/weeks');
+  assert.equal(new Date(autoReleaseAt('2026-10-19')).toISOString(), '2026-10-18T15:00:00.000Z'); // CEST (+2)
+  assert.equal(new Date(autoReleaseAt('2026-10-26')).toISOString(), '2026-10-25T16:00:00.000Z'); // Zeitumstellung am 25.10. → CET (+1)
+  assert.equal(new Date(autoReleaseAt('2027-01-04')).toISOString(), '2027-01-03T16:00:00.000Z');
+  assert.equal(new Date(autoReleaseAt('2027-03-29')).toISOString(), '2027-03-28T15:00:00.000Z'); // Sommerzeit seit 28.3.
+});
+
+test('Wochenfreigabe: kommende Woche ist versteckt und wird am Sonntag um 17 Uhr automatisch freigegeben', async () => {
+  const id = makeMember('Sedmica Auto', 'sedmica.auto');
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-21', '08:15', 60, 4000)").run(id);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-07', '07:45', 60, 4000)").run(id);
+  const parent = client();
+  await parent.login('sedmica.auto', 'memberpass1');
+  await parent.post('/mitglied/djeca', { name: 'Auto Dijete', username: 'sedmica.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const kidId = db.prepare("SELECT id FROM users WHERE username = 'sedmica.kid'").get().id;
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-22', '09:30', 60, 0)").run(kidId);
+
+  // Laufende Woche ist sichtbar (bestehende Daten bleiben sichtbar)
+  assert.match((await parent.request('/mitglied?woche=2026-10-05')).text, /07:45–08:45/);
+  // Kommende Woche (19.–25.10.) ist versteckt – auch nicht in „Sljedeći termini“
+  let week = await parent.request('/mitglied?woche=2026-10-19');
+  assert.equal(week.status, 200);
+  assert.doesNotMatch(week.text, /08:15/);
+  assert.match(week.text, /još nije objavljen/);
+  assert.doesNotMatch((await parent.request('/mitglied')).text, /08:15/);
+
+  // Admin sieht die Woche immer, mit Status „versteckt“ und automatischer Freigabe
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const adminWeek = await admin.request('/admin/termine?woche=2026-10-19');
+  assert.match(adminWeek.text, /08:15/);
+  assert.match(adminWeek.text, /Skrivena/);
+  assert.match(adminWeek.text, /automatski u nedjelju 18\.10\.2026\. u 17:00/);
+
+  // Sonntag 16:59 Sarajevo → noch versteckt; 17:00 → freigegeben (Mitglied und Kind)
+  await atTime('2026-10-18T16:59:00+02:00', async () => {
+    const p = client();
+    await p.login('sedmica.auto', 'memberpass1');
+    assert.doesNotMatch((await p.request('/mitglied?woche=2026-10-19')).text, /08:15/);
+    const k = client();
+    await k.login('sedmica.kid', 'kid-pass-123');
+    assert.doesNotMatch((await k.request('/mitglied?woche=2026-10-19')).text, /09:30/);
+  });
+  await atTime('2026-10-18T17:00:00+02:00', async () => {
+    const p = client();
+    await p.login('sedmica.auto', 'memberpass1');
+    const visible = await p.request('/mitglied?woche=2026-10-19');
+    assert.match(visible.text, /08:15–09:15/);
+    assert.doesNotMatch(visible.text, /09:30/); // nur eigene Termine, nicht die des Kindes
+    assert.match((await p.request('/mitglied')).text, /08:15/); // jetzt auch in „Sljedeći termini“
+    const k = client();
+    await k.login('sedmica.kid', 'kid-pass-123');
+    const kidWeek = await k.request('/mitglied?woche=2026-10-19');
+    assert.match(kidWeek.text, /09:30–10:30/);
+    assert.doesNotMatch(kidWeek.text, /08:15/);
+    const a = client();
+    await a.login('admin@test.de', 'adminpass123');
+    assert.match((await a.request('/admin/termine?woche=2026-10-19')).text, /Objavljena/);
+  });
+  // Die automatische Freigabe ist gespeichert: auch zurück vor Sonntag bleibt die Woche freigegeben
+  assert.match((await parent.request('/mitglied?woche=2026-10-19')).text, /08:15–09:15/);
+});
+
+test('Wochenfreigabe: automatische Freigabe pro Woche ausschalten; manuelle Freigabe und Verstecken', async () => {
+  const id = makeMember('Sedmica Rucno', 'sedmica.rucno');
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-27', '18:10', 60, 4000)").run(id);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-11-03', '18:20', 60, 4000)").run(id);
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const back = '/admin/termine?woche=2026-10-26';
+
+  // Auto-Freigabe für die Woche 26.10. ausschalten – nur für diese Woche
+  assert.equal((await admin.post('/admin/termine/sedmica/auto', { monday: '2026-10-26', auto: '0' }, back)).status, 302);
+  assert.match((await admin.request(back)).text, /Automatska objava je isključena/);
+  const { weekStatus } = require('../src/weeks');
+  assert.equal(weekStatus(db, '2026-11-02').auto, true); // andere Wochen unverändert
+
+  // Sonntag 25.10. 17:00 (Winterzeit) und auch Tage später: bleibt versteckt
+  for (const t of ['2026-10-25T17:00:00+01:00', '2026-10-25T23:00:00+01:00', '2026-10-28T12:00:00+01:00']) {
+    await atTime(t, async () => {
+      const m = client();
+      await m.login('sedmica.rucno', 'memberpass1');
+      const w = await m.request('/mitglied?woche=2026-10-26');
+      assert.doesNotMatch(w.text, /18:10/, t);
+      assert.match(w.text, /još nije objavljen/);
+    });
+  }
+  // Die Folgewoche (Auto-Freigabe aktiv) erscheint am Sonntag 1.11. um 17 Uhr ganz normal
+  assert.equal(weekStatus(db, '2026-11-02', new Date('2026-11-01T16:00:00Z').getTime()).released, true);
+
+  // Admin gibt die Woche von Hand frei → sofort sichtbar
+  assert.equal((await admin.post('/admin/termine/sedmica/objavi', { monday: '2026-10-26' }, back)).status, 302);
+  const m = client();
+  await m.login('sedmica.rucno', 'memberpass1');
+  assert.match((await m.request('/mitglied?woche=2026-10-26')).text, /18:10–19:10/);
+  assert.match((await admin.request(back)).text, /Objavljena/);
+
+  // Admin kann eine Woche jederzeit vor Sonntag manuell freigeben und wieder verstecken
+  const back2 = '/admin/termine?woche=2026-11-02';
+  await admin.post('/admin/termine/sedmica/objavi', { monday: '2026-11-02' }, back2);
+  assert.match((await m.request('/mitglied?woche=2026-11-02')).text, /18:20–19:20/);
+  await admin.post('/admin/termine/sedmica/sakrij', { monday: '2026-11-02' }, back2);
+  assert.doesNotMatch((await m.request('/mitglied?woche=2026-11-02')).text, /18:20/);
+  // Auto-Freigabe wieder einschalten ändert nichts an der versteckten Woche vor Sonntag
+  await admin.post('/admin/termine/sedmica/auto', { monday: '2026-11-02', auto: '1' }, back2);
+  assert.doesNotMatch((await m.request('/mitglied?woche=2026-11-02')).text, /18:20/);
+
+  // Ungültige Eingaben / Nicht-Admins
+  assert.equal((await admin.post('/admin/termine/sedmica/objavi', { monday: '2026-10-27' }, back)).status, 400); // kein Montag
+  assert.equal((await m.post('/admin/termine/sedmica/objavi', { monday: '2026-11-02' }, '/mitglied')).status, 403);
+  assert.doesNotMatch((await m.request('/mitglied?woche=2026-11-02')).text, /18:20/);
 });
