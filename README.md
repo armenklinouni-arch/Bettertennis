@@ -138,6 +138,20 @@ Tests: `npm test`
   mit Datum/Uhrzeit/Betrag, Zusatzposten mit Datum), seine Summe und am Ende die Gesamtsumme der Auswahl.
 - Elternkonten sehen ausschließlich ihre zugeordneten Spieler und können nichts ändern.
 
+## E-Mail und „Passwort vergessen“
+
+- Versand über **Resend** mit dem Schlüssel aus der Railway-Variable `RESEND_API_KEY`; Absender
+  `BetterTennis <no-reply@bettertennis.net>` (änderbar über `MAIL_FROM`). Links in E-Mails zeigen auf
+  `https://bettertennis.net` (änderbar über `APP_URL`). Ohne Schlüssel startet die App normal, verschickt
+  aber keine E-Mails (Hinweis im Log).
+- **Mitglied:** trägt unter **E-mail** selbst seine Adresse ein bzw. ändert sie (mit aktuellem Passwort).
+  Solange keine hinterlegt ist, erscheint ein Hinweis auf der Startseite des Mitglieds.
+- **Login → „Zaboravljena lozinka?“:** E-Mail eingeben → Link (60 Minuten gültig, nur einmal verwendbar) →
+  neues Passwort setzen. Der Benutzername bleibt immer gleich. Die Antwort verrät nicht, ob eine Adresse
+  existiert; höchstens 3 Links pro Adresse und 20 Anfragen pro IP in 15 Minuten. Gilt für Mitglieder-Konten.
+- **Admin:** pflegt beim Mitglied die E-Mail-Adresse (leer = keine E-Mail) und kann Passwörter wie bisher
+  selbst zurücksetzen. Die Massenanlage bleibt ohne E-Mail.
+
 ## Kinder-Konten
 
 - Ein Mitglied (Elternteil) legt unter **„Djeca“** für jedes Kind einen eigenen Zugang an (Name, Benutzername,
@@ -179,6 +193,9 @@ Lokal gehen keine Daten verloren, solange der Ordner `data/` nicht gelöscht wir
 | `TRUST_PROXY`    | `1`, wenn die App hinter einem Reverse-Proxy läuft                | –                     |
 | `CURRENCY`       | Währung der Beträge, z. B. `BAM` (Konvertible Mark, „KM“) oder `EUR` | `BAM`              |
 | `PUBLIC_HOMEPAGE` | `1` = öffentliche Startseite (Početna) anzeigen; sonst leitet `/` direkt zum Login | aus |
+| `RESEND_API_KEY` | Schlüssel für den E-Mail-Versand über Resend | – (keine E-Mails) |
+| `MAIL_FROM`      | Absender der E-Mails | `BetterTennis <no-reply@bettertennis.net>` |
+| `APP_URL`        | Adresse der Seite für Links in E-Mails | `https://bettertennis.net` (Railway) |
 | `TZ`             | Zeitzone für „heute“ und Wochenbeginn                             | `Europe/Berlin`       |
 
 ## Aufbau

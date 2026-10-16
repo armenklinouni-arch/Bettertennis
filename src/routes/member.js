@@ -10,7 +10,12 @@ const {
 } = require('../views');
 const { requireMember, hashPassword, verifyPassword } = require('../auth');
 const { isWeekReleased } = require('../weeks');
-const { USERNAME_RE, normalizeUsername, usernameTaken, placeholderEmail, CHILDREN_LIMIT } = require('../db');
+const {
+  USERNAME_RE, normalizeUsername, usernameTaken, placeholderEmail, isPlaceholderEmail, CHILDREN_LIMIT,
+} = require('../db');
+const { EMAIL_RE } = require('./public');
+
+const EMAIL_HINT = 'Molimo unesi svoju e-mail adresu kako bi mogao/la sam/a resetovati lozinku i primati važne informacije o treninzima.';
 
 function text(v, max) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
@@ -86,6 +91,9 @@ module.exports = function memberRoutes(db) {
               <span class="hint">Iznos će biti vidljiv kad ga škola odobri.</span>
             </a>`}
       </div>
+      ${!isChild && isPlaceholderEmail(req.user.email)
+        ? html`<a class="notice notice-link" href="/mitglied/email">✉️ ${EMAIL_HINT} Unesi e-mail →</a>`
+        : ''}
       ${req.unreadNews && !isChild
         ? html`<a class="notice notice-link" href="/mitglied/aktuelnosti">📬 Imaš nepročitane aktuelnosti: <strong>${req.unreadNews}</strong> – otvori sandučić →</a>`
         : ''}
@@ -326,6 +334,57 @@ module.exports = function memberRoutes(db) {
     db.prepare('DELETE FROM users WHERE id = ? AND parent_id = ?').run(child.id, req.user.id);
     res.flash('success', `Račun za ${child.name} je obrisan.`);
     res.redirect('/mitglied/djeca');
+  });
+
+  // ---------------------------------------------------------------- Vlastita e-mail adresa
+  function emailPage(req, { email, errors = [] } = {}) {
+    const missing = isPlaceholderEmail(req.user.email);
+    const current = email !== undefined ? email : (missing ? '' : req.user.email);
+    return layout(req, {
+      title: 'E-mail adresa',
+      body: html`
+      <section class="card narrow">
+        <h1>Moja e-mail adresa</h1>
+        ${missing ? html`<p class="notice">${EMAIL_HINT}</p>`
+          : html`<p class="muted">Na ovu adresu šaljemo link za novu lozinku i važne informacije o treninzima.</p>`}
+        ${errorList(errors)}
+        <form method="post" action="/mitglied/email" class="stack">
+          ${csrfField(req)}
+          <label>E-mail adresa
+            <input name="email" type="email" required maxlength="200" autocomplete="email" value="${current}">
+          </label>
+          <label>Trenutna lozinka (radi sigurnosti)
+            <input name="password" type="password" required autocomplete="current-password">
+          </label>
+          <button class="btn btn-primary" type="submit">Sačuvaj</button>
+        </form>
+      </section>`,
+    });
+  }
+
+  router.get('/email', (req, res) => {
+    if (req.user.role !== 'member') return res.redirect('/');
+    res.send(String(emailPage(req)));
+  });
+
+  router.post('/email', (req, res) => {
+    if (req.user.role !== 'member') return res.status(403).send('Nemate pristup.');
+    const email = text(req.body.email, 200);
+    const errors = [];
+    if (!EMAIL_RE.test(email) || isPlaceholderEmail(email)) errors.push('Molimo upiši ispravnu e-mail adresu.');
+    else if (db.prepare('SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?').get(email, req.user.id)) {
+      errors.push('Ova e-mail adresa se već koristi za drugi račun.');
+    }
+    if (!verifyPassword(typeof req.body.password === 'string' ? req.body.password : '', req.user.password_hash)) {
+      errors.push('Trenutna lozinka nije ispravna.');
+    }
+    if (errors.length) {
+      res.status(400);
+      return res.send(String(emailPage(req, { email, errors })));
+    }
+    db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, req.user.id);
+    res.flash('success', 'Tvoja e-mail adresa je sačuvana.');
+    res.redirect('/mitglied/email');
   });
 
   function passwordPage(req, errors = []) {

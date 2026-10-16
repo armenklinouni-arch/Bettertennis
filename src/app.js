@@ -6,6 +6,7 @@ const { sessionMiddleware, loadUser, csrfProtection, createLoginLimiter } = requ
 const { sessionSecret } = require('./db');
 const { closeElapsedMonths } = require('./billing');
 const D = require('./dates');
+const { createResendMailer } = require('./mailer');
 const publicRoutes = require('./routes/public');
 const memberRoutes = require('./routes/member');
 const adminRoutes = require('./routes/admin');
@@ -16,7 +17,10 @@ const financeRoutes = require('./routes/finance');
 const parentPortalRoutes = require('./routes/parent-portal');
 const parentAccountRoutes = require('./routes/parents');
 
-function createApp(db, { secret, secureCookies = false, trustProxy = false, publicHomepage = false } = {}) {
+function createApp(db, {
+  secret, secureCookies = false, trustProxy = false, publicHomepage = false,
+  mailer = createResendMailer({ apiKey: process.env.RESEND_API_KEY }), appUrl = 'http://localhost:3000',
+} = {}) {
   const app = express();
   // Öffentliche Startseite (Početna): standardmäßig aus – „/“ führt dann direkt zum Login.
   // Die Startseite bleibt im Code erhalten und lässt sich mit PUBLIC_HOMEPAGE=1 wieder einschalten.
@@ -52,7 +56,9 @@ function createApp(db, { secret, secureCookies = false, trustProxy = false, publ
   app.use(loadUser(db));
   app.use(csrfProtection);
 
-  app.use('/', publicRoutes(db, { loginLimiter: createLoginLimiter() }));
+  app.use('/', publicRoutes(db, {
+    loginLimiter: createLoginLimiter(), resetLimiter: createLoginLimiter({ maxAttempts: 20 }), resetEmailLimiter: createLoginLimiter({ maxAttempts: 3 }), mailer, appUrl,
+  }));
   app.use('/mitglied', memberRoutes(db));
   app.use('/trener', trainerPortalRoutes(db));
   app.use('/roditelj', parentPortalRoutes(db));

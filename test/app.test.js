@@ -11,6 +11,9 @@ const D = require('../src/dates');
 const { parseMoney, formatMoney } = require('../src/money');
 
 let server;
+// Statt echter E-Mails: alle versendeten Nachrichten werden hier gesammelt.
+const sentMails = [];
+const testMailer = { async send(message) { sentMails.push(message); return true; } };
 let base;
 let db;
 
@@ -20,7 +23,7 @@ before(async () => {
   db = openDatabase(':memory:');
   ensureAdmin(db, { email: 'admin@test.de', password: 'adminpass123' });
   // Hauptinstanz mit eingeschalteter Startseite (deren Tests bleiben so erhalten).
-  const app = createApp(db, { secret: 'test-secret', publicHomepage: true });
+  const app = createApp(db, { secret: 'test-secret', publicHomepage: true, mailer: testMailer, appUrl: 'https://bettertennis.net' });
   await new Promise((resolve) => {
     server = app.listen(0, resolve);
   });
@@ -1504,4 +1507,175 @@ test('Elternkonto Finanzen: einzelne Posten (Datum, Betrag) je ausgewähltem Spi
   const own = await m.request('/mitglied/abrechnung?monat=2026-10');
   assert.match(own.text, /Mašina za loptice/);
   assert.doesNotMatch(own.text, /03\.10\.2026\./);
+});
+
+// ---------------------------------------------------------------- E-Mail / Passwort vergessen
+test('Mailversand über Resend: Schlüssel aus RESEND_API_KEY, Absender @bettertennis.net', async () => {
+  const { createResendMailer, DEFAULT_FROM } = require('../src/mailer');
+  assert.match(DEFAULT_FROM, /@bettertennis\.net>?$/);
+  const calls = [];
+  const fakeFetch = async (url, init) => { calls.push({ url, init }); return { ok: true, status: 200, text: async () => '{"id":"x"}' }; };
+  const mailer = createResendMailer({ apiKey: 're_test_123', fetch: fakeFetch });
+  assert.equal(await mailer.send({ to: 'clan@example.ba', subject: 'Test', text: 'Zdravo', html: '<p>Zdravo</p>' }), true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.resend.com/emails');
+  assert.equal(calls[0].init.method, 'POST');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer re_test_123');
+  const body = JSON.parse(calls[0].init.body);
+  assert.deepEqual(body.to, ['clan@example.ba']);
+  assert.match(body.from, /@bettertennis\.net/);
+  assert.equal(body.subject, 'Test');
+  // Fehler beim Versand oder fehlender Schlüssel: kein Absturz, nur false
+  const failing = createResendMailer({ apiKey: 're_x', fetch: async () => ({ ok: false, status: 422, text: async () => 'bad' }) });
+  assert.equal(await failing.send({ to: 'a@b.ba', subject: 's', text: 't' }), false);
+  const noKey = createResendMailer({ apiKey: '', fetch: async () => { throw new Error('darf nicht aufgerufen werden'); } });
+  assert.equal(await noKey.send({ to: 'a@b.ba', subject: 's', text: 't' }), false);
+});
+
+test('Mitglied trägt eigene E-Mail-Adresse ein und ändert sie; Hinweis solange keine hinterlegt ist', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  // Massenanlage bleibt unverändert (ohne E-Mail)
+  const bulk = await admin.post('/admin/mitglieder/vise', { lines: 'Mejl Bezadrese' }, '/admin/mitglieder/vise');
+  const pw = /<td><code>mejl\.bezadrese<\/code><\/td><td><code>([^<]+)<\/code>/.exec(bulk.text)[1];
+  const m = client();
+  await m.login('mejl.bezadrese', pw);
+  const hint = /Molimo unesi svoju e-mail adresu kako bi mogao\/la sam\/a resetovati lozinku i primati važne informacije o treninzima/;
+  assert.match((await m.request('/mitglied')).text, hint);
+  const page = await m.request('/mitglied/email');
+  assert.equal(page.status, 200);
+  assert.match(page.text, hint);
+  assert.doesNotMatch(page.text, /bez-emaila/); // interne Ersatzadresse wird nicht angezeigt
+  // Ungültig, falsches Passwort, bereits vergeben → abgelehnt
+  assert.equal((await m.post('/mitglied/email', { email: 'kein-mail', password: pw }, '/mitglied/email')).status, 400);
+  assert.equal((await m.post('/mitglied/email', { email: 'neu@mejl.ba', password: 'falsch-123' }, '/mitglied/email')).status, 400);
+  assert.equal((await m.post('/mitglied/email', { email: 'admin@test.de', password: pw }, '/mitglied/email')).status, 400);
+  assert.equal((await m.post('/mitglied/email', { email: 'x@bez-emaila.bettertennis.local', password: pw }, '/mitglied/email')).status, 400);
+  // Eintragen
+  assert.equal((await m.post('/mitglied/email', { email: ' Mejl@Primjer.ba ', password: pw }, '/mitglied/email')).status, 302);
+  const user = db.prepare("SELECT * FROM users WHERE username = 'mejl.bezadrese'").get();
+  assert.equal(user.email, 'Mejl@Primjer.ba');
+  assert.doesNotMatch((await m.request('/mitglied')).text, hint);
+  assert.match((await m.request('/mitglied/email')).text, /value="Mejl@Primjer\.ba"/);
+  // Ändern
+  assert.equal((await m.post('/mitglied/email', { email: 'drugi@primjer.ba', password: pw }, '/mitglied/email')).status, 302);
+  assert.equal(db.prepare('SELECT email FROM users WHERE id = ?').get(user.id).email, 'drugi@primjer.ba');
+  // Kinder-Konto hat keinen Zugriff auf diese Seite
+  await m.post('/mitglied/djeca', { name: 'Mejl Dijete', username: 'mejl.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const kid = client();
+  await kid.login('mejl.kid', 'kid-pass-123');
+  assert.equal((await kid.request('/mitglied/email')).status, 403);
+  assert.doesNotMatch((await kid.request('/mitglied')).text, hint);
+});
+
+test('Passwort vergessen: Link per E-Mail, neues Passwort setzen, Benutzername bleibt gleich', async () => {
+  const id = makeMember('Zaboravna Clanica', 'zaboravna');
+  db.prepare("UPDATE users SET email = 'zaboravna@primjer.ba' WHERE id = ?").run(id);
+  makeMember('Bez Mejla', 'bez.mejla');
+  db.prepare("UPDATE users SET email = 'bez.mejla@bez-emaila.bettertennis.local' WHERE username = 'bez.mejla'").run();
+  sentMails.length = 0;
+
+  const login = await client().request('/login');
+  assert.match(login.text, /href="\/zaboravljena-lozinka"/);
+  const anon = client();
+  assert.equal((await anon.request('/zaboravljena-lozinka')).status, 200);
+  const generic = /Ako je ta e-mail adresa povezana s članskim računom, poslali smo link/;
+  // Unbekannte Adresse, Ersatzadresse und Admin-Adresse: gleiche Antwort, keine E-Mail
+  for (const email of ['niko@primjer.ba', 'bez.mejla@bez-emaila.bettertennis.local', 'admin@test.de', 'kein-mail']) {
+    const r = await anon.post('/zaboravljena-lozinka', { email }, '/zaboravljena-lozinka');
+    assert.equal(r.status, 200, email);
+    assert.match(r.text, generic);
+  }
+  assert.equal(sentMails.length, 0);
+
+  // Bekannte Adresse (Groß/Klein egal): eine E-Mail mit Link und Benutzername
+  const r = await anon.post('/zaboravljena-lozinka', { email: 'Zaboravna@Primjer.ba' }, '/zaboravljena-lozinka');
+  assert.match(r.text, generic);
+  assert.equal(sentMails.length, 1);
+  const mail = sentMails[0];
+  assert.equal(mail.to, 'zaboravna@primjer.ba');
+  assert.match(mail.subject, /lozink/i);
+  assert.match(mail.text, /zaboravna/); // Benutzername zur Erinnerung
+  const link = /https:\/\/bettertennis\.net\/nova-lozinka\/([A-Za-z0-9_-]{30,})/.exec(mail.text);
+  assert.ok(link, 'Link fehlt');
+  assert.ok(mail.html.includes(link[0]));
+  const token = link[1];
+  // Der Token wird nur gehasht gespeichert
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM password_resets WHERE token_hash = ?').get(token).n, 0);
+
+  const path = `/nova-lozinka/${token}`;
+  const form = await anon.request(path);
+  assert.equal(form.status, 200);
+  assert.match(form.text, /zaboravna/); // Benutzername wird angezeigt, ist aber nicht änderbar
+  assert.doesNotMatch(form.text, /name="username"/);
+  assert.equal((await anon.post(path, { password: 'kurz', password2: 'kurz' }, path)).status, 400);
+  assert.equal((await anon.post(path, { password: 'novaLozinka1', password2: 'drugaLozinka' }, path)).status, 400);
+  const ok = await anon.post(path, { password: 'Sunce123x', password2: 'Sunce123x', username: 'gehackt' }, path);
+  assert.equal(ok.status, 302);
+  assert.equal(ok.location, '/login');
+  assert.equal(db.prepare('SELECT username FROM users WHERE id = ?').get(id).username, 'zaboravna');
+  assert.equal((await client().login('zaboravna', 'memberpass1')).status, 401);
+  assert.equal((await client().login('zaboravna', 'Sunce123x')).location, '/mitglied');
+  // Link ist nur einmal gültig
+  assert.match((await anon.request(path)).text, /nije važeći ili je istekao/);
+  assert.equal((await anon.post(path, { password: 'Opet12345', password2: 'Opet12345' }, '/zaboravljena-lozinka')).status, 400);
+  assert.equal((await client().login('zaboravna', 'Opet12345')).status, 401);
+
+  // Abgelaufener Link (nach 60 Minuten)
+  await anon.post('/zaboravljena-lozinka', { email: 'zaboravna@primjer.ba' }, '/zaboravljena-lozinka');
+  const token2 = /nova-lozinka\/([A-Za-z0-9_-]+)/.exec(sentMails[sentMails.length - 1].text)[1];
+  await atTime('2026-10-09T11:01:00', async () => {
+    assert.match((await client().request(`/nova-lozinka/${token2}`)).text, /nije važeći ili je istekao/);
+  });
+  // Ungültiger Token
+  assert.match((await anon.request('/nova-lozinka/abc')).text, /nije važeći ili je istekao/);
+  // Admin-Login bleibt unverändert
+  assert.equal((await client().login('admin@test.de', 'adminpass123')).location, '/admin');
+});
+
+test('Admin pflegt E-Mail-Adressen der Mitglieder und setzt weiterhin selbst Passwörter zurück', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const bulk = await admin.post('/admin/mitglieder/vise', { lines: 'Admin Mejl' }, '/admin/mitglieder/vise');
+  assert.ok(/admin\.mejl/.test(bulk.text));
+  const member = db.prepare("SELECT * FROM users WHERE username = 'admin.mejl'").get();
+  const edit = `/admin/mitglieder/${member.id}`;
+  const base = { name: 'Admin Mejl', username: 'admin.mejl', active: '1' };
+  // Ersatzadresse wird im Formular nicht angezeigt; leeres Feld lässt das Mitglied ohne E-Mail
+  const page = await admin.request(edit);
+  assert.doesNotMatch(page.text, /bez-emaila/);
+  assert.equal((await admin.post(edit, { ...base, email: '' }, edit)).status, 302);
+  assert.match(db.prepare('SELECT email FROM users WHERE id = ?').get(member.id).email, /@bez-emaila\.bettertennis\.local$/);
+  // Eintragen, korrigieren, doppelt/ungültig abgelehnt
+  assert.equal((await admin.post(edit, { ...base, email: 'admin.mejl@primjer.ba' }, edit)).status, 302);
+  assert.equal(db.prepare('SELECT email FROM users WHERE id = ?').get(member.id).email, 'admin.mejl@primjer.ba');
+  assert.equal((await admin.post(edit, { ...base, email: 'admin.mejl@primjer.com' }, edit)).status, 302);
+  assert.equal(db.prepare('SELECT email FROM users WHERE id = ?').get(member.id).email, 'admin.mejl@primjer.com');
+  assert.equal((await admin.post(edit, { ...base, email: 'admin@test.de' }, edit)).status, 400);
+  assert.equal((await admin.post(edit, { ...base, email: 'nije-mejl' }, edit)).status, 400);
+  // Passwort-Zurücksetzen durch den Admin funktioniert weiterhin parallel
+  assert.equal((await admin.post(edit, { ...base, email: 'admin.mejl@primjer.com', password: 'AdminNovo77' }, edit)).status, 302);
+  assert.equal((await client().login('admin.mejl', 'AdminNovo77')).location, '/mitglied');
+  // … und danach auch per E-Mail-Link
+  sentMails.length = 0;
+  await client().post('/zaboravljena-lozinka', { email: 'admin.mejl@primjer.com' }, '/zaboravljena-lozinka');
+  assert.equal(sentMails.length, 1);
+  // Einzelnes Anlegen verlangt weiterhin eine E-Mail-Adresse (unverändert)
+  assert.equal((await admin.post('/admin/mitglieder', { name: 'Bez', username: 'bez.adrese', email: '', password: 'nekaLozinka1', active: '1' }, '/admin/mitglieder/neu')).status, 400);
+});
+
+test('Passwort vergessen: höchstens 3 Links pro E-Mail-Adresse in 15 Minuten; nur Mitglieder-Konten', async () => {
+  const id = makeMember('Limit Mejl', 'limit.mejl');
+  db.prepare("UPDATE users SET email = 'limit.mejl@primjer.ba' WHERE id = ?").run(id);
+  db.prepare("UPDATE trainers SET email = 'trener.mejl@primjer.ba' WHERE id = (SELECT MIN(id) FROM trainers)").run();
+  sentMails.length = 0;
+  const anon = client();
+  for (let i = 0; i < 5; i++) {
+    const r = await anon.post('/zaboravljena-lozinka', { email: 'limit.mejl@primjer.ba' }, '/zaboravljena-lozinka');
+    assert.match(r.text, /poslali smo link/);
+  }
+  assert.equal(sentMails.length, 3);
+  // Trainer-E-Mail führt zu keinem Link (Funktion ist für Mitglieder)
+  await anon.post('/zaboravljena-lozinka', { email: 'trener.mejl@primjer.ba' }, '/zaboravljena-lozinka');
+  assert.equal(sentMails.length, 3);
 });

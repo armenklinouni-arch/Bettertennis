@@ -153,6 +153,15 @@ CREATE TABLE IF NOT EXISTS parent_account_players (
   PRIMARY KEY (parent_account_id, user_id)
 );
 
+-- Linkovi za novu lozinku („Zaboravljena lozinka“): čuva se samo hash tokena; jednokratni, ističu nakon 60 min.
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at INTEGER NOT NULL,
+  used_at    INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS news (
   id         INTEGER PRIMARY KEY,
   title      TEXT NOT NULL,

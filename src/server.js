@@ -6,6 +6,7 @@ process.env.TZ = process.env.TZ || 'Europe/Berlin';
 const path = require('node:path');
 const { openDatabase, ensureAdmin } = require('./db');
 const { createApp } = require('./app');
+const { createResendMailer } = require('./mailer');
 
 const PORT = Number(process.env.PORT) || 3000;
 // Baza podataka: DB_FILE ima prednost; na Railwayu se automatski koristi priključeni Volume,
@@ -46,6 +47,7 @@ if (adminEmail && adminPassword) {
 } else {
   console.warn('Hinweis: ADMIN_EMAIL / ADMIN_PASSWORD sind nicht gesetzt – es wird kein fester Admin verwendet.');
 }
+console.log(cleanEnv('RESEND_API_KEY') ? 'E-Mail-Versand: Resend aktiv.' : 'Hinweis: RESEND_API_KEY ist nicht gesetzt – es werden keine E-Mails verschickt.');
 if (created) {
   console.log('------------------------------------------------------------');
   console.log('Kreiran je administratorski račun:');
@@ -62,6 +64,9 @@ const app = createApp(db, {
   trustProxy: process.env.TRUST_PROXY === '1' || !!process.env.RAILWAY_ENVIRONMENT,
   // Öffentliche Startseite nur mit PUBLIC_HOMEPAGE=1, sonst landet man direkt beim Login.
   publicHomepage: cleanEnv('PUBLIC_HOMEPAGE') === '1',
+  // E-Mails (Passwort vergessen) über Resend; Links zeigen immer auf die feste Adresse der Seite.
+  mailer: createResendMailer({ apiKey: cleanEnv('RESEND_API_KEY'), from: cleanEnv('MAIL_FROM') || undefined }),
+  appUrl: (cleanEnv('APP_URL') || (process.env.RAILWAY_ENVIRONMENT ? 'https://bettertennis.net' : `http://localhost:${PORT}`)).replace(/\/+$/, ''),
 });
 
 app.listen(PORT, () => {

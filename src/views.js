@@ -63,6 +63,7 @@ function layout(req, { title, body, wide = false }) {
       ${navLink('/mitglied/abrechnung', 'Mjesečni iznos')}
       ${navLink('/mitglied/aktuelnosti', html`Aktuelnosti${req.unreadNews ? html` <span class="count" aria-label="nepročitano">${req.unreadNews}</span>` : ''}`)}
       ${navLink('/mitglied/djeca', 'Djeca')}
+      ${navLink('/mitglied/email', 'E-mail')}
       ${navLink('/mitglied/passwort', 'Lozinka')}`;
   }
 

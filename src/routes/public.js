@@ -4,7 +4,8 @@ const crypto = require('node:crypto');
 const express = require('express');
 const { html } = require('../html');
 const { layout, csrfField, errorList } = require('../views');
-const { verifyPassword, DUMMY_HASH, homeFor } = require('../auth');
+const { verifyPassword, hashPassword, DUMMY_HASH, homeFor } = require('../auth');
+const { isPlaceholderEmail } = require('../db');
 
 const LEVELS = ['Početnik', 'Povratnik', 'Napredni', 'Takmičar'];
 
@@ -48,7 +49,9 @@ function safeNext(next, fallback) {
   return typeof next === 'string' && /^\/(?![/\\])/.test(next) ? next : fallback;
 }
 
-module.exports = function publicRoutes(db, { loginLimiter }) {
+module.exports = function publicRoutes(db, {
+  loginLimiter, resetLimiter, resetEmailLimiter, mailer, appUrl = '',
+}) {
   const router = express.Router();
 
   function homePage(req, { values = {}, errors = [] } = {}) {
@@ -224,6 +227,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
           </label>
           <button class="btn btn-primary" type="submit">Prijavi se</button>
         </form>
+        <p class="small"><a href="/zaboravljena-lozinka">Zaboravljena lozinka?</a></p>
         <p class="muted small">Administrator se prijavljuje svojom e-mail adresom.</p>
         ${req.app.locals.publicHomepage ? html`<p class="muted small">Još nisi član? <a href="/#anmeldung">Prijavi se ovdje bez obaveze.</a></p>` : ''}
       </section>`,
@@ -274,6 +278,138 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
     else req.session = { pid: parentAccount.id, csrf };
     res.saveSession();
     res.redirect(safeNext(next, user ? homeFor(user) : trainer ? '/trener' : '/roditelj'));
+  });
+
+  // ---------------------------------------------------------------- Zaboravljena lozinka
+  // Član unese e-mail adresu i dobije jednokratni link (60 min) za novu lozinku. Korisničko ime se ne mijenja.
+  // Odgovor je uvijek isti – da se ne može provjeriti koja e-mail adresa postoji.
+  const RESET_VALID_MS = 60 * 60 * 1000;
+  const tokenHash = (token) => crypto.createHash('sha256').update(token).digest('hex');
+  const resetMember = db.prepare("SELECT * FROM users WHERE role = 'member' AND active = 1 AND email = ? COLLATE NOCASE");
+  const findReset = db.prepare(
+    `SELECT r.*, u.username, u.name FROM password_resets r JOIN users u ON u.id = r.user_id
+      WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at > ? AND u.active = 1 AND u.role = 'member'`
+  );
+
+  function forgotPage(req, { sent = false, email = '' } = {}) {
+    return layout(req, {
+      title: 'Zaboravljena lozinka',
+      body: html`
+      <section class="card narrow">
+        <h1>Zaboravljena lozinka</h1>
+        ${sent
+          ? html`<p class="notice">Ako je ta e-mail adresa povezana s članskim računom, poslali smo link za novu lozinku.
+              Provjeri svoj e-mail (i folder za neželjenu poštu). Link vrijedi 60 minuta.</p>`
+          : html`<p class="muted">Unesi e-mail adresu koju si sačuvao/la u svom profilu. Poslat ćemo ti link za postavljanje nove lozinke.
+              Tvoje korisničko ime ostaje isto.</p>`}
+        <form method="post" action="/zaboravljena-lozinka" class="stack">
+          ${csrfField(req)}
+          <label>E-mail adresa
+            <input name="email" type="email" required maxlength="200" autocomplete="email" value="${email}">
+          </label>
+          <button class="btn btn-primary" type="submit">Pošalji link</button>
+        </form>
+        <p class="muted small"><a href="/login">← Nazad na prijavu</a> · Nemaš sačuvan e-mail? Javi se teniskoj školi.</p>
+      </section>`,
+    });
+  }
+
+  router.get('/zaboravljena-lozinka', (req, res) => {
+    res.send(String(forgotPage(req)));
+  });
+
+  router.post('/zaboravljena-lozinka', async (req, res, next) => {
+    try {
+      const email = str(req.body.email, 200);
+      // Zaštita od zloupotrebe: najviše 20 zahtjeva po IP adresi i 3 linka po e-mail adresi u 15 minuta.
+      const ipKey = `reset:${req.ip}`;
+      const mailKey = `reset-mail:${email.toLowerCase()}`;
+      const blocked = (resetLimiter && resetLimiter.isBlocked(ipKey)) || (resetEmailLimiter && resetEmailLimiter.isBlocked(mailKey));
+      if (resetLimiter) resetLimiter.fail(ipKey);
+      if (resetEmailLimiter && !blocked) resetEmailLimiter.fail(mailKey);
+      const member = !blocked && EMAIL_RE.test(email) ? resetMember.get(email) : null;
+      if (member && !isPlaceholderEmail(member.email)) {
+        const token = crypto.randomBytes(32).toString('base64url');
+        db.prepare('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
+          .run(tokenHash(token), member.id, Date.now() + RESET_VALID_MS);
+        const link = `${appUrl}/nova-lozinka/${token}`;
+        await mailer.send({
+          to: member.email,
+          subject: 'BetterTennis – nova lozinka',
+          text: `Zdravo ${member.name},\n\nzatražena je nova lozinka za tvoj BetterTennis račun.\n`
+            + `Tvoje korisničko ime: ${member.username}\n\n`
+            + `Novu lozinku postavi preko ovog linka (vrijedi 60 minuta):\n${link}\n\n`
+            + 'Ako nisi ti zatražio/la novu lozinku, jednostavno zanemari ovaj e-mail.\n\nBetterTennis',
+          html: String(html`<p>Zdravo ${member.name},</p>
+            <p>zatražena je nova lozinka za tvoj BetterTennis račun.<br>Tvoje korisničko ime: <strong>${member.username}</strong></p>
+            <p><a href="${link}">Postavi novu lozinku</a> (link vrijedi 60 minuta)</p>
+            <p style="color:#666">Ako link ne radi, kopiraj ovu adresu u preglednik:<br>${link}</p>
+            <p>Ako nisi ti zatražio/la novu lozinku, jednostavno zanemari ovaj e-mail.</p><p>BetterTennis</p>`),
+        });
+      }
+      res.send(String(forgotPage(req, { sent: true })));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  function resetPage(req, { token, account, errors = [] }) {
+    return layout(req, {
+      title: 'Nova lozinka',
+      body: html`
+      <section class="card narrow">
+        <h1>Nova lozinka</h1>
+        ${account
+          ? html`
+            <p class="muted">Korisničko ime: <strong>${account.username}</strong> (ostaje isto).</p>
+            ${errorList(errors)}
+            <form method="post" action="/nova-lozinka/${token}" class="stack">
+              ${csrfField(req)}
+              <label>Nova lozinka (najmanje 8 znakova)
+                <input name="password" type="password" required minlength="8" autocomplete="new-password">
+              </label>
+              <label>Ponovi novu lozinku
+                <input name="password2" type="password" required minlength="8" autocomplete="new-password">
+              </label>
+              <button class="btn btn-primary" type="submit">Sačuvaj novu lozinku</button>
+            </form>`
+          : html`<p class="notice">Ovaj link nije važeći ili je istekao. <a href="/zaboravljena-lozinka">Zatraži novi link.</a></p>`}
+      </section>`,
+    });
+  }
+
+  router.get('/nova-lozinka/:token', (req, res) => {
+    const account = findReset.get(tokenHash(String(req.params.token)), Date.now());
+    if (!account) res.status(400);
+    res.send(String(resetPage(req, { token: req.params.token, account })));
+  });
+
+  router.post('/nova-lozinka/:token', (req, res) => {
+    const account = findReset.get(tokenHash(String(req.params.token)), Date.now());
+    if (!account) {
+      res.status(400);
+      return res.send(String(resetPage(req, { token: req.params.token, account: null })));
+    }
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+    const errors = [];
+    if (password.length < 8) errors.push('Lozinka mora imati najmanje 8 znakova.');
+    if (password !== req.body.password2) errors.push('Lozinke se ne podudaraju.');
+    if (errors.length) {
+      res.status(400);
+      return res.send(String(resetPage(req, { token: req.params.token, account, errors })));
+    }
+    // Samo lozinka – korisničko ime se ne mijenja. Svi otvoreni linkovi tog člana prestaju važiti.
+    db.exec('BEGIN');
+    try {
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), account.user_id);
+      db.prepare('UPDATE password_resets SET used_at = ? WHERE user_id = ? AND used_at IS NULL').run(Date.now(), account.user_id);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    res.flash('success', `Nova lozinka je sačuvana. Prijavi se korisničkim imenom ${account.username}.`);
+    res.redirect('/login');
   });
 
   router.post('/logout', (req, res) => {

@@ -252,7 +252,10 @@ module.exports = function adminRoutes(db) {
           <label>Ime i prezime *<input name="name" required maxlength="120" value="${v.name || ''}"></label>
           <label>Korisničko ime (za prijavu) *<input name="username" required minlength="3" maxlength="40" autocapitalize="none" spellcheck="false" value="${v.username || ''}">
             <span class="small muted">3–40 znakova: slova bez kvačica, brojevi, tačka, crtica, donja crta.</span></label>
-          <label>E-mail *<input name="email" type="email" required maxlength="200" value="${v.email || ''}"></label>
+          ${isNew
+            ? html`<label>E-mail *<input name="email" type="email" required maxlength="200" value="${v.email || ''}"></label>`
+            : html`<label>E-mail<input name="email" type="email" maxlength="200" value="${v.email || ''}">
+                <span class="small muted">Za „Zaboravljena lozinka“ i obavještenja. Prazno = član nema e-mail.</span></label>`}
           <label>Telefon<input name="phone" maxlength="50" value="${v.phone || ''}"></label>
           <label>${isNew ? 'Lozinka * (najmanje 8 znakova)' : 'Nova lozinka (ostavi prazno = bez promjene)'}
             <input name="password" type="text" autocomplete="new-password" minlength="8" ${isNew ? 'required' : ''} value="${v.password || ''}">
@@ -294,7 +297,10 @@ module.exports = function adminRoutes(db) {
     const errors = [];
     if (!values.name) errors.push('Nedostaje ime.');
     if (!USERNAME_RE.test(values.username)) errors.push('Neispravno korisničko ime (3–40 znakova: a–z, 0–9, tačka, crtica, donja crta).');
-    if (!EMAIL_RE.test(values.email)) errors.push('Neispravna e-mail adresa.');
+    // Kod uređivanja e-mail smije biti prazan (član bez e-maila); kod kreiranja ostaje obavezan.
+    if (!(values.email === '' && !isNew) && (!EMAIL_RE.test(values.email) || isPlaceholderEmail(values.email))) {
+      errors.push('Neispravna e-mail adresa.');
+    }
     if ((isNew || values.password) && values.password.length < 8) errors.push('Lozinka mora imati najmanje 8 znakova.');
     const rate = values.hourly_rate === '' ? 0 : parseMoney(values.hourly_rate);
     const fee = values.monthly_fee === '' ? 0 : parseMoney(values.monthly_fee);
@@ -446,7 +452,7 @@ module.exports = function adminRoutes(db) {
     const values = {
       name: member.name,
       username: member.username || '',
-      email: member.email,
+      email: isPlaceholderEmail(member.email) ? '' : member.email,
       phone: member.phone || '',
       hourly_rate: centsToInput(member.hourly_rate_cents),
       monthly_fee: centsToInput(member.monthly_fee_cents),
@@ -460,6 +466,7 @@ module.exports = function adminRoutes(db) {
     const member = getMember.get(toId(req.params.id));
     if (!member) return notFound(res, 'član');
     const { values, errors, rate, fee } = readMemberForm(req.body, false);
+    if (values.email === '') values.email = placeholderEmail(values.username || member.username);
     if (!errors.length) errors.push(...uniquenessErrors(values, member.id));
     if (errors.length) {
       res.status(400);
