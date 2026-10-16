@@ -386,11 +386,15 @@ module.exports = function adminRoutes(db) {
       "INSERT INTO users (name, username, email, password_hash, role, active) VALUES (?, ?, ?, ?, 'member', 1)"
     );
     const created = [];
+    const usedPasswords = new Set();
     db.exec('BEGIN');
     try {
       for (const name of people) {
         const username = suggestUsername(db, name);
-        const password = readablePassword();
+        // Jedes Mitglied der Liste bekommt ein anderes Passwort.
+        let password = readablePassword();
+        while (usedPasswords.has(password)) password = readablePassword();
+        usedPasswords.add(password);
         insert.run(name, username, placeholderEmail(username), hashPassword(password));
         created.push({ name, username, password });
       }

@@ -1431,3 +1431,77 @@ test('Elternkonto sieht nur zugeordnete Spieler und kann nichts verändern', asy
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users WHERE id IN (?, ?)').get(fam.p1, fam.p2).n, 2);
   assert.equal((await parent.request('/roditelj')).status, 302);
 });
+
+test('Elternkonto Finanzen: einzelne Posten (Datum, Betrag) je ausgewähltem Spieler, Summe pro Spieler und Gesamtsumme', async () => {
+  const p1 = makeMember('Detalj Prvi', 'detalj.prvi', { fee: 1000 });
+  const p2 = makeMember('Detalj Drugi', 'detalj.drugi');
+  const p3 = makeMember('Detalj Treci', 'detalj.treci');
+  const lesson = (uid, date, time, price, cancelled = 0) => db.prepare(
+    'INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents, cancelled) VALUES (?, ?, ?, 60, ?, ?)'
+  ).run(uid, date, time, price, cancelled);
+  lesson(p1, '2026-10-06', '14:10', 4000);
+  lesson(p1, '2026-10-08', '14:20', 4000, 1); // abgesagt → 0 KM
+  lesson(p3, '2026-10-07', '15:10', 3300);
+  lesson(p3, '2026-11-17', '15:20', 3300); // Woche noch nicht freigegeben
+  db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents, created_at) VALUES (?, '2026-10', 'Mašina za loptice', 1550, '2026-10-03 12:00:00')").run(p1);
+  db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents, created_at) VALUES (?, '2026-10', 'Turnirska kotizacija', 2500, '2026-10-12 09:00:00')").run(p2);
+  for (const uid of [p1, p2, p3]) for (const m of ['2026-10', '2026-11']) db.prepare('INSERT INTO payments (user_id, month, released) VALUES (?, ?, 1)').run(uid, m);
+
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await createParentAccount(admin, { name: 'Roditelj Detalj', username: 'roditelj.detalj', password: 'roditelj-1', players: [p1, p2, p3] });
+  const parent = client();
+  await parent.login('roditelj.detalj', 'roditelj-1');
+  const fin = (month, ids) => parent.request(`/roditelj/finansije?monat=${month}&izbor=1${ids.map((i) => `&igraci=${i}`).join('')}`);
+  // Abschnitt eines Spielers aus der Seite herauslösen
+  const section = (text, id) => {
+    const m = new RegExp(`<section class="card player-statement" data-player="${id}">([\\s\\S]*?)</section>`).exec(text);
+    return m ? m[1] : null;
+  };
+
+  const r = await fin('2026-10', [p1, p2]);
+  assert.equal(r.status, 200);
+  const s1 = section(r.text, p1);
+  const s2 = section(r.text, p2);
+  assert.ok(s1 && s2, 'Abschnitte für ausgewählte Spieler fehlen');
+  assert.equal(section(r.text, p3), null); // nicht ausgewählt → keine Posten
+  assert.doesNotMatch(r.text, /15:10–16:10/);
+  // Spieler 1: Grundgebühr, Trainings mit Datum/Uhrzeit/Betrag, abgesagtes Training, Posten mit Datum
+  assert.match(s1, /Detalj Prvi/);
+  assert.match(s1, /Mjesečna osnovna članarina[\s\S]*?10,00\sKM/);
+  assert.match(s1, /Utorak, 06\.10\.2026\., 14:10–15:10 h[\s\S]*?40,00\sKM/);
+  assert.match(s1, /Četvrtak, 08\.10\.2026\., 14:20–15:20 h[\s\S]*?Otkazan[\s\S]*?0,00\sKM/);
+  assert.match(s1, /Mašina za loptice[\s\S]*?03\.10\.2026\.[\s\S]*?15,50\sKM/);
+  assert.match(s1, /Ukupno Oktobar 2026[\s\S]*?65,50\sKM/); // 10 + 40 + 15,50
+  // Spieler 2: nur Posten
+  assert.match(s2, /Turnirska kotizacija[\s\S]*?12\.10\.2026\.[\s\S]*?25,00\sKM/);
+  assert.match(s2, /Ukupno Oktobar 2026[\s\S]*?25,00\sKM/);
+  // Gesamtsumme der ausgewählten Spieler (oben und unter den Posten)
+  assert.equal(selectedTotal(r.text), 6550 + 2500);
+  assert.match(r.text, /data-grand-total="9050"[^>]*>90,50\sKM/);
+  // Die Posten stimmen mit der bestehenden Abrechnung überein (Logik unverändert)
+  const { monthlyStatement } = require('../src/billing');
+  assert.equal(monthlyStatement(db, db.prepare('SELECT * FROM users WHERE id = ?').get(p1), '2026-10').total, 6550);
+
+  // Andere Auswahl → andere Posten, ohne dass etwas gespeichert wird
+  const only3 = await fin('2026-10', [p3]);
+  assert.equal(section(only3.text, p1), null);
+  assert.match(section(only3.text, p3), /Srijeda, 07\.10\.2026\., 15:10–16:10 h[\s\S]*?33,00\sKM/);
+  // Termine aus noch nicht freigegebenen Wochen werden nicht einzeln aufgeführt (wie beim Mitglied)
+  const nov = await fin('2026-11', [p3]);
+  assert.doesNotMatch(nov.text, /15:20/);
+  assert.match(section(nov.text, p3), /još nije objavljen/);
+  assert.equal(selectedTotal(nov.text), 3300);
+  // Nicht freigegebener Monat: keine Posten, nur „Obračun u pripremi“
+  db.prepare("UPDATE payments SET released = 0 WHERE user_id = ? AND month = '2026-10'").run(p2);
+  const pend = await fin('2026-10', [p1, p2]);
+  assert.doesNotMatch(pend.text, /Turnirska kotizacija/);
+  assert.match(section(pend.text, p2), /Obračun u pripremi/);
+  assert.equal(selectedTotal(pend.text), 6550);
+  // Mitgliederansicht bleibt unverändert (keine zusätzlichen Datumsangaben bei Posten)
+  const m = client();
+  await m.login('detalj.prvi', 'memberpass1');
+  const own = await m.request('/mitglied/abrechnung?monat=2026-10');
+  assert.match(own.text, /Mašina za loptice/);
+  assert.doesNotMatch(own.text, /03\.10\.2026\./);
+});

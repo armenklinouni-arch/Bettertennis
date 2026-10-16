@@ -197,7 +197,8 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
 }
 
 // Mjesečni obračun kao tabela (samo informativno).
-function statementTable(statement, { adminDelete, req } = {}) {
+// adjustmentDates: uz stavke prikaži datum unosa (koristi roditeljski račun; članski i admin prikaz ostaju isti).
+function statementTable(statement, { adminDelete, req, adjustmentDates = false } = {}) {
   const rows = [];
   if (statement.fee) {
     rows.push(html`<tr><td>Mjesečna osnovna članarina</td><td></td><td class="num">${formatMoney(statement.fee)}</td>${adminDelete ? html`<td></td>` : ''}</tr>`);
@@ -215,7 +216,7 @@ function statementTable(statement, { adminDelete, req } = {}) {
     rows.push(html`
       <tr>
         <td>${a.description}</td>
-        <td>${a.amount_cents < 0 ? 'Odobrenje' : 'Dodatna stavka'}</td>
+        <td>${a.amount_cents < 0 ? 'Odobrenje' : 'Dodatna stavka'}${adjustmentDates && a.created_at ? ` · ${D.formatDate(a.created_at.slice(0, 10))}` : ''}</td>
         <td class="num">${formatMoney(a.amount_cents)}</td>
         ${adminDelete
           ? html`<td class="num">

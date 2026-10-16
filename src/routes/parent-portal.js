@@ -8,7 +8,7 @@ const { html } = require('../html');
 const D = require('../dates');
 const { formatMoney } = require('../money');
 const { monthlyStatement, formatHours } = require('../billing');
-const { layout, weekView, monthNav, paymentBadge } = require('../views');
+const { layout, weekView, monthNav, paymentBadge, statementTable } = require('../views');
 const { requireParentAccount } = require('../auth');
 const { isWeekReleased } = require('../weeks');
 
@@ -71,6 +71,16 @@ module.exports = function parentPortalRoutes(db) {
       selected = new Set(allowed);
     }
     const rows = players.map((p) => ({ player: p, st: monthlyStatement(db, p, month), on: selected.has(p.id) }));
+    // Pojedinačne stavke kao kod člana: termini iz još neobjavljenih sedmica se ne navode pojedinačno.
+    const detail = (st) => {
+      const cache = new Map();
+      const shown = st.lessons.filter((l) => {
+        const monday = D.mondayOf(l.date);
+        if (!cache.has(monday)) cache.set(monday, isWeekReleased(db, monday));
+        return cache.get(monday);
+      });
+      return { ...st, lessons: shown, unpublishedCount: st.lessons.length - shown.length };
+    };
     // Član vidi iznos tek kad ga škola odobri – isto važi i za roditeljski račun.
     const counted = rows.filter((r) => r.on && r.st.released);
     const total = counted.reduce((s, r) => s + r.st.total, 0);
@@ -113,6 +123,19 @@ module.exports = function parentPortalRoutes(db) {
           <div class="btn-row"><button class="btn btn-primary btn-sm" type="submit">Izračunaj zbir</button></div>
         </form>
       </section>
+      ${rows.filter((r) => r.on).map(({ player, st }) => html`
+      <section class="card player-statement" data-player="${player.id}">
+        <h2>${player.name} · ${D.monthLabel(month)}</h2>
+        ${st.released
+          ? html`<p class="muted small">${st.manual ? 'Ručni obračun' : `Termini: ${st.lessonCount} · ${formatHours(st.hours)}`} · ${paymentBadge(st)}</p>
+            ${statementTable(detail(st), { adjustmentDates: true })}`
+          : html`<p class="notice">Obračun u pripremi – stavke i iznos bit će vidljivi kad ih škola odobri.</p>`}
+      </section>`)}
+      ${selected.size ? html`<div class="summary-tile">
+        <span class="label">Ukupno za odabrane igrače · ${D.monthLabel(month)}</span>
+        <span class="value" data-grand-total="${total}">${formatMoney(total)}</span>
+        <span class="hint">${counted.map((r) => `${r.player.name}: ${formatMoney(r.st.total)}`).join(' · ') || '–'}</span>
+      </div>` : ''}
       <p class="muted small">Pregled je samo informativan. Iznos mjeseca je vidljiv kad ga škola odobri.</p>`,
     })));
   });

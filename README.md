@@ -134,6 +134,8 @@ Tests: `npm test`
   Per Häkchen wird frei gewählt, welche Spieler in die Summe einfließen; die Summe wird sofort neu berechnet.
   Die Auswahl wird **nicht gespeichert** (nur in der Adresse); ohne Auswahl sind alle Spieler einbezogen.
   Wie bei Mitgliedern zählt ein Monat erst, wenn der Admin ihn freigegeben hat („Obračun u pripremi“).
+  Unter der Auswahl stehen für jeden ausgewählten Spieler die einzelnen Posten des Monats (Grundgebühr, Trainings
+  mit Datum/Uhrzeit/Betrag, Zusatzposten mit Datum), seine Summe und am Ende die Gesamtsumme der Auswahl.
 - Elternkonten sehen ausschließlich ihre zugeordneten Spieler und können nichts ändern.
 
 ## Kinder-Konten
