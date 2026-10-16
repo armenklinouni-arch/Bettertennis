@@ -13,6 +13,8 @@ const trainerRoutes = require('./routes/trainers');
 const trainerPortalRoutes = require('./routes/trainer-portal');
 const groupRoutes = require('./routes/groups');
 const financeRoutes = require('./routes/finance');
+const parentPortalRoutes = require('./routes/parent-portal');
+const parentAccountRoutes = require('./routes/parents');
 
 function createApp(db, { secret, secureCookies = false, trustProxy = false, publicHomepage = false } = {}) {
   const app = express();
@@ -53,9 +55,11 @@ function createApp(db, { secret, secureCookies = false, trustProxy = false, publ
   app.use('/', publicRoutes(db, { loginLimiter: createLoginLimiter() }));
   app.use('/mitglied', memberRoutes(db));
   app.use('/trener', trainerPortalRoutes(db));
+  app.use('/roditelj', parentPortalRoutes(db));
   app.use('/admin/treneri', trainerRoutes(db));
   app.use('/admin/grupe', groupRoutes(db));
   app.use('/admin/finansije', financeRoutes(db));
+  app.use('/admin/roditelji', parentAccountRoutes(db));
   app.use('/admin', adminRoutes(db));
 
   app.use((req, res) => {

@@ -39,6 +39,7 @@ function layout(req, { title, body, wide = false }) {
       ${navLink('/admin/mitglieder', 'Članovi')}
       ${navLink('/admin/grupe', 'Grupe')}
       ${navLink('/admin/treneri', 'Treneri')}
+      ${navLink('/admin/roditelji', 'Roditelji')}
       ${navLink('/admin/termine', 'Termini')}
       ${navLink('/admin/abrechnung', 'Iznosi')}
       ${navLink('/admin/finansije', 'Finansije')}
@@ -48,6 +49,11 @@ function layout(req, { title, body, wide = false }) {
       ${navLink('/trener', 'Moj izvještaj', true)}
       ${navLink('/trener/raspored', 'Moj raspored')}
       ${navLink('/trener/lozinka', 'Lozinka')}`;
+  } else if (user.role === 'parent') {
+    // Roditeljski račun: samo pregled (raspored i finansije dodijeljenih igrača).
+    nav = html`
+      ${navLink('/roditelj', 'Sedmični raspored', true)}
+      ${navLink('/roditelj/finansije', 'Finansije')}`;
   } else if (user.parent_id) {
     // Dječiji račun: samo sedmični raspored (bez iznosa, plaćanja i obračuna).
     nav = html`${navLink('/mitglied', 'Moj raspored', true)}`;
@@ -75,7 +81,7 @@ function layout(req, { title, body, wide = false }) {
 <body>
   <header class="site-header">
     <div class="container header-inner${wide || (user && user.role === 'admin') ? ' wide' : ''}">
-      <a class="brand" href="${user ? ({ admin: '/admin', trainer: '/trener' }[user.role] || '/mitglied') : '/'}">
+      <a class="brand" href="${user ? ({ admin: '/admin', trainer: '/trener', parent: '/roditelj' }[user.role] || '/mitglied') : '/'}">
         <img class="brand-mark" src="/static/img/logo-mark.png" alt="" width="40" height="40">
         <span class="brand-name">Better<span>Tennis</span></span>
       </a>
@@ -83,7 +89,7 @@ function layout(req, { title, body, wide = false }) {
       ${user
         ? html`<form method="post" action="/logout" class="logout">
             ${csrfField(req)}
-            <span class="who">${user.name}${user.role === 'admin' ? html` <span class="badge">Admin</span>` : ''}${user.role === 'trainer' ? html` <span class="badge">Trener</span>` : ''}</span>
+            <span class="who">${user.name}${user.role === 'admin' ? html` <span class="badge">Admin</span>` : ''}${user.role === 'trainer' ? html` <span class="badge">Trener</span>` : ''}${user.role === 'parent' ? html` <span class="badge">Roditelj</span>` : ''}</span>
             <button type="submit" class="btn btn-ghost btn-sm">Odjava</button>
           </form>`
         : ''}

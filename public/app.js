@@ -89,3 +89,9 @@ document.addEventListener('DOMContentLoaded', () => {
   onScroll();
   window.addEventListener('scroll', onScroll, { passive: true });
 });
+
+// Roditeljski račun, finansije: promjena izbora igrača odmah ponovo računa zbir (GET, ništa se ne čuva).
+document.addEventListener('change', (event) => {
+  const form = event.target.form;
+  if (form && form.hasAttribute('data-autosubmit')) form.submit();
+});

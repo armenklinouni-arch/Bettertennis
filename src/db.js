@@ -136,6 +136,23 @@ CREATE TABLE IF NOT EXISTS week_releases (
   auto_release INTEGER NOT NULL DEFAULT 1
 );
 
+-- Elternkonto: übergeordnetes Konto (nur lesen), dem der Admin bestehende Spieler-Konten zuordnet.
+CREATE TABLE IF NOT EXISTS parent_accounts (
+  id            INTEGER PRIMARY KEY,
+  name          TEXT NOT NULL,
+  username      TEXT NOT NULL COLLATE NOCASE,
+  password_hash TEXT NOT NULL,
+  active        INTEGER NOT NULL DEFAULT 1,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS parent_accounts_username ON parent_accounts (username COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS parent_account_players (
+  parent_account_id INTEGER NOT NULL REFERENCES parent_accounts(id) ON DELETE CASCADE,
+  user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (parent_account_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS news (
   id         INTEGER PRIMARY KEY,
   title      TEXT NOT NULL,
@@ -191,10 +208,11 @@ function normalizeUsername(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
-// Korisničko ime mora biti jedinstveno među članovima i trenerima zajedno.
-function usernameTaken(db, username, { userId = 0, trainerId = 0 } = {}) {
+// Korisničko ime mora biti jedinstveno među članovima, trenerima i roditeljskim računima zajedno.
+function usernameTaken(db, username, { userId = 0, trainerId = 0, parentAccountId = 0 } = {}) {
   return !!db.prepare('SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?').get(username, userId)
-    || !!db.prepare('SELECT id FROM trainers WHERE username = ? COLLATE NOCASE AND id != ?').get(username, trainerId);
+    || !!db.prepare('SELECT id FROM trainers WHERE username = ? COLLATE NOCASE AND id != ?').get(username, trainerId)
+    || !!db.prepare('SELECT id FROM parent_accounts WHERE username = ? COLLATE NOCASE AND id != ?').get(username, parentAccountId);
 }
 
 // Prijedlog korisničkog imena iz e-maila ili imena (bez dijakritika, jedinstven).

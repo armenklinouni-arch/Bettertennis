@@ -239,6 +239,7 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
   const findMember = db.prepare("SELECT * FROM users WHERE role = 'member' AND username = ? COLLATE NOCASE");
   const findTrainer = db.prepare('SELECT * FROM trainers WHERE username = ? COLLATE NOCASE AND password_hash IS NOT NULL');
   const findAdmin = db.prepare("SELECT * FROM users WHERE role = 'admin' AND email = ? COLLATE NOCASE");
+  const findParentAccount = db.prepare('SELECT * FROM parent_accounts WHERE username = ? COLLATE NOCASE');
 
   router.post('/login', (req, res) => {
     const username = str(req.body.username ?? req.body.email, 200);
@@ -254,7 +255,8 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
     // Prvo članovi, zatim treneri s aktiviranim pristupom, na kraju administrator po e-mail adresi.
     const user = findMember.get(username) || (username.includes('@') ? findAdmin.get(username) : null);
     const trainer = user ? null : findTrainer.get(username);
-    const account = user || trainer;
+    const parentAccount = user || trainer ? null : findParentAccount.get(username);
+    const account = user || trainer || parentAccount;
     // Pri kopiranju lozinke često se slučajno doda razmak na početku ili kraju – i to dozvoljavamo.
     const hash = account ? account.password_hash : DUMMY_HASH;
     const passwordOk = verifyPassword(password, hash) || (password.trim() !== password && verifyPassword(password.trim(), hash));
@@ -267,9 +269,11 @@ module.exports = function publicRoutes(db, { loginLimiter }) {
 
     loginLimiter.reset(key);
     const csrf = crypto.randomBytes(18).toString('base64url');
-    req.session = user ? { uid: user.id, csrf } : { tid: trainer.id, csrf };
+    if (user) req.session = { uid: user.id, csrf };
+    else if (trainer) req.session = { tid: trainer.id, csrf };
+    else req.session = { pid: parentAccount.id, csrf };
     res.saveSession();
-    res.redirect(safeNext(next, user ? homeFor(user) : '/trener'));
+    res.redirect(safeNext(next, user ? homeFor(user) : trainer ? '/trener' : '/roditelj'));
   });
 
   router.post('/logout', (req, res) => {

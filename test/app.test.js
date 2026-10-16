@@ -1217,3 +1217,217 @@ test('Lesbare Zufallspasswörter: Wort + drei Ziffern, ohne Sonderzeichen, zufä
   assert.equal(pws.length, 30);
   assert.equal(new Set(pws).size, 30);
 });
+
+// ---------------------------------------------------------------- Elternkonten
+// Gemeinsame Testdaten: drei Spieler einer Familie, ein fremdes Mitglied.
+function setupFamily(prefix) {
+  const p1 = makeMember(`${prefix} Prvi`, `${prefix}.prvi`, { fee: 1000 });
+  const p2 = makeMember(`${prefix} Drugi`, `${prefix}.drugi`);
+  const p3 = makeMember(`${prefix} Treci`, `${prefix}.treci`);
+  const stranger = makeMember(`${prefix} Stranac`, `${prefix}.stranac`, { fee: 9900 });
+  const lesson = (uid, date, time, price) => db.prepare(
+    "INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, ?, ?, 60, ?)"
+  ).run(uid, date, time, price);
+  lesson(p1, '2026-10-06', '10:05', 4000);
+  lesson(p3, '2026-10-07', '11:05', 3000);
+  lesson(stranger, '2026-10-06', '12:05', 7700);
+  lesson(p1, '2026-09-15', '10:05', 4000);
+  lesson(p3, '2026-11-17', '11:05', 3000);
+  db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, '2026-10', 'Paušal', 2500)").run(p2);
+  for (const uid of [p1, p2, p3, stranger]) {
+    for (const month of ['2026-09', '2026-10', '2026-11']) {
+      db.prepare('INSERT OR IGNORE INTO payments (user_id, month, released) VALUES (?, ?, 1)').run(uid, month);
+    }
+  }
+  return { p1, p2, p3, stranger };
+}
+
+async function createParentAccount(admin, { name, username, password, players }) {
+  return admin.post('/admin/roditelji', { name, username, password, player_ids: players.map(String), active: '1' }, '/admin/roditelji/novi');
+}
+
+test('Elternkonto: Admin legt an (Benutzername, Passwort, Spieler-Auswahl), Login zeigt gebündelten Wochenplan', async () => {
+  const { p1, p2, p3, stranger } = setupFamily('obitelj');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  // Formular mit Auswahl der bestehenden Mitglieds-Konten
+  const form = await admin.request('/admin/roditelji/novi');
+  assert.equal(form.status, 200);
+  assert.match(form.text, new RegExp(`name="player_ids" value="${p1}"`));
+  assert.match(form.text, /name="password" type="text"[^>]*value="[A-Z][a-z]{4,}\d{3}"/);
+  // Ungültig: keine Spieler / Benutzername vergeben / zu kurzes Passwort
+  assert.equal((await createParentAccount(admin, { name: 'R', username: 'roditelj.a', password: 'roditelj-1', players: [] })).status, 400);
+  assert.equal((await createParentAccount(admin, { name: 'R', username: 'obitelj.prvi', password: 'roditelj-1', players: [p1] })).status, 400);
+  assert.equal((await createParentAccount(admin, { name: 'R', username: 'roditelj.a', password: 'kurz', players: [p1] })).status, 400);
+  const ok = await createParentAccount(admin, { name: 'Roditelj Obitelj', username: 'Roditelj.A', password: 'roditelj-1', players: [p1, p2, p3] });
+  assert.equal(ok.status, 302);
+  const acc = db.prepare("SELECT * FROM parent_accounts WHERE username = 'roditelj.a'").get();
+  assert.ok(acc);
+  assert.notEqual(acc.password_hash, 'roditelj-1');
+  assert.deepEqual(db.prepare('SELECT user_id FROM parent_account_players WHERE parent_account_id = ? ORDER BY user_id').all(acc.id).map((r) => r.user_id), [p1, p2, p3]);
+  assert.match((await admin.request('/admin/roditelji')).text, /Roditelj Obitelj[\s\S]*obitelj Prvi/i);
+  // Benutzernamen bleiben eindeutig über alle Kontoarten
+  const dupMember = await admin.post('/admin/mitglieder', { name: 'X', username: 'roditelj.a', email: 'x@dup-parent.de', password: 'xxxx-pass-1', active: '1' }, '/admin/mitglieder/neu');
+  assert.equal(dupMember.status, 400);
+
+  // Login mit dem Elternkonto → gebündelter Wochenplan aller zugeordneten Spieler
+  const parent = client();
+  const login = await parent.login('roditelj.a', 'roditelj-1');
+  assert.equal(login.location, '/roditelj');
+  const week = await parent.request('/roditelj?woche=2026-10-05');
+  assert.equal(week.status, 200);
+  assert.match(week.text, /10:05–11:05/);
+  assert.match(week.text, /11:05–12:05/);
+  assert.match(week.text, /obitelj Prvi/);
+  assert.match(week.text, /obitelj Treci/);
+  assert.doesNotMatch(week.text, /12:05–13:05|Stranac/);
+  // Versteckte (noch nicht freigegebene) Woche ist auch für das Elternkonto unsichtbar
+  const hidden = await parent.request('/roditelj?woche=2026-11-16');
+  assert.doesNotMatch(hidden.text, /11:05/);
+  assert.match(hidden.text, /još nije objavljen/);
+  // Bisherige Konten unverändert: Spieler loggt sich normal ein und sieht seinen eigenen Bereich
+  const player = client();
+  assert.equal((await player.login('obitelj.prvi', 'memberpass1')).location, '/mitglied');
+  assert.match((await player.request('/mitglied/abrechnung?monat=2026-10')).text, /50,00/);
+  // Deaktiviertes Elternkonto kann sich nicht anmelden
+  db.prepare('UPDATE parent_accounts SET active = 0 WHERE id = ?').run(acc.id);
+  assert.equal((await client().login('roditelj.a', 'roditelj-1')).status, 401);
+  assert.equal((await parent.request('/roditelj')).status, 302);
+  db.prepare('UPDATE parent_accounts SET active = 1 WHERE id = ?').run(acc.id);
+  assert.ok(stranger);
+});
+
+// Liest die angezeigte Summe der ausgewählten Spieler aus der Seite.
+function selectedTotal(text) {
+  const m = /data-total="(-?\d+)"/.exec(text);
+  assert.ok(m, 'Summe nicht gefunden');
+  return Number(m[1]);
+}
+
+test('Elternkonto: Monats-Summe der frei ausgewählten Spieler wird korrekt und live zusammengerechnet', async () => {
+  const { p1, p2, p3, stranger } = setupFamily('suma');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await createParentAccount(admin, { name: 'Roditelj Suma', username: 'roditelj.suma', password: 'roditelj-1', players: [p1, p2, p3] });
+  const parent = client();
+  await parent.login('roditelj.suma', 'roditelj-1');
+  const fin = (month, ids) => parent.request(`/roditelj/finansije?monat=${month}${ids === undefined ? '' : `&izbor=1${ids.map((i) => `&igraci=${i}`).join('')}`}`);
+
+  // Oktober: P1 = 10 + 40 = 50 KM, P2 = 25 KM (Posten), P3 = 30 KM
+  let r = await fin('2026-10');
+  assert.equal(r.status, 200);
+  assert.equal(selectedTotal(r.text), 10500); // ohne Auswahl: alle zugeordneten Spieler
+  assert.match(r.text, /105,00/);
+  assert.equal(selectedTotal((await fin('2026-10', [p1, p3])).text), 8000);
+  assert.equal(selectedTotal((await fin('2026-10', [p2])).text), 2500);
+  assert.equal(selectedTotal((await fin('2026-10', [p1])).text), 5000);
+  assert.equal(selectedTotal((await fin('2026-10', [p2, p3])).text), 5500);
+  assert.equal(selectedTotal((await fin('2026-10', [p1, p2, p3])).text), 10500);
+  const none = await fin('2026-10', []);
+  assert.equal(selectedTotal(none.text), 0);
+  assert.match(none.text, /Nijedan igrač nije odabran/);
+  // Die Auswahl wird nicht gespeichert: ohne Parameter wieder alle
+  assert.equal(selectedTotal((await fin('2026-10')).text), 10500);
+  // Häkchen spiegeln die aktuelle Auswahl, Monatsnavigation behält sie (nur in der URL)
+  r = await fin('2026-10', [p1, p3]);
+  assert.match(r.text, new RegExp(`name="igraci" value="${p1}" checked`));
+  assert.doesNotMatch(r.text, new RegExp(`name="igraci" value="${p2}" checked`));
+  assert.match(r.text, new RegExp(`href="/roditelj/finansije\\?monat=2026-09&amp;izbor=1&amp;igraci=${p1}&amp;igraci=${p3}"`));
+
+  // Jeder Monat separat: September (vergangen) und November (kommend), jeweils frei kombinierbar
+  assert.equal(selectedTotal((await fin('2026-09', [p1, p3])).text), 1000 + 4000); // P1: Gebühr + Training, P3: nichts
+  assert.equal(selectedTotal((await fin('2026-09', [p3])).text), 0);
+  assert.equal(selectedTotal((await fin('2026-11', [p3])).text), 3000);
+  assert.equal(selectedTotal((await fin('2026-11', [p1, p3])).text), 1000 + 3000);
+  assert.equal(selectedTotal((await fin('2026-11')).text), 1000 + 3000);
+  // Die Summe entspricht exakt den Einzelbeträgen der Mitglieder
+  const { monthlyStatement } = require('../src/billing');
+  const get = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  assert.equal(selectedTotal((await fin('2026-10', [p1, p2])).text),
+    monthlyStatement(db, get(p1), '2026-10').total + monthlyStatement(db, get(p2), '2026-10').total);
+
+  // Fremde Spieler-IDs werden ignoriert (nicht in Summe, nicht angezeigt)
+  const foreign = await fin('2026-10', [p2, stranger]);
+  assert.equal(selectedTotal(foreign.text), 2500);
+  assert.doesNotMatch(foreign.text, /Stranac|99,00|77,00/);
+  // Noch nicht freigegebener Monat eines Spielers: „Obračun u pripremi“, nicht in der Summe
+  db.prepare('UPDATE payments SET released = 0 WHERE user_id = ? AND month = ?').run(p3, '2026-10');
+  const pending = await fin('2026-10', [p1, p3]);
+  assert.equal(selectedTotal(pending.text), 5000);
+  assert.match(pending.text, /Obračun u pripremi/);
+  db.prepare('UPDATE payments SET released = 1 WHERE user_id = ? AND month = ?').run(p3, '2026-10');
+});
+
+test('Elternkonto sieht nur zugeordnete Spieler und kann nichts verändern', async () => {
+  const fam = setupFamily('citaj');
+  const other = setupFamily('druga');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await createParentAccount(admin, { name: 'Roditelj Citaj', username: 'roditelj.citaj', password: 'roditelj-1', players: [fam.p1, fam.p2] });
+  await createParentAccount(admin, { name: 'Roditelj Druga', username: 'roditelj.druga', password: 'roditelj-1', players: [other.p1] });
+  const parent = client();
+  await parent.login('roditelj.citaj', 'roditelj-1');
+
+  // Nur eigene Spieler: weder p3 (nicht zugeordnet) noch fremde Familien oder fremde Elternkonten
+  const pages = [
+    await parent.request('/roditelj?woche=2026-10-05'),
+    await parent.request('/roditelj/finansije?monat=2026-10'),
+    await parent.request(`/roditelj/finansije?monat=2026-10&izbor=1&igraci=${fam.p3}&igraci=${other.p1}&igraci=${other.stranger}`),
+    await parent.request(`/roditelj?woche=2026-10-05&igrac=${other.p1}&user_id=${fam.p3}`),
+  ];
+  for (const p of pages) {
+    assert.equal(p.status, 200);
+    assert.doesNotMatch(p.text, /citaj Treci|citaj Stranac|druga |Roditelj Druga|11:05–12:05|12:05–13:05/);
+  }
+  assert.equal(selectedTotal(pages[2].text), 0);
+
+  // Kein Zugriff auf Mitglieder-, Trainer- oder Admin-Bereiche
+  for (const path of ['/mitglied', '/mitglied/abrechnung', '/mitglied/djeca', '/mitglied/passwort', '/trener',
+    '/admin', '/admin/mitglieder', '/admin/termine', '/admin/abrechnung', '/admin/roditelji', '/admin/finansije']) {
+    const r = await parent.request(path);
+    assert.ok(r.status === 403 || (r.status === 302 && r.location === '/roditelj'), `${path}: ${r.status} ${r.location}`);
+  }
+  // Keine Änderungen möglich (alle schreibenden Wege abgelehnt, Daten unverändert)
+  const lessonsBefore = db.prepare('SELECT COUNT(*) AS n FROM lessons').get().n;
+  const usersBefore = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+  const token = await parent.csrf('/roditelj');
+  const lessonId = db.prepare('SELECT id FROM lessons WHERE user_id = ?').get(fam.p1).id;
+  const attempts = [
+    ['/admin/termine', { user_id: String(fam.p1), date: '2026-10-08', start_time: '09:00', duration_min: '60' }],
+    [`/admin/termine/${lessonId}/status`, { status: 'cancelled' }],
+    [`/admin/termine/${lessonId}/loeschen`, {}],
+    ['/admin/termine/sedmica/objavi', { monday: '2026-11-16' }],
+    [`/admin/abrechnung/${fam.p1}/placeno`, { month: '2026-10', paid: '1' }],
+    ['/admin/roditelji', { name: 'X', username: 'hack.x', password: 'hack-pass-1', player_ids: String(other.p1) }],
+    ['/mitglied/djeca', { name: 'X', username: 'hack.kid', password: 'hack-pass-1' }],
+    ['/mitglied/passwort', { current: 'roditelj-1', password: 'novo-pass-1', password2: 'novo-pass-1' }],
+    ['/roditelj', {}],
+    ['/roditelj/finansije', { igraci: String(fam.p1) }],
+  ];
+  for (const [path, form] of attempts) {
+    const r = await parent.request(path, { method: 'POST', form: { _csrf: token, ...form } });
+    assert.ok([302, 403, 404].includes(r.status), `${path}: ${r.status}`);
+    if (r.status === 302) assert.equal(r.location, '/roditelj', path);
+  }
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM lessons').get().n, lessonsBefore);
+  assert.equal(db.prepare('SELECT cancelled FROM lessons WHERE id = ?').get(lessonId).cancelled, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, usersBefore);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM parent_accounts WHERE username = 'hack.x'").get().n, 0);
+  assert.equal(db.prepare("SELECT paid FROM payments WHERE user_id = ? AND month = '2026-10'").get(fam.p1).paid, 0);
+  assert.ok(!require('../src/weeks').weekStatus(db, '2026-11-16').released);
+  // Die Seiten enthalten keine Formulare zum Ändern (nur die Spieler-Auswahl per GET und Abmelden)
+  for (const p of pages) {
+    const posts = [...p.text.matchAll(/<form[^>]*method="post"[^>]*action="([^"]+)"/g)].map((m) => m[1]);
+    assert.deepEqual([...new Set(posts)], ['/logout']);
+  }
+  // Admin kann zuordnen ändern: p2 entfernen → sofort nicht mehr sichtbar
+  const acc = db.prepare("SELECT id FROM parent_accounts WHERE username = 'roditelj.citaj'").get();
+  const edit = await admin.post(`/admin/roditelji/${acc.id}`, { name: 'Roditelj Citaj', username: 'roditelj.citaj', player_ids: String(fam.p1), active: '1' }, `/admin/roditelji/${acc.id}`);
+  assert.equal(edit.status, 302);
+  assert.doesNotMatch((await parent.request('/roditelj/finansije?monat=2026-10')).text, /citaj Drugi/);
+  // Löschen eines Spielers entfernt ihn auch aus dem Elternkonto; Löschen des Elternkontos lässt Spieler unberührt
+  await admin.post(`/admin/roditelji/${acc.id}/obrisi`, {}, `/admin/roditelji/${acc.id}`);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM parent_accounts WHERE id = ?').get(acc.id).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users WHERE id IN (?, ?)').get(fam.p1, fam.p2).n, 2);
+  assert.equal((await parent.request('/roditelj')).status, 302);
+});

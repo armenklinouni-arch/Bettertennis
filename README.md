@@ -122,6 +122,20 @@ Tests: `npm test`
 - Bestehende Daten: vergangene und die laufende Woche sind sofort freigegeben (ihr Sonntag 17 Uhr ist vorbei),
   künftige Wochen erscheinen ab ihrem Sonntag 17 Uhr oder nach manueller Freigabe.
 
+## Elternkonten (Roditelji)
+
+- Übergeordnete Konto-Ebene, **nur lesen**. Der Admin legt sie unter **Roditelji** an (Name, Benutzername,
+  Passwort) und wählt dabei ein oder mehrere bestehende Mitglieds-Konten als Spieler aus; Zuordnung,
+  Passwort und Status lassen sich später ändern. Die Spieler bleiben normale Mitglieder mit eigenen
+  Terminen und eigener Abrechnung.
+- Login mit dem Elternkonto → **Sedmični raspored**: Trainingsplan aller zugeordneten Spieler gebündelt in
+  einer Wochenansicht (nur freigegebene Wochen, ohne Trainer).
+- **Finansije**: pro Monat (vor/zurück, auch künftige Monate) Liste der Spieler mit Betrag und Status.
+  Per Häkchen wird frei gewählt, welche Spieler in die Summe einfließen; die Summe wird sofort neu berechnet.
+  Die Auswahl wird **nicht gespeichert** (nur in der Adresse); ohne Auswahl sind alle Spieler einbezogen.
+  Wie bei Mitgliedern zählt ein Monat erst, wenn der Admin ihn freigegeben hat („Obračun u pripremi“).
+- Elternkonten sehen ausschließlich ihre zugeordneten Spieler und können nichts ändern.
+
 ## Kinder-Konten
 
 - Ein Mitglied (Elternteil) legt unter **„Djeca“** für jedes Kind einen eigenen Zugang an (Name, Benutzername,

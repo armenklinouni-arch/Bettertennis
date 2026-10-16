@@ -114,6 +114,7 @@ function sessionMiddleware({ secret, secure }) {
 function loadUser(db) {
   const stmt = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1');
   const trainerStmt = db.prepare('SELECT * FROM trainers WHERE id = ? AND active = 1 AND password_hash IS NOT NULL');
+  const parentStmt = db.prepare('SELECT * FROM parent_accounts WHERE id = ? AND active = 1');
   const unread = db.prepare('SELECT COUNT(*) AS n FROM news_recipients WHERE user_id = ? AND read_at IS NULL');
   return (req, res, next) => {
     req.user = null;
@@ -122,6 +123,10 @@ function loadUser(db) {
     } else if (req.session.tid) {
       const trainer = trainerStmt.get(req.session.tid);
       if (trainer) req.user = { ...trainer, role: 'trainer', trainer_id: trainer.id };
+    } else if (req.session.pid) {
+      // Roditeljski račun (samo čitanje): u sesiji kao pid, predstavlja se ulogom 'parent'.
+      const account = parentStmt.get(req.session.pid);
+      if (account) req.user = { ...account, role: 'parent', parent_account_id: account.id };
     }
     // Broj nepročitanih aktuelnosti za oznaku u navigaciji.
     req.unreadNews = req.user && req.user.role === 'member' ? unread.get(req.user.id).n : 0;
@@ -149,6 +154,7 @@ function csrfProtection(req, res, next) {
 function homeFor(user) {
   if (user.role === 'admin') return '/admin';
   if (user.role === 'trainer') return '/trener';
+  if (user.role === 'parent') return '/roditelj';
   return '/mitglied';
 }
 
@@ -163,6 +169,17 @@ function requireLogin(req, res, next) {
 function requireMember(req, res, next) {
   if (!req.user) return res.redirect(`/login?weiter=${encodeURIComponent(req.originalUrl)}`);
   if (req.user.role === 'trainer') return res.redirect('/trener');
+  if (req.user.role === 'parent') return res.redirect('/roditelj');
+  next();
+}
+
+// Roditeljski račun: samo vlastiti dio (/roditelj), isključivo čitanje.
+function requireParentAccount(req, res, next) {
+  if (!req.user) return res.redirect(`/login?weiter=${encodeURIComponent(req.originalUrl)}`);
+  if (req.user.role !== 'parent') {
+    res.status(403);
+    return res.send('Nemate pristup: ovaj dio je samo za roditeljske račune.');
+  }
   next();
 }
 
@@ -239,6 +256,7 @@ module.exports = {
   csrfProtection,
   requireLogin,
   requireMember,
+  requireParentAccount,
   requireTrainer,
   homeFor,
   requireAdmin,
