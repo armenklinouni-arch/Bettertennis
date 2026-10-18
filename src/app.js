@@ -18,12 +18,11 @@ const parentPortalRoutes = require('./routes/parent-portal');
 const parentAccountRoutes = require('./routes/parents');
 
 function createApp(db, {
-  secret, secureCookies = false, trustProxy = false, publicHomepage = false,
+  secret, secureCookies = false, trustProxy = false, publicHomepage = true,
   mailer = createResendMailer({ apiKey: process.env.RESEND_API_KEY }), appUrl = 'http://localhost:3000',
 } = {}) {
   const app = express();
-  // Öffentliche Startseite (Početna): standardmäßig aus – „/“ führt dann direkt zum Login.
-  // Die Startseite bleibt im Code erhalten und lässt sich mit PUBLIC_HOMEPAGE=1 wieder einschalten.
+  // Öffentliche Startseite (Početna): standardmäßig an. Mit PUBLIC_HOMEPAGE=0 führt „/“ direkt zum Login.
   app.locals.publicHomepage = publicHomepage;
   app.disable('x-powered-by');
   if (trustProxy) app.set('trust proxy', 1);
@@ -81,4 +80,9 @@ function createApp(db, {
   return app;
 }
 
-module.exports = { createApp };
+// Railway-Variable PUBLIC_HOMEPAGE: fehlt/leer/1 → Startseite an, nur „0“ schaltet sie aus.
+function publicHomepageFromEnv(value) {
+  return String(value ?? '').trim() !== '0';
+}
+
+module.exports = { createApp, publicHomepageFromEnv };

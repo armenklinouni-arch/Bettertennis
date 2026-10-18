@@ -5,7 +5,7 @@ process.env.TZ = process.env.TZ || 'Europe/Berlin';
 
 const path = require('node:path');
 const { openDatabase, ensureAdmin } = require('./db');
-const { createApp } = require('./app');
+const { createApp, publicHomepageFromEnv } = require('./app');
 const { createResendMailer } = require('./mailer');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -62,8 +62,8 @@ const app = createApp(db, {
   secureCookies: production,
   // Hinter einem Proxy (z. B. Railway) die echte Besucher-IP verwenden (wichtig für die Login-Sperre).
   trustProxy: process.env.TRUST_PROXY === '1' || !!process.env.RAILWAY_ENVIRONMENT,
-  // Öffentliche Startseite nur mit PUBLIC_HOMEPAGE=1, sonst landet man direkt beim Login.
-  publicHomepage: cleanEnv('PUBLIC_HOMEPAGE') === '1',
+  // Öffentliche Startseite (Početna) an; mit PUBLIC_HOMEPAGE=0 landet man direkt beim Login.
+  publicHomepage: publicHomepageFromEnv(cleanEnv('PUBLIC_HOMEPAGE')),
   // E-Mails (Passwort vergessen) über Resend; Links zeigen immer auf die feste Adresse der Seite.
   mailer: createResendMailer({ apiKey: cleanEnv('RESEND_API_KEY'), from: cleanEnv('MAIL_FROM') || undefined }),
   appUrl: (cleanEnv('APP_URL') || (process.env.RAILWAY_ENVIRONMENT ? 'https://bettertennis.net' : `http://localhost:${PORT}`)).replace(/\/+$/, ''),

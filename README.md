@@ -98,9 +98,9 @@ Tests: `npm test`
 
 ## Anmeldung
 
-- Die öffentliche Startseite ist **standardmäßig deaktiviert**: Wer bettertennis.net aufruft, landet direkt
-  auf der Login-Seite (eingeloggt auf der eigenen Seite). Die Startseite ist nicht gelöscht – mit der Variable
-  `PUBLIC_HOMEPAGE=1` (z. B. in Railway → Variables) ist sie samt Anmeldeformular für Interessenten wieder da.
+- Die öffentliche Startseite (Početna) ist **aktiv**: Wer bettertennis.net aufruft, sieht zuerst die Startseite
+  und kommt über „Već sam član“ bzw. „Prijava za članove“ zum Login. Mit der Variable `PUBLIC_HOMEPAGE=0`
+  (Railway → Variables) lässt sie sich ausschalten – dann führt „/“ direkt zum Login.
 
 - **Mitglieder und Trainer** melden sich mit **Benutzername** („Korisničko ime“) und Passwort an.
   Der Benutzername wird vom Admin beim Anlegen vergeben, ist eindeutig (über Mitglieder und Trainer
@@ -192,7 +192,7 @@ Lokal gehen keine Daten verloren, solange der Ordner `data/` nicht gelöscht wir
 | `NODE_ENV`       | `production` setzt Cookies auf `Secure` (HTTPS nötig)             | –                     |
 | `TRUST_PROXY`    | `1`, wenn die App hinter einem Reverse-Proxy läuft                | –                     |
 | `CURRENCY`       | Währung der Beträge, z. B. `BAM` (Konvertible Mark, „KM“) oder `EUR` | `BAM`              |
-| `PUBLIC_HOMEPAGE` | `1` = öffentliche Startseite (Početna) anzeigen; sonst leitet `/` direkt zum Login | aus |
+| `PUBLIC_HOMEPAGE` | `0` = öffentliche Startseite (Početna) ausschalten, `/` leitet dann direkt zum Login | an |
 | `RESEND_API_KEY` | Schlüssel für den E-Mail-Versand über Resend | – (keine E-Mails) |
 | `MAIL_FROM`      | Absender der E-Mails | `BetterTennis <no-reply@bettertennis.net>` |
 | `APP_URL`        | Adresse der Seite für Links in E-Mails | `https://bettertennis.net` (Railway) |

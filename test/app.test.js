@@ -1156,44 +1156,78 @@ test('Wochenfreigabe: automatische Freigabe pro Woche ausschalten; manuelle Frei
   assert.doesNotMatch((await m.request('/mitglied?woche=2026-11-02')).text, /18:20/);
 });
 
-test('Startseite deaktiviert (Standard): bettertennis.net leitet direkt zum Login, Startseite bleibt per Schalter aktivierbar', async () => {
+test('Startseite aktiv (Standard): bettertennis.net zeigt die Početna, von dort geht es zum Login', async () => {
+  const { publicHomepageFromEnv } = require('../src/app');
+  // Railway-Variable: fehlt/leer/1 → Startseite an; nur „0“ schaltet sie aus
+  assert.equal(publicHomepageFromEnv(undefined), true);
+  assert.equal(publicHomepageFromEnv(''), true);
+  assert.equal(publicHomepageFromEnv('1'), true);
+  assert.equal(publicHomepageFromEnv('0'), false);
+
   const fresh = openDatabase(':memory:');
   ensureAdmin(fresh, { email: 'chef@start.test', password: 'chefpass123' });
   fresh.prepare("INSERT INTO users (name, username, email, password_hash) VALUES ('Start Član', 'start.clan', 'start@x.ba', ?)").run(hashPassword('memberpass1'));
-  const app = createApp(fresh, { secret: 'start-secret' }); // ohne Option = wie in Produktion ohne PUBLIC_HOMEPAGE
-  const srv = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
-  const url = `http://127.0.0.1:${srv.address().port}`;
-  try {
-    // Anonym: / → /login (temporäre Umleitung, damit die Startseite später wieder aktiviert werden kann)
-    const root = await fetch(`${url}/`, { redirect: 'manual' });
-    assert.equal(root.status, 302);
-    assert.equal(root.headers.get('location'), '/login');
-    // Login-Seite ohne Verweise auf die Startseite / Anmeldung für Interessenten
-    const login = await (await fetch(`${url}/login`)).text();
-    assert.match(login, /Korisničko ime/);
-    assert.doesNotMatch(login, /href="\/#anmeldung"|>Početna</);
-    assert.doesNotMatch(login, /hero-photo|Trening po tvojoj mjeri/);
+  const start = async (options) => {
+    const app = createApp(fresh, { secret: 'start-secret', mailer: testMailer, ...options });
+    const srv = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+    return { srv, url: `http://127.0.0.1:${srv.address().port}` };
+  };
 
-    // Login funktioniert unverändert; eingeloggt führt / zur eigenen Startseite
-    const page = await fetch(`${url}/login`);
-    const cookie = page.headers.get('set-cookie').split(';')[0];
-    const csrf = /name="_csrf" value="([^"]+)"/.exec(await page.text())[1];
+  // Ohne Option (wie in Produktion ohne Variable): die bisherige Startseite, unverändert
+  let { srv, url } = await start({});
+  try {
+    const root = await fetch(`${url}/`, { redirect: 'manual' });
+    assert.equal(root.status, 200);
+    const home = await root.text();
+    assert.match(home, /Igraj <span class="hl">bolji tenis<\/span>/);
+    assert.match(home, /class="hero-photo"/);
+    assert.match(home, /Trening po tvojoj mjeri/);
+    assert.match(home, /id="anmeldung"/);
+    assert.match(home, />Početna</);
+    // Von der Startseite zum Login
+    assert.match(home, /href="\/login"[^>]*>Već sam član</);
+    assert.match(home, /href="\/login"[^>]*>Prijava za članove</);
+    // Login-Seite wieder mit Verweis auf die Anmeldung für Interessenten; Login funktioniert unverändert
+    const loginPage = await fetch(`${url}/login`);
+    const loginHtml = await loginPage.text();
+    assert.match(loginHtml, /href="\/#anmeldung"/);
+    assert.match(loginHtml, /href="\/zaboravljena-lozinka"/);
+    const cookie = loginPage.headers.get('set-cookie').split(';')[0];
+    const csrf = /name="_csrf" value="([^"]+)"/.exec(loginHtml)[1];
     const res = await fetch(`${url}/login`, {
       method: 'POST', redirect: 'manual',
       headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ _csrf: csrf, username: 'start.clan', password: 'memberpass1' }).toString(),
     });
     assert.equal(res.headers.get('location'), '/mitglied');
+    // Eingeloggt ist die Startseite weiterhin erreichbar (wie vor der Deaktivierung)
     const session = res.headers.get('set-cookie').split(';')[0];
-    const home = await fetch(`${url}/`, { redirect: 'manual', headers: { cookie: session } });
-    assert.equal(home.headers.get('location'), '/mitglied');
-    // Statische Dateien (Logo, CSS) weiterhin erreichbar
-    assert.equal((await fetch(`${url}/static/img/logo.png`)).status, 200);
+    assert.equal((await fetch(`${url}/`, { redirect: 'manual', headers: { cookie: session } })).status, 200);
+    // Anmeldeformular für Interessenten funktioniert
+    const homeRes = await fetch(`${url}/`);
+    const c2 = homeRes.headers.get('set-cookie').split(';')[0];
+    const t2 = /name="_csrf" value="([^"]+)"/.exec(await homeRes.text())[1];
+    const lead = await fetch(`${url}/anmeldung`, {
+      method: 'POST', redirect: 'manual',
+      headers: { cookie: c2, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ _csrf: t2, name: 'Novi Interesent', email: 'interes@start.ba', phone: '061 111 222', consent: '1' }).toString(),
+    });
+    assert.ok([200, 302].includes(lead.status));
+    assert.equal(fresh.prepare("SELECT COUNT(*) AS n FROM leads WHERE email = 'interes@start.ba'").get().n, 1);
   } finally {
     srv.close();
   }
-  // Mit Schalter ist die bisherige Startseite unverändert da
-  assert.match((await client().request('/')).text, /Trening po tvojoj mjeri/);
+
+  // Mit ausgeschaltetem Schalter wie bisher direkt zum Login
+  ({ srv, url } = await start({ publicHomepage: false }));
+  try {
+    const root = await fetch(`${url}/`, { redirect: 'manual' });
+    assert.equal(root.status, 302);
+    assert.equal(root.headers.get('location'), '/login');
+    assert.doesNotMatch(await (await fetch(`${url}/login`)).text(), /href="\/#anmeldung"/);
+  } finally {
+    srv.close();
+  }
 });
 
 test('Lesbare Zufallspasswörter: Wort + drei Ziffern, ohne Sonderzeichen, zufällig und unterschiedlich', async () => {
