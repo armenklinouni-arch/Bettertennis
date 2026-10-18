@@ -111,6 +111,12 @@ Tests: `npm test`
   Namen; bei Doppelungen mit Zahl, z. B. `amra2`). Der Admin sieht ihn in der Mitgliederliste bzw. beim
   Trainer und kann ihn jederzeit ändern. Sonst bleiben alle Daten unverändert.
 
+## Status-Anzeige der Termine
+
+- Nicht abgesagte Termine zeigen **„Planiran“**, solange ihre Endzeit (Ortszeit Sarajevo) noch nicht erreicht ist,
+  danach automatisch **„Realizovan“**. Abgesagte Termine bleiben „Otkazan“.
+- Das ist nur Anzeige: In der Datenbank gibt es weiter nur „nicht abgesagt“/„abgesagt“, die Abrechnung bleibt unverändert.
+
 ## Wochenfreigabe (Trainingsplan)
 
 - Jede Woche (Mo–So) ist entweder **versteckt** oder **freigegeben**. Mitglieder und Kinder-Konten sehen Termine

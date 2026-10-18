@@ -7,6 +7,7 @@ const { html } = require('./html');
 const D = require('./dates');
 const { formatMoney } = require('./money');
 const { formatHours } = require('./billing');
+const { zonedTimeToUtc } = require('./weeks');
 
 const SITE_NAME = 'BetterTennis';
 
@@ -125,20 +126,39 @@ function errorList(errors) {
 
 // Vrste treninga i status termina (u bazi: kind i cancelled).
 const LESSON_KINDS = { individual: 'Individualni trening', group: 'Grupni trening' };
+// U bazi postoje samo „nije otkazan“ (done) i „otkazan“. Prikaz: dok kraj termina (sarajevsko vrijeme)
+// nije prošao, termin je „Planiran“, poslije toga automatski „Realizovan“. Obračun se time ne mijenja.
 const LESSON_STATUSES = { done: 'Realizovan', cancelled: 'Otkazan' };
+const LESSON_PLANNED = 'Planiran';
+const LESSON_TIME_ZONE = 'Europe/Sarajevo';
+
+function lessonEndMs(lesson) {
+  const [h, m] = String(lesson.start_time).split(':').map(Number);
+  return zonedTimeToUtc(lesson.date, h, LESSON_TIME_ZONE, m) + (Number(lesson.duration_min) || 0) * 60000;
+}
+
+function isLessonOver(lesson, now = Date.now()) {
+  if (!D.isValidDate(lesson.date) || !/^\d{2}:\d{2}$/.test(String(lesson.start_time))) return true;
+  return lessonEndMs(lesson) <= now;
+}
+
+// Naziv za termin koji nije otkazan: „Planiran“ ili „Realizovan“.
+function activeStatusLabel(lesson, now = Date.now()) {
+  return isLessonOver(lesson, now) ? LESSON_STATUSES.done : LESSON_PLANNED;
+}
 
 function lessonKindLabel(lesson) {
   return LESSON_KINDS[lesson.kind] || LESSON_KINDS.individual;
 }
 
 function lessonStatusLabel(lesson) {
-  return lesson.cancelled ? LESSON_STATUSES.cancelled : LESSON_STATUSES.done;
+  return lesson.cancelled ? LESSON_STATUSES.cancelled : activeStatusLabel(lesson);
 }
 
 function lessonTags(lesson) {
   return html`<div class="lesson-tags">
     <span class="tag tag-kind${lesson.kind === 'group' ? ' is-group' : ''}">${lessonKindLabel(lesson)}</span>
-    <span class="tag ${lesson.cancelled ? 'tag-cancelled' : 'tag-done'}">${lessonStatusLabel(lesson)}</span>
+    <span class="tag ${lesson.cancelled ? 'tag-cancelled' : isLessonOver(lesson) ? 'tag-done' : 'tag-planned'}">${lessonStatusLabel(lesson)}</span>
   </div>`;
 }
 
@@ -332,6 +352,6 @@ function monthNav(baseUrl, month, extraQuery = '', { min = null, max = null } = 
 
 module.exports = {
   layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, lessonTimeRange, lessonTags,
-  lessonKindLabel, lessonStatusLabel, LESSON_KINDS, LESSON_STATUSES, SITE_NAME,
+  lessonKindLabel, lessonStatusLabel, activeStatusLabel, isLessonOver, LESSON_KINDS, LESSON_STATUSES, LESSON_PLANNED, SITE_NAME,
   ATTENDANCE, attendanceLabel, attendanceSummary, billingMark,
 };

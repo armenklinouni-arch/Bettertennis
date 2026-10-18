@@ -196,6 +196,7 @@ tr.is-inactive td { color: var(--muted); }
 .tag { display: inline-block; font-size: 0.72rem; padding: 1px 6px; border-radius: 6px; background: var(--border); color: var(--text); white-space: nowrap; }
 .tag-kind.is-group { background: color-mix(in srgb, var(--accent) 45%, var(--surface)); }
 .tag-done { background: var(--success-soft); color: var(--primary); }
+.tag-planned { background: #e6eef7; color: var(--primary); }
 .tag-cancelled { background: var(--danger-soft); color: var(--danger); }
 .positive, .summary-tile .value.positive { color: var(--positive); }
 .negative, .summary-tile .value.negative { color: var(--danger); }

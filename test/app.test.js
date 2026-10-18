@@ -2937,3 +2937,90 @@ test('Neues Mitglied (einzeln): E-Mail ist optional, kann später vom Mitglied o
   assert.equal((await admin.post(`/admin/mitglieder/${u2}`, { name: 'Bez Adrese Dva', username: 'bez.adrese2', email: 'dva@primjer.ba', active: '1' }, `/admin/mitglieder/${u2}`)).status, 302);
   assert.equal(db.prepare('SELECT email FROM users WHERE id = ?').get(u2).email, 'dva@primjer.ba');
 });
+
+// ---------------------------------------------------------------- Status-Anzeige: „Planiran“ bis zur Endzeit, danach „Realizovan“
+test('Termin-Status: „Planiran“ bis zur Endzeit (Sarajevo), danach automatisch „Realizovan“; abgesagt bleibt „Otkazan“; Abrechnung unverändert', async () => {
+  const { monthlyStatement } = require('../src/billing');
+  const { releaseWeek } = require('../src/weeks');
+  const id = makeMember('Status Clan', 'status.clan', { rate: 4000 });
+  const add = (date, start, dur, cancelled = 0) => db.prepare(
+    'INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents, cancelled) VALUES (?, ?, ?, ?, 4000, ?)'
+  ).run(id, date, start, dur, cancelled).lastInsertRowid;
+  // Jetzt: Fr 09.10.2026 10:00 Sarajevo
+  const past = add('2026-10-06', '17:05', 60); // längst vorbei
+  const endsNow = add('2026-10-09', '08:05', 115); // Ende 10:00 = jetzt → Realizovan
+  const running = add('2026-10-09', '09:35', 55); // läuft noch bis 10:30 → Planiran
+  const future = add('2026-10-10', '08:05', 85); // morgen → Planiran
+  const cancelledFuture = add('2026-10-10', '11:05', 60, 1); // abgesagt → Otkazan
+  const cancelledPast = add('2026-10-07', '11:10', 60, 1);
+  releaseWeek(db, '2026-10-05');
+  const before = monthlyStatement(db, db.prepare('SELECT * FROM users WHERE id = ?').get(id), '2026-10');
+
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const m = client();
+  await m.login('status.clan', 'memberpass1');
+  await m.post('/mitglied/email-prozor/kasnije', {}, '/mitglied').catch(() => {});
+
+  // Status pro Termin aus dem Mitglieds-Monatsauszug (Admin-Ansicht „Iznosi → Detalji“)
+  const statusOf = (text, date, range) => {
+    const row = new RegExp(`${date.replace(/\./g, '\\.')}, ${range} h[^<]*</td>\\s*<td>(\\w+) ·`).exec(text);
+    assert.ok(row, `Zeile ${date} ${range} fehlt`);
+    return row[1];
+  };
+  const detail = async () => (await admin.request(`/admin/abrechnung/${id}?monat=2026-10`)).text;
+  let t = await detail();
+  assert.equal(statusOf(t, '06.10.2026.', '17:05–18:05'), 'Realizovan');
+  assert.equal(statusOf(t, '09.10.2026.', '08:05–10:00'), 'Realizovan');
+  assert.equal(statusOf(t, '09.10.2026.', '09:35–10:30'), 'Planiran');
+  assert.equal(statusOf(t, '10.10.2026.', '08:05–09:30'), 'Planiran');
+  assert.equal(statusOf(t, '10.10.2026.', '11:05–12:05'), 'Otkazan');
+  assert.equal(statusOf(t, '07.10.2026.', '11:10–12:10'), 'Otkazan');
+
+  // Wochenansicht (Admin und Mitglied): Tags pro Termin
+  const tagFor = (text, lessonRange) => {
+    const i = text.indexOf(lessonRange);
+    assert.ok(i >= 0, `Termin ${lessonRange} fehlt`);
+    const part = text.slice(i, i + 1500);
+    return /class="tag (tag-planned|tag-done|tag-cancelled)">([^<]+)</.exec(part).slice(1);
+  };
+  const adminWeek = (await admin.request('/admin/termine?woche=2026-10-05')).text;
+  const memberWeek = (await m.request('/mitglied?woche=2026-10-05')).text;
+  for (const week of [adminWeek, memberWeek]) {
+    assert.deepEqual(tagFor(week, '09:35–10:30'), ['tag-planned', 'Planiran']);
+    assert.deepEqual(tagFor(week, '08:05–09:30'), ['tag-planned', 'Planiran']);
+    assert.deepEqual(tagFor(week, '17:05–18:05'), ['tag-done', 'Realizovan']);
+    assert.deepEqual(tagFor(week, '11:10–12:10'), ['tag-cancelled', 'Otkazan']);
+  }
+  // Mitglieds-Monatsauszug zeigt dasselbe
+  const memberBill = (await m.request('/mitglied/abrechnung?monat=2026-10')).text;
+  if (/09:35–10:30/.test(memberBill)) assert.equal(statusOf(memberBill, '09.10.2026.', '09:35–10:30'), 'Planiran');
+
+  // Sobald die Endzeit (Sarajevo) erreicht ist → automatisch „Realizovan“
+  await atTime('2026-10-09T10:29:00+02:00', async () => {
+    assert.equal(statusOf(await detail(), '09.10.2026.', '09:35–10:30'), 'Planiran');
+  });
+  await atTime('2026-10-09T10:30:00+02:00', async () => {
+    assert.equal(statusOf(await detail(), '09.10.2026.', '09:35–10:30'), 'Realizovan');
+  });
+  await atTime('2026-10-10T09:30:00+02:00', async () => {
+    const d = await detail();
+    assert.equal(statusOf(d, '10.10.2026.', '08:05–09:30'), 'Realizovan');
+    assert.equal(statusOf(d, '10.10.2026.', '11:05–12:05'), 'Otkazan');
+  });
+
+  // Bearbeiten: Status-Auswahl zeigt „Planiran“ bzw. „Realizovan“ für nicht abgesagte Termine
+  assert.match((await admin.request(`/admin/termine/${future}`)).text, /<option value="done" selected>Planiran<\/option>/);
+  assert.match((await admin.request(`/admin/termine/${past}`)).text, /<option value="done" selected>Realizovan<\/option>/);
+  assert.match((await admin.request(`/admin/termine/${cancelledFuture}`)).text, /<option value="cancelled" selected>Otkazan/);
+  // Neuer Termin: Hinweis „Planiran“
+  assert.match((await admin.request('/admin/termine?woche=2026-10-05')).text, /Novi termin dobija status „Planiran“/);
+
+  // Nur Anzeige: Datenbank und Abrechnung unverändert
+  const after = monthlyStatement(db, db.prepare('SELECT * FROM users WHERE id = ?').get(id), '2026-10');
+  assert.equal(after.total, before.total);
+  assert.equal(after.lessonCount, before.lessonCount);
+  assert.equal(after.lessonCount, 4); // alle nicht abgesagten, auch geplante – wie bisher
+  assert.deepEqual(db.prepare('SELECT id, cancelled FROM lessons WHERE user_id = ? ORDER BY id').all(id).map((r) => [r.id, r.cancelled]),
+    [[past, 0], [endsNow, 0], [running, 0], [future, 0], [cancelledFuture, 1], [cancelledPast, 1]]);
+});

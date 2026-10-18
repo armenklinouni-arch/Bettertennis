@@ -13,7 +13,7 @@ const {
   setMonthMode, closeMonth, reopenMonth, isMonthClosed, liveTotal, modeForMonth,
 } = require('../billing');
 const {
-  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES,
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, LESSON_PLANNED,
   ATTENDANCE, attendanceSummary, billingMark,
 } = require('../views');
 const { requireAdmin, hashPassword, readablePassword } = require('../auth');
@@ -602,10 +602,10 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       ${withStatus
         ? html`<label>Status
             <select name="status">
-              ${Object.entries(LESSON_STATUSES).map(([k, label]) => html`<option value="${k}"${(v.cancelled ? 'cancelled' : 'done') === k ? ' selected' : ''}>${label}${k === 'cancelled' ? ' (ne naplaćuje se)' : ''}</option>`)}
+              ${Object.entries(LESSON_STATUSES).map(([k, label]) => html`<option value="${k}"${(v.cancelled ? 'cancelled' : 'done') === k ? ' selected' : ''}>${k === 'done' ? activeStatusLabel(v) : label}${k === 'cancelled' ? ' (ne naplaćuje se)' : ''}</option>`)}
             </select>
           </label>`
-        : html`<p class="muted small form-hint">Novi termin automatski dobija status „${LESSON_STATUSES.done}“. Status možeš kasnije promijeniti u „${LESSON_STATUSES.cancelled}“.</p>`}
+        : html`<p class="muted small form-hint">Novi termin dobija status „${LESSON_PLANNED}“, a nakon završetka automatski „${LESSON_STATUSES.done}“. Status možeš kasnije promijeniti u „${LESSON_STATUSES.cancelled}“.</p>`}
       ${groupPicker()}
       <label>Trener
         <select name="trainer_id">
@@ -727,7 +727,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
           ${csrfField(req)}
           <input type="hidden" name="status" value="${l.cancelled ? 'done' : 'cancelled'}">
           <input type="hidden" name="back" value="${back}">
-          <button type="submit" class="link-btn">${l.cancelled ? `Označi: ${LESSON_STATUSES.done}` : `Označi: ${LESSON_STATUSES.cancelled}`}</button>
+          <button type="submit" class="link-btn">${l.cancelled ? `Označi: ${activeStatusLabel(l)}` : `Označi: ${LESSON_STATUSES.cancelled}`}</button>
         </form>
         ${l.cancelled ? html`<a class="btn btn-ghost btn-sm" href="/admin/termine/${l.id}/obavijest-otkazivanje">Pošalji e-mail o otkazivanju</a>` : ''}
       </div>`;
@@ -831,7 +831,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       res.flash('error', errors.join(' '));
       return res.redirect(`/admin/termine${D.isValidDate(v.date) ? `?woche=${D.mondayOf(v.date)}` : ''}`);
     }
-    v.cancelled = false; // novi termini su uvijek „Realizovan“
+    v.cancelled = false; // novi termini nisu otkazani („Planiran“, nakon kraja „Realizovan“)
     transaction(() => {
       for (let i = 0; i < v.repeat; i++) insertOccurrence(v, participants, D.addDays(v.date, 7 * i));
     });
@@ -994,7 +994,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     transaction(() => {
       for (const row of lessonSet(lesson)) update.run(cancelled, row.id);
     });
-    res.flash('success', `Status termina: ${cancelled ? LESSON_STATUSES.cancelled : LESSON_STATUSES.done}.`);
+    res.flash('success', `Status termina: ${cancelled ? LESSON_STATUSES.cancelled : activeStatusLabel(lesson)}.`);
     const back = typeof req.body.back === 'string' && req.body.back.startsWith('/admin/termine') ? req.body.back : `/admin/termine?woche=${D.mondayOf(lesson.date)}`;
     res.redirect(back);
   });
