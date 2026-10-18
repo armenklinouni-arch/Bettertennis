@@ -7,6 +7,7 @@ const path = require('node:path');
 const { openDatabase, ensureAdmin } = require('./db');
 const { createApp, publicHomepageFromEnv } = require('./app');
 const { createResendMailer } = require('./mailer');
+const { startBackupScheduler, BACKUP_EMAIL_DEFAULT } = require('./backup');
 
 const PORT = Number(process.env.PORT) || 3000;
 // Baza podataka: DB_FILE ima prednost; na Railwayu se automatski koristi priključeni Volume,
@@ -57,6 +58,10 @@ if (created) {
   console.log('------------------------------------------------------------');
 }
 
+// Ein gemeinsamer Mailer (Resend) für „Passwort vergessen“ und die Backup-Mails.
+const mailer = createResendMailer({ apiKey: cleanEnv('RESEND_API_KEY'), from: cleanEnv('MAIL_FROM') || undefined });
+const backupEmail = cleanEnv('BACKUP_EMAIL') || BACKUP_EMAIL_DEFAULT;
+
 const app = createApp(db, {
   secret: process.env.SESSION_SECRET,
   secureCookies: production,
@@ -65,9 +70,14 @@ const app = createApp(db, {
   // Öffentliche Startseite (Početna) an; mit PUBLIC_HOMEPAGE=0 landet man direkt beim Login.
   publicHomepage: publicHomepageFromEnv(cleanEnv('PUBLIC_HOMEPAGE')),
   // E-Mails (Passwort vergessen) über Resend; Links zeigen immer auf die feste Adresse der Seite.
-  mailer: createResendMailer({ apiKey: cleanEnv('RESEND_API_KEY'), from: cleanEnv('MAIL_FROM') || undefined }),
+  mailer,
+  backupEmail,
   appUrl: (cleanEnv('APP_URL') || (process.env.RAILWAY_ENVIRONMENT ? 'https://bettertennis.net' : `http://localhost:${PORT}`)).replace(/\/+$/, ''),
 });
+
+// Automatische Sicherung: jeden Sonntag um 22:00 (Sarajevo) per E-Mail an backupEmail.
+startBackupScheduler(db, mailer, { to: backupEmail });
+console.log(`Automatische Sicherung: sonntags 22:00 (Europe/Sarajevo) an ${backupEmail}.`);
 
 app.listen(PORT, () => {
   console.log(`BetterTennis radi na http://localhost:${PORT}`);

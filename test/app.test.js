@@ -1961,3 +1961,162 @@ test('Startseite: Federball-Bild aus dem Hauptbild entfernt, übrige Bilder und 
   assert.ok(full[0] >= 1500 && full[0] <= 2000, `Überblendung ${full[0]} ms`);
   assert.equal(full[1], 7000);
 });
+
+// ---------------------------------------------------------------- Automatische Sicherung per E-Mail
+test('Backup-Mail: aktuelle Datenbank als Anhang an bettertennis.net@gmail.com, mit Datum und Uhrzeit (Sarajevo)', async () => {
+  const { sendBackupMail, BACKUP_EMAIL_DEFAULT } = require('../src/backup');
+  assert.equal(BACKUP_EMAIL_DEFAULT, 'bettertennis.net@gmail.com');
+  const mails = [];
+  const mailer = { async send(m) { mails.push(m); return true; } };
+  const now = new Date('2026-10-18T20:00:00Z').getTime(); // Sonntag 22:00 in Sarajevo (Sommerzeit)
+  const result = await sendBackupMail(db, mailer, { now });
+  assert.equal(result.ok, true);
+  assert.equal(mails.length, 1);
+  const mail = mails[0];
+  assert.equal(mail.to, 'bettertennis.net@gmail.com');
+  assert.match(mail.subject, /sigurnosna kopija/i);
+  assert.match(mail.subject, /18\.10\.2026\. 22:00/);
+  assert.match(mail.text, /18\.10\.2026\. u 22:00/);
+  assert.match(mail.text, /Sarajevo/);
+  assert.equal(mail.attachments.length, 1);
+  const att = mail.attachments[0];
+  assert.equal(att.filename, 'bettertennis-2026-10-18-2200.db');
+  // Der Anhang ist eine vollständige, lesbare Kopie der Datenbank (wie „Sigurnosna kopija“)
+  const buf = Buffer.from(att.content, 'base64');
+  assert.equal(buf.subarray(0, 15).toString(), 'SQLite format 3');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { DatabaseSync } = require('node:sqlite');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-backup-test-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'b.db'), buf);
+    const copy = new DatabaseSync(path.join(dir, 'b.db'));
+    for (const t of ['users', 'lessons', 'payments', 'parent_accounts']) {
+      assert.equal(copy.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n, db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n, t);
+    }
+    copy.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  // Keine temporären Dateien bleiben liegen
+  assert.equal(fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith('bt-mailbackup-')).length, 0);
+});
+
+test('Resend-Mailer überträgt Anhänge (Dateiname und Inhalt)', async () => {
+  const { createResendMailer } = require('../src/mailer');
+  const calls = [];
+  const mailer = createResendMailer({ apiKey: 're_k', fetch: async (url, init) => { calls.push(JSON.parse(init.body)); return { ok: true, status: 200, text: async () => '' }; } });
+  await mailer.send({ to: 'x@y.ba', subject: 's', text: 't', attachments: [{ filename: 'a.db', content: 'QUJD' }] });
+  assert.deepEqual(calls[0].attachments, [{ filename: 'a.db', content: 'QUJD' }]);
+});
+
+test('Automatische Sicherung: jeden Sonntag um 22 Uhr Sarajevo, genau einmal; Fehlergrund im Log', async () => {
+  const { runScheduledBackup, backupSlot } = require('../src/backup');
+  const { getSetting } = require('../src/db');
+  const fresh = openDatabase(':memory:');
+  const at = (iso) => new Date(iso).getTime();
+  // Letzter Termin: Sonntag 22:00 Sarajevo (Sommer- und Winterzeit)
+  assert.equal(new Date(backupSlot(at('2026-10-18T20:30:00Z'))).toISOString(), '2026-10-18T20:00:00.000Z');
+  assert.equal(new Date(backupSlot(at('2026-10-21T10:00:00Z'))).toISOString(), '2026-10-18T20:00:00.000Z');
+  assert.equal(new Date(backupSlot(at('2026-10-25T21:00:00Z'))).toISOString(), '2026-10-25T21:00:00.000Z'); // CET
+  assert.equal(new Date(backupSlot(at('2026-10-25T20:59:00Z'))).toISOString(), '2026-10-18T20:00:00.000Z');
+
+  const mails = [];
+  let fail = false;
+  const mailer = { async send(m) { if (fail) return false; mails.push(m); return true; } };
+  const state = {};
+  const run = (iso) => runScheduledBackup(fresh, mailer, { now: at(iso), state });
+  // Beim ersten Start wird nicht rückwirkend gesendet, wenn der Termin schon über einen Tag zurückliegt
+  assert.equal(await run('2026-10-16T10:00:00Z'), 'skipped');
+  // Sonntag 21:59 → noch nicht; 22:00 → senden; danach nicht noch einmal
+  assert.equal(await run('2026-10-18T19:59:00Z'), 'skipped');
+  assert.equal(await run('2026-10-18T20:00:00Z'), 'sent');
+  assert.equal(await run('2026-10-18T20:05:00Z'), 'skipped');
+  assert.equal(await run('2026-10-19T08:00:00Z'), 'skipped');
+  assert.equal(mails.length, 1);
+  assert.equal(mails[0].to, 'bettertennis.net@gmail.com');
+  assert.equal(getSetting(fresh, 'backup_last_slot'), '2026-10-18T20:00:00.000Z');
+  // Der Stand ist in der Datenbank gespeichert: auch nach einem Neustart (neuer Zustand) kein doppelter Versand
+  assert.equal(await runScheduledBackup(fresh, mailer, { now: at('2026-10-18T20:10:00Z'), state: {} }), 'skipped');
+
+  // Nächster Sonntag (Winterzeit): Versand schlägt fehl → Grund im Log, kein Vermerk, erneuter Versuch nach 30 Minuten
+  const errors = [];
+  const origError = console.error;
+  console.error = (...a) => errors.push(a.join(' '));
+  try {
+    fail = true;
+    assert.equal(await run('2026-10-25T21:00:00Z'), 'failed');
+    assert.ok(errors.some((e) => /Sigurnosna kopija.*nije poslana/i.test(e)), errors.join('\n'));
+    assert.equal(await run('2026-10-25T21:10:00Z'), 'skipped'); // noch keine 30 Minuten
+    fail = false;
+    assert.equal(await run('2026-10-25T21:31:00Z'), 'sent');
+  } finally {
+    console.error = origError;
+  }
+  assert.equal(mails.length, 2);
+  assert.match(mails[1].text, /25\.10\.2026\. u 22:31/);
+  // Server war am Sonntagabend aus: am Montagmorgen wird nachgeholt (innerhalb von 24 Stunden)
+  const late = openDatabase(':memory:');
+  assert.equal(await runScheduledBackup(late, mailer, { now: at('2026-10-26T07:00:00Z'), state: {} }), 'sent');
+  assert.equal(mails.length, 3);
+});
+
+test('Admin: Knopf sendet die Backup-Mail sofort; Download „Sigurnosna kopija“ bleibt unverändert', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const home = await admin.request('/admin');
+  assert.match(home.text, /href="\/admin\/sigurnosna-kopija"/); // Download wie bisher
+  assert.match(home.text, /<form method="post" action="\/admin\/sigurnosna-kopija\/email"/);
+  assert.match(home.text, /bettertennis\.net@gmail\.com/);
+  sentMails.length = 0;
+  const r = await admin.post('/admin/sigurnosna-kopija/email', {}, '/admin');
+  assert.equal(r.status, 302);
+  assert.equal(r.location, '/admin');
+  assert.equal(sentMails.length, 1);
+  assert.equal(sentMails[0].to, 'bettertennis.net@gmail.com');
+  assert.match(sentMails[0].attachments[0].filename, /^bettertennis-\d{4}-\d{2}-\d{2}-\d{4}\.db$/);
+  assert.match((await admin.request('/admin')).text, /kopija je poslana na bettertennis\.net@gmail\.com/);
+  // Download funktioniert weiter
+  const dl = await admin.request('/admin/sigurnosna-kopija');
+  assert.equal(dl.status, 200);
+  assert.ok(dl.text.startsWith('SQLite format 3'));
+  // Nur Admins
+  const m = client();
+  await m.login('max', 'memberpass1');
+  assert.equal((await m.post('/admin/sigurnosna-kopija/email', {}, '/mitglied')).status, 403);
+  assert.equal(sentMails.length, 1);
+});
+
+test('Admin: fehlgeschlagene Backup-Mail zeigt Hinweis, Grund steht im Log', async () => {
+  const fresh = openDatabase(':memory:');
+  ensureAdmin(fresh, { email: 'chef@backup.test', password: 'chefpass123' });
+  const failing = { async send() { console.error('Resend: slanje nije uspjelo (422): invalid attachment'); return false; } };
+  const app = createApp(fresh, { secret: 'b-secret', mailer: failing });
+  const srv = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+  const url = `http://127.0.0.1:${srv.address().port}`;
+  const errors = [];
+  const origError = console.error;
+  console.error = (...a) => errors.push(a.join(' '));
+  try {
+    let cookie = '';
+    const req = async (p, opts = {}) => {
+      const res = await fetch(url + p, { redirect: 'manual', ...opts, headers: { cookie, ...(opts.headers || {}) } });
+      const sc = res.headers.get('set-cookie');
+      if (sc) cookie = sc.split(';')[0];
+      return { res, text: await res.text() };
+    };
+    const token = () => req('/login').then(({ text }) => /name="_csrf" value="([^"]+)"/.exec(text)[1]);
+    const form = (o) => ({ method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(o).toString() });
+    await req('/login', form({ _csrf: await token(), username: 'chef@backup.test', password: 'chefpass123' }));
+    const t2 = /name="_csrf" value="([^"]+)"/.exec((await req('/admin')).text)[1];
+    const r = await req('/admin/sigurnosna-kopija/email', form({ _csrf: t2 }));
+    assert.equal(r.res.status, 302);
+    assert.match((await req('/admin')).text, /nije poslan/);
+    assert.ok(errors.some((e) => /\(422\): invalid attachment/.test(e)));
+    assert.ok(errors.some((e) => /Sigurnosna kopija.*nije poslana/i.test(e)));
+  } finally {
+    console.error = origError;
+    srv.close();
+  }
+});

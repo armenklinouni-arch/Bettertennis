@@ -152,6 +152,17 @@ Tests: `npm test`
 - **Admin:** pflegt beim Mitglied die E-Mail-Adresse (leer = keine E-Mail) und kann Passwörter wie bisher
   selbst zurücksetzen. Die Massenanlage bleibt ohne E-Mail.
 
+## Automatische Sicherung per E-Mail
+
+- **Jeden Sonntag um 22:00 Uhr (Sarajevo)** wird eine aktuelle Kopie der Datenbank – dieselbe Datei wie bei
+  „Sigurnosna kopija“ – als Anhang an **bettertennis.net@gmail.com** geschickt (über Resend mit `RESEND_API_KEY`).
+  Betreff und Text enthalten Datum und Uhrzeit der Sicherung.
+- Der gesendete Termin wird in der Datenbank vermerkt (kein doppelter Versand nach einem Neustart). War der Server um
+  22 Uhr nicht erreichbar, wird innerhalb von 24 Stunden nachgeholt. Bei einem Fehler: Grund im Log, neuer Versuch
+  nach 30 Minuten.
+- **Admin → Pregled → „Pošalji kopiju e-mailom sada“** schickt die Backup-Mail sofort (zum Testen).
+- Andere Empfängeradresse: Variable `BACKUP_EMAIL`. Resend erlaubt Anhänge bis ca. 40 MB pro E-Mail.
+
 ## Kinder-Konten
 
 - Ein Mitglied (Elternteil) legt unter **„Djeca“** für jedes Kind einen eigenen Zugang an (Name, Benutzername,
@@ -196,6 +207,7 @@ Lokal gehen keine Daten verloren, solange der Ordner `data/` nicht gelöscht wir
 | `RESEND_API_KEY` | Schlüssel für den E-Mail-Versand über Resend | – (keine E-Mails) |
 | `MAIL_FROM`      | Absender der E-Mails | `BetterTennis <no-reply@bettertennis.net>` |
 | `APP_URL`        | Adresse der Seite für Links in E-Mails | `https://bettertennis.net` (Railway) |
+| `BACKUP_EMAIL`   | Empfänger der wöchentlichen Backup-Mail | `bettertennis.net@gmail.com` |
 | `TZ`             | Zeitzone für „heute“ und Wochenbeginn                             | `Europe/Berlin`       |
 
 ## Aufbau

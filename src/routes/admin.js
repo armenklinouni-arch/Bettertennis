@@ -18,6 +18,7 @@ const {
 const { requireAdmin, hashPassword, readablePassword } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
 const { listGroupsWithMembers } = require('./groups');
+const { sendBackupMail, BACKUP_EMAIL_DEFAULT } = require('../backup');
 const {
   weekStatus, releaseWeek, hideWeek, setAutoRelease, isMonday,
 } = require('../weeks');
@@ -36,7 +37,7 @@ function toId(v) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-module.exports = function adminRoutes(db) {
+module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_EMAIL_DEFAULT } = {}) {
   const router = express.Router();
   router.use(requireAdmin);
 
@@ -109,6 +110,11 @@ module.exports = function adminRoutes(db) {
         <h2>Sigurnosna kopija</h2>
         <p class="muted">Preuzmi kompletnu bazu podataka (članovi, termini, plaćanja, treneri, finansije) kao jednu datoteku i sačuvaj je na računaru.</p>
         <a class="btn btn-primary" href="/admin/sigurnosna-kopija">Preuzmi sigurnosnu kopiju</a>
+        <p class="muted small">Automatski: svake nedjelje u 22:00 (sarajevsko vrijeme) kopija se šalje e-mailom na <strong>${backupEmail}</strong>.</p>
+        <form method="post" action="/admin/sigurnosna-kopija/email" class="inline-form">
+          ${csrfField(req)}
+          <button class="btn btn-ghost" type="submit">Pošalji kopiju e-mailom sada</button>
+        </form>
       </section>`,
     })));
   });
@@ -129,6 +135,20 @@ module.exports = function adminRoutes(db) {
       cleanup();
       if (err && !res.headersSent) next(err);
     });
+  });
+
+  // Sigurnosna kopija e-mailom (ručno, npr. za test). Razlog greške se zapisuje u log.
+  router.post('/sigurnosna-kopija/email', async (req, res, next) => {
+    try {
+      const result = mailer
+        ? await sendBackupMail(db, mailer, { to: backupEmail, reason: 'ručno' })
+        : { ok: false, error: 'slanje e-maila nije podešeno' };
+      if (result.ok) res.flash('success', `Sigurnosna kopija je poslana na ${backupEmail}.`);
+      else res.flash('error', `Sigurnosna kopija nije poslana: ${result.error}. Detalji su u logovima (Railway → Deploy Logs).`);
+      res.redirect('/admin');
+    } catch (err) {
+      next(err);
+    }
   });
 
   // ---------------------------------------------------------------- Interessenten

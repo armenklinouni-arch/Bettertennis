@@ -92,5 +92,6 @@ function setAutoRelease(db, monday, on) {
 
 module.exports = {
   autoReleaseAt, weekStatus, isWeekReleased, releaseWeek, hideWeek, setAutoRelease, isMonday,
+  zonedTimeToUtc,
   RELEASE_TIME_ZONE, RELEASE_HOUR,
 };
