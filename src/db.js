@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS lessons (
   kind         TEXT NOT NULL DEFAULT 'individual' CHECK (kind IN ('individual', 'group')),
   group_id     TEXT,
   trainer_id   INTEGER REFERENCES trainers(id) ON DELETE SET NULL,
+  attendance      TEXT,
+  attendance_note TEXT,
+  billable        INTEGER NOT NULL DEFAULT 1,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS lessons_user_date ON lessons (user_id, date);
@@ -291,6 +294,10 @@ const NEW_COLUMNS = [
   // Ranije: individualni limit dječijih računa. Više se ne koristi (limit je fiksan, vidi CHILDREN_LIMIT),
   // kolona ostaje da postojeći podaci ostanu netaknuti.
   ['users', 'children_limit', 'INTEGER'],
+  // Prisustvo igrača (samo dokumentacija, ne utiče na obračun) i ručno isključenje iz obračuna.
+  ['lessons', 'attendance', 'TEXT'],
+  ['lessons', 'attendance_note', 'TEXT'],
+  ['lessons', 'billable', 'INTEGER NOT NULL DEFAULT 1'],
 ];
 
 function addMissingColumns(db) {

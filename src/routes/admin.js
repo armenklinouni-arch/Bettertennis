@@ -10,10 +10,11 @@ const D = require('../dates');
 const { formatMoney, centsToInput, parseMoney, lessonPrice, CURRENCY_SYMBOL } = require('../money');
 const {
   monthlyStatement, setPaid, setReleased, formatHours, BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,
-  setMonthMode, closeMonth, reopenMonth, isMonthClosed, liveTotal,
+  setMonthMode, closeMonth, reopenMonth, isMonthClosed, liveTotal, modeForMonth,
 } = require('../billing');
 const {
   layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES,
+  ATTENDANCE, attendanceSummary, billingMark,
 } = require('../views');
 const { requireAdmin, hashPassword, readablePassword } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
@@ -856,6 +857,73 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     res.send(String(lessonEditPage(req, lesson, lessonFormValues(lessonSet(lesson)))));
   });
 
+  // ---------------------------------------------------------------- Igrači termina: status prisustva i obračun
+  // Status je samo dokumentacija (ne utiče na obračun). Kolona „Obračun“ samo za članove s načinom „Prema rasporedu“.
+  function playersSection(req, lesson) {
+    const rows = db.prepare(
+      `SELECT l.*, u.name AS member_name FROM lessons l JOIN users u ON u.id = l.user_id
+        WHERE ${lesson.group_id ? 'l.group_id = ?' : 'l.id = ?'} ORDER BY u.name COLLATE NOCASE`
+    ).all(lesson.group_id || lesson.id);
+    const month = D.monthOf(lesson.date);
+    const info = rows.map((r) => {
+      const member = db.prepare('SELECT * FROM users WHERE id = ?').get(r.user_id);
+      return { r, schedule: modeForMonth(db, member, month) === 'schedule', closed: isMonthClosed(db, member, month) };
+    });
+    const anySchedule = info.some((x) => x.schedule);
+    const base = `/admin/termine/${lesson.id}/igrac`;
+    return html`
+      <section class="card" id="igraci">
+        <h2>Igrači</h2>
+        <p class="muted small">Status služi samo za evidenciju i ne mijenja obračun. Svaki termin je u obračunu,
+          osim ako ga ručno isključiš (samo kod načina „Prema rasporedu“).</p>
+        <div class="table-wrap"><table class="players-table">
+          <thead><tr><th>Igrač</th><th>Status</th>${anySchedule ? html`<th>Obračun</th>` : ''}</tr></thead>
+          <tbody>${info.map(({ r, schedule, closed }) => html`<tr class="player-row" data-row="${r.id}"><td class="player-name">${r.member_name}</td><td class="player-status">
+              <form method="post" action="${base}/${r.id}/status" class="inline-form attendance-form" data-autosubmit>
+                ${csrfField(req)}
+                <select name="attendance" aria-label="Status za ${r.member_name}">
+                  <option value=""${r.attendance ? '' : ' selected'}>–</option>
+                  ${Object.entries(ATTENDANCE).map(([k, label]) => html`<option value="${k}"${r.attendance === k ? ' selected' : ''}>${label}</option>`)}
+                </select>
+                <input name="note" maxlength="200" placeholder="kratka napomena (drugi razlog)" aria-label="Napomena za ${r.member_name}" value="${r.attendance_note || ''}">
+                <button class="btn btn-ghost btn-sm" type="submit">Sačuvaj</button>
+              </form></td>${anySchedule ? html`<td class="player-billing">${schedule ? html`
+              <form method="post" action="${base}/${r.id}/obracun" class="inline-form">
+                ${csrfField(req)}${billingMark(r)}
+                <button class="btn btn-ghost btn-sm" type="submit">${r.billable === 0 ? 'Uključi u obračun' : 'Ne uključuj u obračun'}</button>
+              </form>${closed ? html`<span class="small muted">Mjesec je zaključen – promjena važi tek nakon retroaktivne izmjene.</span>` : ''}` : ''}</td>` : ''}</tr>`)}</tbody>
+        </table></div>
+      </section>`;
+  }
+
+  const playerRow = (lesson, rowId) => lessonSet(lesson).find((r) => r.id === rowId) || null;
+
+  router.post('/termine/:id/igrac/:row/status', (req, res) => {
+    const lesson = getLesson.get(toId(req.params.id));
+    const row = lesson && playerRow(lesson, toId(req.params.row));
+    if (!row) return notFound(res, 'termin');
+    const attendance = typeof req.body.attendance === 'string' ? req.body.attendance : '';
+    if (attendance && !ATTENDANCE[attendance]) return res.status(400).send('Neispravan status.');
+    const note = attendance === 'other' ? str(req.body.note, 200) || null : null;
+    db.prepare('UPDATE lessons SET attendance = ?, attendance_note = ? WHERE id = ?').run(attendance || null, note, row.id);
+    res.flash('success', 'Status je sačuvan.');
+    res.redirect(`/admin/termine/${lesson.id}#igraci`);
+  });
+
+  router.post('/termine/:id/igrac/:row/obracun', (req, res) => {
+    const lesson = getLesson.get(toId(req.params.id));
+    const row = lesson && playerRow(lesson, toId(req.params.row));
+    if (!row) return notFound(res, 'termin');
+    const member = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
+    if (modeForMonth(db, member, D.monthOf(row.date)) !== 'schedule') {
+      return res.status(400).send('Isključenje iz obračuna je moguće samo kod načina „Prema rasporedu“.');
+    }
+    const billable = row.billable === 0 ? 1 : 0;
+    db.prepare('UPDATE lessons SET billable = ? WHERE id = ?').run(billable, row.id);
+    res.flash('success', billable ? 'Termin je ponovo u obračunu.' : 'Termin je isključen iz obračuna.');
+    res.redirect(`/admin/termine/${lesson.id}#igraci`);
+  });
+
   function lessonEditPage(req, lesson, values, errors = []) {
     const members = activeMembers.all();
     // Neaktivni članovi koji su već u terminu moraju ostati izborni.
@@ -878,6 +946,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
           <div class="span-2 btn-row"><button class="btn btn-primary" type="submit">Sačuvaj</button></div>
         </form>
       </section>
+      ${playersSection(req, lesson)}
       <section class="card danger-zone">
         <form method="post" action="/admin/termine/${lesson.id}/loeschen" data-confirm="Trajno obrisati termin?">
           ${csrfField(req)}<button class="btn btn-danger" type="submit">Obriši termin</button>
@@ -895,9 +964,19 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       return res.send(String(lessonEditPage(req, lesson, v, errors)));
     }
     // Termin (ili cijelu grupu) zamjenjujemo novim redovima s istim group_id.
+    // Status prisustva i isključenje iz obračuna ostaju sačuvani za svakog igrača.
+    const kept = new Map(lessonSet(lesson).map((r) => [r.user_id, r]));
     transaction(() => {
-      for (const row of lessonSet(lesson)) deleteLesson.run(row.id);
+      for (const row of kept.values()) deleteLesson.run(row.id);
       insertOccurrence(v, participants, v.date, lesson.group_id);
+      const fresh = v.kind === 'group' && lesson.group_id
+        ? db.prepare('SELECT * FROM lessons WHERE group_id = ?').all(lesson.group_id)
+        : db.prepare('SELECT * FROM lessons WHERE id = last_insert_rowid()').all();
+      const restore = db.prepare('UPDATE lessons SET attendance = ?, attendance_note = ?, billable = ? WHERE id = ?');
+      for (const row of fresh) {
+        const old = kept.get(row.user_id);
+        if (old) restore.run(old.attendance, old.attendance_note, old.billable, row.id);
+      }
     });
     res.flash('success', 'Termin je sačuvan.');
     res.redirect(`/admin/termine?woche=${D.mondayOf(v.date)}`);
@@ -1097,6 +1176,14 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     })));
   });
 
+  // Status prisustva uvijek iz baze (i kod zaključanih mjeseci, čiji sačuvani obračun ga ne sadrži).
+  function withLiveAttendance(lessons) {
+    if (!lessons.length) return lessons;
+    const rows = db.prepare(`SELECT id, attendance, attendance_note FROM lessons WHERE id IN (${lessons.map(() => '?').join(',')})`).all(...lessons.map((l) => l.id));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return lessons.map((l) => ({ ...l, attendance: byId.get(l.id)?.attendance ?? null, attendance_note: byId.get(l.id)?.attendance_note ?? null }));
+  }
+
   router.get('/abrechnung/:id', (req, res) => {
     const member = getMember.get(toId(req.params.id));
     if (!member) return notFound(res, 'član');
@@ -1158,7 +1245,8 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
         Iznos za mjesec unesi ispod kao stavku.</p>` : ''}
       ${st.mode === 'display' && !st.closed ? html`<p class="notice">Za ${D.monthLabel(month)} vrijedi <strong>raspored s prikazom, bez obračuna</strong>: termini se prikazuju,
         ali se ne naplaćuju. Iznos unesi ispod kao stavku.</p>` : ''}
-      ${statementTable(st, { adminDelete: !st.closed, req })}
+      ${st.mode === 'manual' ? '' : html`<p class="muted small attendance-summary">Status u mjesecu: ${attendanceSummary(withLiveAttendance(st.lessons)) || 'još nije unesen'}</p>`}
+      ${statementTable({ ...st, lessons: withLiveAttendance(st.lessons) }, { adminDelete: !st.closed, req, attendance: true, billingMarks: true })}
       ${st.closed ? '' : html`<section class="card">
         <h2>Dodaj stavku</h2>
         <p class="muted small">Npr. mašina za loptice, najam terena, popust. Negativni iznosi su odobrenja.

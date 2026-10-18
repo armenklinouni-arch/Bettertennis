@@ -2337,3 +2337,184 @@ test('Aktuelnosti per Mail: nur auf Knopfdruck, Auswahl aller Mitglieder, Titel 
   assert.match(js, /data-select-all/);
   assert.match(js, /:not\(:disabled\)/);
 });
+
+// ---------------------------------------------------------------- Anwesenheits-Status und Berechnungs-Spalte
+function playerRows(text) {
+  return [...text.matchAll(/<tr class="player-row" data-row="(\d+)">([\s\S]*?)<\/tr>/g)].map((m) => ({
+    row: Number(m[1]),
+    name: /<td class="player-name">([^<]+)<\/td>/.exec(m[2])[1],
+    status: /<option value="([^"]*)" selected>/.exec(m[2])?.[1] ?? null,
+    billing: /<td class="player-billing">([\s\S]*?)<\/td>/.exec(m[2])[1].replace(/\s+/g, ' ').trim(),
+    html: m[2],
+  }));
+}
+
+test('Termini → Uredi: Status (Dokumentation) und Berechnung pro Spieler; Status ändert die Abrechnung nie', async () => {
+  const a = makeMember('Status Prvi', 'status.prvi', { rate: 4000 });
+  const b = makeMember('Status Drugi', 'status.drugi', { rate: 4000 });
+  const c = makeMember('Status Treci', 'status.treci', { rate: 4000 });
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  // C rechnet im Oktober mit „Raspored s prikazom, bez obračuna“ ab
+  await admin.post(`/admin/abrechnung/${c}/nacin`, { month: '2026-10', billing_mode: 'display' }, `/admin/abrechnung/${c}?monat=2026-10`);
+  await admin.post('/admin/termine', {
+    kind: 'group', user_id: String(a), member_ids: [String(b), String(c)], date: '2026-10-27', start_time: '18:00', duration_min: '60', price: '25', repeat: '1',
+  }, '/admin/termine');
+  const lesson = db.prepare("SELECT * FROM lessons WHERE user_id = ? AND date = '2026-10-27'").get(a);
+  const rowOf = (uid) => db.prepare('SELECT * FROM lessons WHERE group_id = ? AND user_id = ?').get(lesson.group_id, uid);
+  const edit = `/admin/termine/${lesson.id}`;
+  const { monthlyStatement } = require('../src/billing');
+  const total = (uid) => monthlyStatement(db, db.prepare('SELECT * FROM users WHERE id = ?').get(uid), '2026-10').total;
+  const before = { a: total(a), b: total(b), c: total(c) };
+
+  // Standard: kein Status („–“), alle in der Berechnung (grüner Haken), Spalte nur bei „Prema rasporedu“
+  let page = await admin.request(edit);
+  assert.match(page.text, /<th>Status<\/th>/);
+  assert.match(page.text, /<th>Obračun<\/th>/);
+  let rows = playerRows(page.text);
+  assert.deepEqual(rows.map((r) => r.name), ['Status Drugi', 'Status Prvi', 'Status Treci']);
+  assert.ok(rows.every((r) => r.status === ''));
+  assert.match(rows[0].html, /<option value="" selected>–<\/option>/);
+  for (const label of ['prisutan', 'nije došao/la', 'bolestan/na', 'povrijeđen/a', 'otkazao/la na vrijeme', 'otkazao/la prekasno', 'drugi razlog']) {
+    assert.ok(rows[0].html.includes(`>${label}</option>`), label);
+  }
+  assert.match(rows[0].billing, /bill-mark is-on/);
+  assert.match(rows[0].billing, /Ne uključuj u obračun/);
+  assert.equal(rows[2].billing, ''); // C: „prikaz bez obračuna“ → keine Berechnungs-Spalte
+  assert.ok([a, b, c].every((uid) => rowOf(uid).attendance === null && rowOf(uid).billable === 1));
+
+  // Status setzen (jeder Status), ändern, zurücksetzen – Abrechnung bleibt immer gleich
+  const setStatus = (uid, attendance, note = '') => admin.post(`${edit}/igrac/${rowOf(uid).id}/status`, { attendance, note }, edit);
+  for (const st of ['present', 'no_show', 'sick', 'injured', 'cancelled_on_time', 'cancelled_late']) {
+    assert.equal((await setStatus(a, st)).status, 302);
+    assert.equal(rowOf(a).attendance, st);
+    assert.equal(total(a), before.a);
+  }
+  await setStatus(b, 'other', 'kiša');
+  assert.equal(rowOf(b).attendance, 'other');
+  assert.equal(rowOf(b).attendance_note, 'kiša');
+  await setStatus(c, 'sick', 'ignoriert');
+  assert.equal(rowOf(c).attendance_note, null); // Notiz nur bei „drugi razlog“
+  assert.equal((await setStatus(a, 'erfunden')).status, 400);
+  await setStatus(a, '');
+  assert.equal(rowOf(a).attendance, null);
+  await setStatus(a, 'present');
+  assert.deepEqual([total(a), total(b), total(c)], [before.a, before.b, before.c]);
+  rows = playerRows((await admin.request(edit)).text);
+  assert.deepEqual(rows.map((r) => r.status), ['other', 'present', 'sick']);
+  assert.match(rows[0].html, /name="note"[^>]*value="kiša"/);
+
+  // Berechnung: nur durch Klick ausnehmen, erneuter Klick nimmt wieder auf; unabhängig vom Status
+  const toggle = (uid) => admin.post(`${edit}/igrac/${rowOf(uid).id}/obracun`, {}, edit);
+  assert.equal((await toggle(a)).status, 302);
+  assert.equal(rowOf(a).billable, 0);
+  assert.equal(rowOf(a).attendance, 'present');
+  assert.equal(total(a), before.a - 2500);
+  rows = playerRows((await admin.request(edit)).text);
+  assert.match(rows[1].billing, /bill-mark is-off/);
+  assert.match(rows[1].billing, /Uključi u obračun/);
+  await toggle(a);
+  assert.equal(rowOf(a).billable, 1);
+  assert.equal(total(a), before.a);
+  // Bei „prikaz bez obračuna“ gibt es keinen Berechnungs-Schalter
+  assert.equal((await toggle(c)).status, 400);
+  assert.equal(rowOf(c).billable, 1);
+
+  // Speichern des Termins (Uredi → Sačuvaj) behält Status und Berechnung je Spieler
+  await toggle(b);
+  await admin.post(edit, {
+    kind: 'group', user_id: String(a), member_ids: [String(b), String(c)], date: '2026-10-27', start_time: '18:30', duration_min: '60', price: '25', status: 'done',
+  }, edit);
+  assert.equal(rowOf(a).attendance, 'present');
+  assert.equal(rowOf(b).attendance, 'other');
+  assert.equal(rowOf(b).attendance_note, 'kiša');
+  assert.equal(rowOf(b).billable, 0);
+  assert.equal(rowOf(c).attendance, 'sick');
+  assert.equal(rowOf(a).start_time, '18:30');
+  // Nur Admins
+  const m = client();
+  await m.login('status.prvi', 'memberpass1');
+  assert.equal((await m.post(`/admin/termine/${rowOf(a).id}/igrac/${rowOf(a).id}/status`, { attendance: 'sick' }, '/mitglied')).status, 403);
+  assert.equal(rowOf(a).attendance, 'present');
+});
+
+test('Iznosi → Detalji: Status je Einheit, Haken bei „Prema rasporedu“, Monats-Zusammenfassung; Mitglieder sehen davon nichts', async () => {
+  const a = makeMember('Pregled Prvi', 'pregled.prvi', { rate: 3000 });
+  const d = makeMember('Pregled Prikaz', 'pregled.prikaz', { rate: 3000 });
+  const r = makeMember('Pregled Rucno', 'pregled.rucno', { rate: 3000 });
+  const add = (uid, date, extra = {}) => db.prepare(
+    `INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents, attendance, attendance_note, billable)
+     VALUES (?, ?, '10:00', 60, 3000, ?, ?, ?)`
+  ).run(uid, date, extra.attendance ?? null, extra.note ?? null, extra.billable ?? 1);
+  for (const uid of [a, d, r]) {
+    add(uid, '2026-10-05', { attendance: 'present' });
+    add(uid, '2026-10-06', { attendance: 'present' });
+    add(uid, '2026-10-07', { attendance: 'sick', billable: 0 });
+    add(uid, '2026-10-08', { attendance: 'other', note: 'turnir' });
+    add(uid, '2026-10-09'); // ohne Status
+    db.prepare("INSERT INTO payments (user_id, month, released) VALUES (?, '2026-10', 1)").run(uid);
+  }
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await admin.post(`/admin/abrechnung/${d}/nacin`, { month: '2026-10', billing_mode: 'display' }, `/admin/abrechnung/${d}?monat=2026-10`);
+  await admin.post(`/admin/abrechnung/${r}/nacin`, { month: '2026-10', billing_mode: 'manual' }, `/admin/abrechnung/${r}?monat=2026-10`);
+
+  // „Prema rasporedu“: Status + Haken; ausgenommene Einheit zählt nicht (4 × 30 KM statt 5 ×)
+  const pa = (await admin.request(`/admin/abrechnung/${a}?monat=2026-10`)).text;
+  assert.match(pa, /<th>Status<\/th>/);
+  assert.match(pa, /<th>Obračun<\/th>/);
+  assert.equal((pa.match(/bill-mark is-on/g) || []).length, 4);
+  assert.equal((pa.match(/bill-mark is-off/g) || []).length, 1);
+  assert.match(pa, /<td class="attendance">bolestan\/na<\/td>/);
+  assert.match(pa, /<td class="attendance">drugi razlog: turnir<\/td>/);
+  assert.match(pa, /<td class="attendance">–<\/td>/);
+  assert.match(pa, /Status u mjesecu: 2 prisutan, 1 bolestan\/na, 1 drugi razlog/);
+  assert.match(pa, /120,00\sKM/);
+  // „Raspored s prikazom, bez obračuna“: Status ja, Haken nein
+  const pd = (await admin.request(`/admin/abrechnung/${d}?monat=2026-10`)).text;
+  assert.match(pd, /<th>Status<\/th>/);
+  assert.doesNotMatch(pd, /<th>Obračun<\/th>|bill-mark/);
+  assert.match(pd, /Status u mjesecu: 2 prisutan, 1 bolestan\/na, 1 drugi razlog/);
+  // „Ručni unos“: unverändert, kein Status
+  const pr = (await admin.request(`/admin/abrechnung/${r}?monat=2026-10`)).text;
+  assert.doesNotMatch(pr, /<th>Status<\/th>|bill-mark|Status u mjesecu/);
+
+  // Mitglied sieht weder Status noch Haken (Abrechnung und Wochenplan)
+  const m = client();
+  await m.login('pregled.prvi', 'memberpass1');
+  for (const path of ['/mitglied/abrechnung?monat=2026-10', '/mitglied?woche=2026-10-05']) {
+    const t = (await m.request(path)).text;
+    // (Die Spalte „Status“ im Zahlungsüberblick der Mitglieder gab es schon immer – gemeint ist hier die Anwesenheit.)
+    assert.doesNotMatch(t, /bolestan|prisutan|drugi razlog|turnir|bill-mark|class="attendance"|<th>Obračun<\/th>/, path);
+  }
+});
+
+test('Bestehende Termine: nach dem Update ohne Status und weiterhin in der Berechnung', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { DatabaseSync } = require('node:sqlite');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-att-'));
+  const file = path.join(dir, 'alt.db');
+  try {
+    const old = new DatabaseSync(file);
+    old.exec(`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, phone TEXT,
+                password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'member', hourly_rate_cents INTEGER NOT NULL DEFAULT 0,
+                monthly_fee_cents INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+              CREATE TABLE lessons (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, date TEXT NOT NULL, start_time TEXT NOT NULL,
+                duration_min INTEGER NOT NULL, court TEXT, note TEXT, price_cents INTEGER NOT NULL DEFAULT 0, cancelled INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')));`);
+    old.prepare("INSERT INTO users (name, email, password_hash) VALUES ('Stari', 'stari@x.ba', 'h')").run();
+    old.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (1, '2026-10-05', '10:00', 60, 4000)").run();
+    old.close();
+    const migrated = openDatabase(file);
+    const row = migrated.prepare('SELECT * FROM lessons').get();
+    assert.equal(row.attendance, null);
+    assert.equal(row.attendance_note, null);
+    assert.equal(row.billable, 1);
+    assert.equal(row.price_cents, 4000);
+    migrated.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

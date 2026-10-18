@@ -152,6 +152,18 @@ Tests: `npm test`
 - **Admin:** pflegt beim Mitglied die E-Mail-Adresse (leer = keine E-Mail) und kann Passwörter wie bisher
   selbst zurücksetzen. Die Massenanlage bleibt ohne E-Mail.
 
+## Anwesenheit und Berechnung je Spieler (nur Admin)
+
+- **Termini → Uredi → „Igrači“:** pro Spieler eine Spalte **Status** (Standard „–“; prisutan, nije došao/la,
+  bolestan/na, povrijeđen/a, otkazao/la na vrijeme, otkazao/la prekasno, drugi razlog + kurze Notiz) – nur zur
+  Dokumentation, **ohne Einfluss auf die Abrechnung** – und eine Spalte **Obračun** (nur bei „Prema rasporedu“):
+  grüner Haken = wird berechnet; „Ne uključuj u obračun“ nimmt die Einheit für diesen Spieler heraus (grauer,
+  durchgestrichener Haken), erneuter Klick nimmt sie wieder auf. Beim Speichern des Termins bleiben beide erhalten.
+- **Iznosi → Detalji:** bei „Prema rasporedu“ und „Raspored s prikazom, bez obračuna“ Status je Einheit und eine
+  Monats-Zusammenfassung (z. B. „8 prisutan, 1 bolestan/na“); bei „Prema rasporedu“ zusätzlich die Haken.
+  Bei „Ručni unos“ unverändert. Mitglieder und Elternkonten sehen davon nichts.
+- Bestehende Termine: kein Status („–“), alle in der Berechnung.
+
 ## E-Mails an Mitglieder (nur auf Knopfdruck)
 
 Diese Mails gehen **nie automatisch** raus – nur, wenn der Admin Empfänger auswählt und „Pošalji“ drückt.

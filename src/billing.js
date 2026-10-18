@@ -53,7 +53,8 @@ function liveStatement(db, user, month, mode) {
 
   const realized = lessons.filter((l) => !l.cancelled);
   const billLessons = mode === 'schedule';
-  const lessonsTotal = billLessons ? realized.reduce((sum, l) => sum + l.price_cents, 0) : 0;
+  // Ručno isključeni termini (billable = 0) se ne naplaćuju. Status prisustva ovdje namjerno ne igra ulogu.
+  const lessonsTotal = billLessons ? realized.filter((l) => l.billable !== 0).reduce((sum, l) => sum + l.price_cents, 0) : 0;
   const adjustmentsTotal = adjustments.reduce((sum, a) => sum + a.amount_cents, 0);
   const minutes = realized.reduce((sum, l) => sum + l.duration_min, 0);
   const fee = user.monthly_fee_cents || 0;
@@ -194,6 +195,6 @@ function formatHours(hours) {
 
 module.exports = {
   monthlyStatement, setPaid, setReleased, formatHours, billingMode, memberMonthRange,
-  setMonthMode, closeMonth, reopenMonth, closeElapsedMonths, isMonthClosed, liveTotal,
+  setMonthMode, closeMonth, reopenMonth, closeElapsedMonths, isMonthClosed, liveTotal, modeForMonth,
   BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,
 };
