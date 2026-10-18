@@ -277,7 +277,8 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
           <label>Korisničko ime (za prijavu) *<input name="username" required minlength="3" maxlength="40" autocapitalize="none" spellcheck="false" value="${v.username || ''}">
             <span class="small muted">3–40 znakova: slova bez kvačica, brojevi, tačka, crtica, donja crta.</span></label>
           ${isNew
-            ? html`<label>E-mail *<input name="email" type="email" required maxlength="200" value="${v.email || ''}"></label>`
+            ? html`<label>E-mail<input name="email" type="email" maxlength="200" value="${v.email || ''}">
+                <span class="small muted">Nije obavezno – ako nema e-maila, ostavi prazno. Član ili admin ga mogu dodati kasnije.</span></label>`
             : html`<label>E-mail<input name="email" type="email" maxlength="200" value="${v.email || ''}">
                 <span class="small muted">Za „Zaboravljena lozinka“ i obavještenja. Prazno = član nema e-mail.</span></label>`}
           <label>Telefon<input name="phone" maxlength="50" value="${v.phone || ''}"></label>
@@ -321,8 +322,8 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     const errors = [];
     if (!values.name) errors.push('Nedostaje ime.');
     if (!USERNAME_RE.test(values.username)) errors.push('Neispravno korisničko ime (3–40 znakova: a–z, 0–9, tačka, crtica, donja crta).');
-    // Kod uređivanja e-mail smije biti prazan (član bez e-maila); kod kreiranja ostaje obavezan.
-    if (!(values.email === '' && !isNew) && (!EMAIL_RE.test(values.email) || isPlaceholderEmail(values.email))) {
+    // E-mail nije obavezan (ni kod kreiranja ni kod uređivanja): prazno = član bez e-maila.
+    if (values.email !== '' && (!EMAIL_RE.test(values.email) || isPlaceholderEmail(values.email))) {
       errors.push('Neispravna e-mail adresa.');
     }
     if ((isNew || values.password) && values.password.length < 8) errors.push('Lozinka mora imati najmanje 8 znakova.');
@@ -451,11 +452,14 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
 
   router.post('/mitglieder', (req, res) => {
     const { values, errors, rate, fee } = readMemberForm(req.body, true);
+    // Bez e-maila: interna zamjenska adresa (kao kod „Dodaj više članova“); u formi ostaje prazno polje.
+    const emailEntered = values.email;
+    if (values.email === '' && USERNAME_RE.test(values.username)) values.email = placeholderEmail(values.username);
     if (!errors.length) errors.push(...uniquenessErrors(values));
     const leadId = toId(req.body.lead_id);
     if (errors.length) {
       res.status(400);
-      return res.send(String(memberForm(req, { values, errors, leadId })));
+      return res.send(String(memberForm(req, { values: { ...values, email: emailEntered }, errors, leadId })));
     }
     const r = db
       .prepare(

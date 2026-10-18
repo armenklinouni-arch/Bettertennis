@@ -155,7 +155,8 @@ Tests: `npm test`
   neues Passwort setzen. Der Benutzername bleibt immer gleich. Die Antwort verrät nicht, ob eine Adresse
   existiert; höchstens 3 Links pro Adresse und 20 Anfragen pro IP in 15 Minuten. Gilt für Mitglieder-Konten.
 - **Admin:** pflegt beim Mitglied die E-Mail-Adresse (leer = keine E-Mail) und kann Passwörter wie bisher
-  selbst zurücksetzen. Die Massenanlage bleibt ohne E-Mail.
+  selbst zurücksetzen. Die Massenanlage bleibt ohne E-Mail. Auch beim einzelnen Anlegen ist die E-Mail optional
+  (Feld leer lassen); sie kann später vom Mitglied („Moji podaci“) oder vom Admin nachgetragen werden.
 - **Fenster nach dem Login:** Hat ein Mitglied noch keine E-Mail-Adresse, erscheint nach dem Login ein kleines Fenster
   („Molimo unesite svoju e-mail adresu …“) mit Eingabefeld, „Spremi“ und „Kasnije“ – höchstens bei den ersten drei
   Logins, nie mehr, sobald eine Mail eingetragen ist, nie bei Kinder-Konten. Der Hinweis auf der Seite bleibt wie bisher.

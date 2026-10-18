@@ -1799,8 +1799,6 @@ test('Admin pflegt E-Mail-Adressen der Mitglieder und setzt weiterhin selbst Pas
   sentMails.length = 0;
   await client().post('/zaboravljena-lozinka', { email: 'admin.mejl@primjer.com' }, '/zaboravljena-lozinka');
   assert.equal(sentMails.length, 1);
-  // Einzelnes Anlegen verlangt weiterhin eine E-Mail-Adresse (unverändert)
-  assert.equal((await admin.post('/admin/mitglieder', { name: 'Bez', username: 'bez.adrese', email: '', password: 'nekaLozinka1', active: '1' }, '/admin/mitglieder/neu')).status, 400);
 });
 
 test('Passwort vergessen: höchstens 3 Links pro E-Mail-Adresse in 15 Minuten; nur Mitglieder-Konten', async () => {
@@ -2887,4 +2885,55 @@ test('E-Mail-Fenster: nicht für Kinder-Konten und nicht für Mitglieder mit E-M
   assert.ok(!hasEmailPopup(kidHome.text));
   assert.ok(!kidHome.text.includes(EMAIL_POPUP_TEXT));
   assert.equal((await kid.post('/mitglied/email-prozor', { email: 'kid@primjer.ba' }, '/mitglied')).status, 403);
+});
+
+// ---------------------------------------------------------------- Einzelnes Anlegen: E-Mail optional
+test('Neues Mitglied (einzeln): E-Mail ist optional, kann später vom Mitglied oder Admin nachgetragen werden', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const form = (await admin.request('/admin/mitglieder/neu')).text;
+  // Feld sichtbar, ohne Stern und ohne required; kein Feld für eine Wohnadresse
+  assert.match(form, /<label>E-mail<input name="email" type="email" maxlength="200" value="">/);
+  assert.doesNotMatch(form, /E-mail \*/);
+  assert.doesNotMatch(form, /<input name="email"[^>]*required/);
+  assert.doesNotMatch(form, /name="(address|adresa|street|ulica)"/);
+  assert.match(form, /Ime i prezime \*/); // andere Pflichtfelder unverändert
+  assert.match(form, /Lozinka \* \(najmanje 8 znakova\)/);
+
+  // Ohne E-Mail → angelegt (interne Ersatzadresse, wie bei der Massenanlage)
+  const base = { name: 'Bez Adrese', password: 'nekaLozinka1', active: '1', phone: '061 123 456' };
+  const r1 = await admin.post('/admin/mitglieder', { ...base, username: 'bez.adrese', email: '' }, '/admin/mitglieder/neu');
+  assert.equal(r1.status, 302);
+  const u1 = db.prepare("SELECT * FROM users WHERE username = 'bez.adrese'").get();
+  assert.ok(u1);
+  assert.equal(u1.email, 'bez.adrese@bez-emaila.bettertennis.local');
+  assert.equal(u1.phone, '061 123 456');
+  // Ein zweites Mitglied ohne E-Mail geht ebenfalls (keine Kollision)
+  assert.equal((await admin.post('/admin/mitglieder', { ...base, name: 'Bez Adrese Dva', username: 'bez.adrese2', email: '  ' }, '/admin/mitglieder/neu')).status, 302);
+  assert.match(db.prepare("SELECT email FROM users WHERE username = 'bez.adrese2'").get().email, /bez-emaila/);
+  // Liste zeigt „bez e-maila“, Bearbeiten zeigt ein leeres Feld
+  assert.match((await admin.request('/admin/mitglieder')).text, /Bez Adrese[\s\S]*?bez e-maila/);
+  assert.match((await admin.request(`/admin/mitglieder/${u1.id}`)).text, /<input name="email" type="email" maxlength="200" value="">/);
+
+  // Mit E-Mail → wie bisher gespeichert; ungültig oder doppelt → abgelehnt
+  assert.equal((await admin.post('/admin/mitglieder', { ...base, name: 'Sa Adresom', username: 'sa.adresom', email: 'sa.adresom@primjer.ba' }, '/admin/mitglieder/neu')).status, 302);
+  assert.equal(db.prepare("SELECT email FROM users WHERE username = 'sa.adresom'").get().email, 'sa.adresom@primjer.ba');
+  assert.equal((await admin.post('/admin/mitglieder', { ...base, username: 'los.mejl', email: 'nije-mejl' }, '/admin/mitglieder/neu')).status, 400);
+  assert.equal((await admin.post('/admin/mitglieder', { ...base, username: 'dupli.mejl', email: 'sa.adresom@primjer.ba' }, '/admin/mitglieder/neu')).status, 400);
+  assert.equal((await admin.post('/admin/mitglieder', { ...base, username: 'interni.mejl', email: 'x@bez-emaila.bettertennis.local' }, '/admin/mitglieder/neu')).status, 400);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM users WHERE username IN ('los.mejl', 'dupli.mejl', 'interni.mejl')").get().n, 0);
+
+  // Mitglied ohne E-Mail meldet sich an (Fenster + Hinweis) und trägt sie selbst ohne Passwort nach
+  const m = client();
+  assert.equal((await m.login('bez.adrese', 'nekaLozinka1')).location, '/mitglied');
+  const home = (await m.request('/mitglied')).text;
+  assert.match(home, /id="email-prozor"/);
+  assert.match(home, /notice-link" href="\/mitglied\/moji-podaci"/);
+  assert.equal((await m.post('/mitglied/moji-podaci', { email: 'bez.adrese@primjer.ba', phone: '061 123 456' }, '/mitglied/moji-podaci')).status, 302);
+  assert.equal(db.prepare('SELECT email FROM users WHERE id = ?').get(u1.id).email, 'bez.adrese@primjer.ba');
+
+  // Admin trägt beim zweiten Mitglied die E-Mail später nach
+  const u2 = db.prepare("SELECT id FROM users WHERE username = 'bez.adrese2'").get().id;
+  assert.equal((await admin.post(`/admin/mitglieder/${u2}`, { name: 'Bez Adrese Dva', username: 'bez.adrese2', email: 'dva@primjer.ba', active: '1' }, `/admin/mitglieder/${u2}`)).status, 302);
+  assert.equal(db.prepare('SELECT email FROM users WHERE id = ?').get(u2).email, 'dva@primjer.ba');
 });
