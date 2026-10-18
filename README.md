@@ -179,6 +179,22 @@ Versand über Resend (`RESEND_API_KEY`), Texte auf Bosnisch, jede Person bekommt
   hat, ist als „već obaviješten/a“ markiert und wird nicht erneut angeschrieben.
 - Fehlgeschlagener Versand: Grund im Log (Resend-Antwort + „… nije poslan na …“), Hinweis im Admin-Bereich.
 
+## Privatstunden-Anfragen
+
+- **Admin → „Privatni časovi“:** freie Termine anlegen (Datum, von–bis), blockieren / Blockierung aufheben, löschen.
+  Darunter alle Anfragen (Name, angefragter Termin, Zeitpunkt der Anfrage), getrennt in „Otvoreni upiti“ und
+  „Završeni upiti“; mit „✓ Označi kao završeno“ abhaken (rückgängig mit „Vrati u otvorene“).
+- **Mitglieder → „Zatraži privatni čas“** (nur eingeloggte Mitglieder, nicht Kinder-Konten, nicht die Startseite):
+  zeigt freie, nicht blockierte Termine, die noch nicht begonnen haben (Ortszeit Sarajevo). Klick → Sicherheitsabfrage
+  „Želite li poslati upit za ovaj privatni čas?“ → „Da, pošalji upit“ speichert die Anfrage und zeigt
+  „Hvala! Trener će vas uskoro kontaktirati.“ Ohne freie Termine: „Trenutno nema slobodnih termina.“
+- Eine Anfrage blockiert den Termin **nicht** (andere Mitglieder können ihn weiter anfragen); dasselbe Mitglied kann
+  einen Termin nur einmal anfragen. Nichts wird automatisch in den Trainingsplan übernommen.
+- Bei jeder neuen Anfrage geht eine kurze Mail an **bettertennis.net@gmail.com** (Resend, `RESEND_API_KEY`;
+  andere Adresse: `NOTIFY_EMAIL`). Das Mitglied bekommt keine Mail. Schlägt der Versand fehl, bleibt die Anfrage
+  gespeichert und der Grund steht im Log.
+- Wird ein Termin gelöscht, bleiben die Anfragen mit Datum und Uhrzeit erhalten.
+
 ## Automatische Sicherung per E-Mail
 
 - **Jeden Sonntag um 22:00 Uhr (Sarajevo)** wird eine aktuelle Kopie der Datenbank – dieselbe Datei wie bei
@@ -235,6 +251,7 @@ Lokal gehen keine Daten verloren, solange der Ordner `data/` nicht gelöscht wir
 | `MAIL_FROM`      | Absender der E-Mails | `BetterTennis <no-reply@bettertennis.net>` |
 | `APP_URL`        | Adresse der Seite für Links in E-Mails | `https://bettertennis.net` (Railway) |
 | `BACKUP_EMAIL`   | Empfänger der wöchentlichen Backup-Mail | `bettertennis.net@gmail.com` |
+| `NOTIFY_EMAIL`   | Empfänger der Mail bei neuen Privatstunden-Anfragen | `bettertennis.net@gmail.com` |
 | `TZ`             | Zeitzone für „heute“ und Wochenbeginn                             | `Europe/Berlin`       |
 
 ## Aufbau

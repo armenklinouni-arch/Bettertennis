@@ -41,6 +41,7 @@ function layout(req, { title, body, wide = false, fullBleed = false }) {
       ${navLink('/admin/treneri', 'Treneri')}
       ${navLink('/admin/roditelji', 'Roditelji')}
       ${navLink('/admin/termine', 'Termini')}
+      ${navLink('/admin/privatni-casovi', 'Privatni časovi')}
       ${navLink('/admin/abrechnung', 'Iznosi')}
       ${navLink('/admin/finansije', 'Finansije')}
       ${navLink('/admin/aktuelnosti', 'Aktuelnosti')}`;
@@ -61,6 +62,7 @@ function layout(req, { title, body, wide = false, fullBleed = false }) {
     nav = html`
       ${navLink('/mitglied', 'Sedmični raspored', true)}
       ${navLink('/mitglied/abrechnung', 'Mjesečni iznos')}
+      ${navLink('/mitglied/privatni-cas', 'Zatraži privatni čas')}
       ${navLink('/mitglied/aktuelnosti', html`Aktuelnosti${req.unreadNews ? html` <span class="count" aria-label="nepročitano">${req.unreadNews}</span>` : ''}`)}
       ${navLink('/mitglied/djeca', 'Djeca')}
       ${navLink('/mitglied/email', 'E-mail')}

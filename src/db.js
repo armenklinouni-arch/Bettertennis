@@ -175,6 +175,29 @@ CREATE TABLE IF NOT EXISTS notification_log (
   PRIMARY KEY (kind, ref, user_id)
 );
 
+-- Privatni časovi: slobodni termini (admin) i upiti članova. Upit čuva datum/vrijeme termina,
+-- da ostane čitljiv i ako se termin kasnije obriše.
+CREATE TABLE IF NOT EXISTS private_slots (
+  id         INTEGER PRIMARY KEY,
+  date       TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time   TEXT NOT NULL,
+  blocked    INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS private_requests (
+  id           INTEGER PRIMARY KEY,
+  slot_id      INTEGER REFERENCES private_slots(id) ON DELETE SET NULL,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  slot_date    TEXT NOT NULL,
+  slot_start   TEXT NOT NULL,
+  slot_end     TEXT NOT NULL,
+  requested_at TEXT NOT NULL,
+  done         INTEGER NOT NULL DEFAULT 0,
+  done_at      TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS private_requests_once ON private_requests (slot_id, user_id);
+
 CREATE TABLE IF NOT EXISTS news (
   id         INTEGER PRIMARY KEY,
   title      TEXT NOT NULL,

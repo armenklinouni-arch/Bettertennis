@@ -19,9 +19,9 @@ function zoneOffsetMs(utcMs, timeZone) {
 }
 
 // Lokalno vrijeme u zoni (datum + sat) → UTC milisekunde.
-function zonedTimeToUtc(dateISO, hour, timeZone) {
+function zonedTimeToUtc(dateISO, hour, timeZone, minute = 0) {
   const [y, m, d] = dateISO.split('-').map(Number);
-  const guess = Date.UTC(y, m - 1, d, hour);
+  const guess = Date.UTC(y, m - 1, d, hour, minute);
   const first = guess - zoneOffsetMs(guess, timeZone);
   const second = guess - zoneOffsetMs(first, timeZone);
   return second;

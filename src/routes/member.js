@@ -14,6 +14,9 @@ const {
   USERNAME_RE, normalizeUsername, usernameTaken, placeholderEmail, isPlaceholderEmail, CHILDREN_LIMIT,
 } = require('../db');
 const { EMAIL_RE } = require('./public');
+const {
+  isSlotOpen, slotStartMs, slotLabel, formatSarajevo, NOTIFY_EMAIL_DEFAULT,
+} = require('../private-lessons');
 
 const EMAIL_HINT = 'Molimo unesi svoju e-mail adresu kako bi mogao/la sam/a resetovati lozinku i primati važne informacije o treninzima.';
 
@@ -21,7 +24,7 @@ function text(v, max) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
 }
 
-module.exports = function memberRoutes(db) {
+module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY_EMAIL_DEFAULT } = {}) {
   const router = express.Router();
   router.use(requireMember);
 
@@ -428,6 +431,103 @@ module.exports = function memberRoutes(db) {
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), req.user.id);
     res.flash('success', 'Tvoja lozinka je promijenjena.');
     res.redirect(req.user.role === 'admin' ? '/admin' : '/mitglied');
+  });
+
+  // ---------------------------------------------------------------- Privatni časovi (upit)
+  // Član vidi slobodne, neblokirane termine koji još nisu počeli (sarajevsko vrijeme) i šalje upit.
+  // Upit ne blokira termin – drugi članovi ga i dalje mogu tražiti; isti član ga ne može tražiti dvaput.
+  const getPrivateSlot = db.prepare('SELECT * FROM private_slots WHERE id = ?');
+  const myPrivateRequest = db.prepare('SELECT id FROM private_requests WHERE slot_id = ? AND user_id = ?');
+  const slotIdParam = (v) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  };
+
+  router.get('/privatni-cas', (req, res) => {
+    const now = Date.now();
+    const slots = db.prepare('SELECT * FROM private_slots WHERE blocked = 0 ORDER BY date, start_time, id').all()
+      .filter((s) => isSlotOpen(s, now))
+      .sort((a, b) => slotStartMs(a) - slotStartMs(b) || a.id - b.id);
+    const requested = new Set(db.prepare('SELECT slot_id FROM private_requests WHERE user_id = ? AND slot_id IS NOT NULL')
+      .all(req.user.id).map((r) => r.slot_id));
+    res.send(String(layout(req, {
+      title: 'Zatraži privatni čas',
+      body: html`
+      <div class="page-head"><div>
+        <h1>Zatraži privatni čas</h1>
+        <p class="muted">Odaberi slobodan termin i pošalji upit. Trener će te kontaktirati radi potvrde.</p>
+      </div></div>
+      <section class="card">
+        ${slots.length === 0
+          ? html`<p class="empty">Trenutno nema slobodnih termina.</p>`
+          : html`<ul class="private-slots">${slots.map((s) => html`<li class="private-slot" data-slot="${s.id}">${requested.has(s.id)
+            ? html`<span class="private-slot-label">${slotLabel(s)}</span> <span class="tag tag-done">Upit poslan</span>`
+            : html`<a class="private-slot-link" href="/mitglied/privatni-cas/${s.id}"><span class="private-slot-label">${slotLabel(s)}</span> <span class="private-slot-cta">Pošalji upit →</span></a>`}</li>`)}</ul>`}
+      </section>`,
+    })));
+  });
+
+  router.get('/privatni-cas/:id', (req, res) => {
+    const slot = getPrivateSlot.get(slotIdParam(req.params.id));
+    if (!isSlotOpen(slot)) {
+      res.flash('error', 'Termin više nije dostupan.');
+      return res.redirect('/mitglied/privatni-cas');
+    }
+    if (myPrivateRequest.get(slot.id, req.user.id)) {
+      res.flash('success', 'Upit za ovaj termin je već poslan.');
+      return res.redirect('/mitglied/privatni-cas');
+    }
+    res.send(String(layout(req, {
+      title: 'Zatraži privatni čas',
+      body: html`
+      <section class="card confirm-card">
+        <h1>Želite li poslati upit za ovaj privatni čas?</h1>
+        <p class="lead"><strong>${slotLabel(slot)}</strong></p>
+        <form method="post" action="/mitglied/privatni-cas/${slot.id}" class="btn-row">
+          ${csrfField(req)}
+          <button class="btn btn-primary" type="submit">Da, pošalji upit</button>
+          <a class="btn btn-ghost" href="/mitglied/privatni-cas">Ne, slučajno sam kliknuo</a>
+        </form>
+      </section>`,
+    })));
+  });
+
+  router.post('/privatni-cas/:id', async (req, res) => {
+    const slot = getPrivateSlot.get(slotIdParam(req.params.id));
+    if (!isSlotOpen(slot)) {
+      res.flash('error', 'Ovaj termin više nije dostupan.');
+      return res.redirect('/mitglied/privatni-cas');
+    }
+    if (myPrivateRequest.get(slot.id, req.user.id)) {
+      res.flash('success', 'Upit za ovaj termin je već poslan.');
+      return res.redirect('/mitglied/privatni-cas');
+    }
+    const requestedAt = new Date().toISOString();
+    const inserted = db.prepare(
+      `INSERT OR IGNORE INTO private_requests (slot_id, user_id, slot_date, slot_start, slot_end, requested_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(slot.id, req.user.id, slot.date, slot.start_time, slot.end_time, requestedAt);
+    if (inserted.changes && mailer && notifyEmail) {
+      const u = req.user;
+      const contact = [u.phone && `Telefon: ${u.phone}`, u.email && !isPlaceholderEmail(u.email) && `E-mail: ${u.email}`]
+        .filter(Boolean).join('\n');
+      let ok = false;
+      let reason = 'slanje nije uspjelo (detalji iznad u logu)';
+      try {
+        ok = await mailer.send({
+          to: notifyEmail,
+          subject: `Novi upit za privatni čas – ${u.name}`,
+          text: `Novi upit za privatni čas\n\nČlan: ${u.name}${u.username ? ` (${u.username})` : ''}\n${contact ? `${contact}\n` : ''}`
+            + `Termin: ${slotLabel(slot)}\nUpit poslan: ${formatSarajevo(requestedAt)}\n\n`
+            + 'Svi upiti: Admin → Privatni časovi',
+        });
+      } catch (err) {
+        reason = err.message;
+      }
+      if (!ok) console.error(`Obavijest o upitu za privatni čas nije poslana na ${notifyEmail}: ${reason}`);
+    }
+    res.flash('success', 'Hvala! Trener će vas uskoro kontaktirati.');
+    res.redirect('/mitglied/privatni-cas');
   });
 
   return router;

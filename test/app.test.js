@@ -2518,3 +2518,190 @@ test('Bestehende Termine: nach dem Update ohne Status und weiterhin in der Berec
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------- Privatstunden: freie Termine und Anfragen
+// Liest die freien Termine aus der Mitgliederseite.
+function privateSlots(text) {
+  return [...text.matchAll(/<li class="private-slot" data-slot="(\d+)">([\s\S]*?)<\/li>/g)].map((m) => ({
+    id: Number(m[1]),
+    text: m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+    html: m[2],
+  }));
+}
+
+test('Privatstunden: Admin legt freie Termine an, blockiert/löscht sie; Mitglieder sehen nur freie, künftige (Sarajevo-Zeit)', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const base = '/admin/privatni-casovi';
+  assert.equal((await admin.request(base)).status, 200);
+  assert.match((await admin.request('/admin')).text, /href="\/admin\/privatni-casovi"/);
+  const add = (date, start, end) => admin.post(base, { date, start_time: start, end_time: end }, base);
+  // Ungültig: Ende vor Beginn, falsches Datum
+  assert.equal((await add('2026-10-20', '11:00', '10:00')).status, 400);
+  assert.equal((await add('2026-13-40', '10:00', '11:00')).status, 400);
+  for (const [d, s, e] of [['2026-10-20', '10:00', '11:00'], ['2026-10-12', '17:00', '18:30'], ['2026-10-09', '10:30', '11:30'],
+    ['2026-10-09', '09:30', '10:30'], ['2026-10-08', '10:00', '11:00'], ['2026-10-21', '08:00', '09:00']]) {
+    assert.equal((await add(d, s, e)).status, 302);
+  }
+  const slot = (d, s) => db.prepare('SELECT * FROM private_slots WHERE date = ? AND start_time = ?').get(d, s);
+  // Einen Termin blockieren
+  await admin.post(`${base}/${slot('2026-10-21', '08:00').id}/blokiraj`, {}, base);
+  assert.equal(slot('2026-10-21', '08:00').blocked, 1);
+
+  const id = makeMember('Privat Clan', 'privat.clan');
+  const m = client();
+  await m.login('privat.clan', 'memberpass1');
+  const home = await m.request('/mitglied');
+  assert.match(home.text, /href="\/mitglied\/privatni-cas"[^>]*>Zatraži privatni čas</);
+  let page = await m.request('/mitglied/privatni-cas');
+  assert.equal(page.status, 200);
+  // Jetzt: Fr 9.10.2026, 10:00 Sarajevo → 09:30 hat schon begonnen, 08.10. vorbei, 21.10. blockiert
+  assert.deepEqual(privateSlots(page.text).map((s) => s.id), [slot('2026-10-09', '10:30').id, slot('2026-10-12', '17:00').id, slot('2026-10-20', '10:00').id]);
+  assert.match(privateSlots(page.text)[1].text, /Ponedjeljak, 12\.10\.2026\. 17:00–18:30/);
+  // Blockierung aufheben → wieder sichtbar
+  await admin.post(`${base}/${slot('2026-10-21', '08:00').id}/odblokiraj`, {}, base);
+  assert.equal(privateSlots((await m.request('/mitglied/privatni-cas')).text).length, 4);
+  // Sobald die Startzeit erreicht ist (Sarajevo), verschwindet der Termin
+  await atTime('2026-10-09T10:29:00+02:00', async () => {
+    const c = client();
+    await c.login('privat.clan', 'memberpass1');
+    assert.ok(privateSlots((await c.request('/mitglied/privatni-cas')).text).some((s) => s.id === slot('2026-10-09', '10:30').id));
+  });
+  await atTime('2026-10-09T10:30:00+02:00', async () => {
+    const c = client();
+    await c.login('privat.clan', 'memberpass1');
+    assert.ok(!privateSlots((await c.request('/mitglied/privatni-cas')).text).some((s) => s.id === slot('2026-10-09', '10:30').id));
+  });
+  // Löschen
+  await admin.post(`${base}/${slot('2026-10-21', '08:00').id}/obrisi`, {}, base);
+  assert.equal(slot('2026-10-21', '08:00'), undefined);
+  // Keine freien Termine → Hinweis
+  db.prepare('UPDATE private_slots SET blocked = 1').run();
+  assert.match((await m.request('/mitglied/privatni-cas')).text, /Trenutno nema slobodnih termina\./);
+  db.prepare('UPDATE private_slots SET blocked = 0').run();
+  // Nicht sichtbar für Startseite, Kinder-Konten, Elternkonten, Gäste; Admin-Bereich nur für Admin
+  assert.doesNotMatch((await client().request('/')).text, /privatni-cas|Zatraži privatni čas/);
+  assert.equal((await client().request('/mitglied/privatni-cas')).status, 302);
+  await m.post('/mitglied/djeca', { name: 'Privat Dijete', username: 'privat.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const kid = client();
+  await kid.login('privat.kid', 'kid-pass-123');
+  assert.doesNotMatch((await kid.request('/mitglied')).text, /privatni-cas/);
+  assert.equal((await kid.request('/mitglied/privatni-cas')).status, 403);
+  await createParentAccount(admin, { name: 'Privat Roditelj', username: 'privat.roditelj', password: 'roditelj-1', players: [id] });
+  const parent = client();
+  await parent.login('privat.roditelj', 'roditelj-1');
+  assert.equal((await parent.request('/mitglied/privatni-cas')).location, '/roditelj');
+  assert.equal((await m.request(base)).status, 403);
+});
+
+test('Privatstunden: Anfrage mit Sicherheitsabfrage, Dankestext, Admin-Mail; Termin bleibt frei; keine Doppelanfrage', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const base = '/admin/privatni-casovi';
+  await admin.post(base, { date: '2026-10-28', start_time: '16:00', end_time: '17:00' }, base);
+  const slot = db.prepare("SELECT * FROM private_slots WHERE date = '2026-10-28'").get();
+  const a = makeMember('Upit Prvi', 'upit.prvi');
+  makeMember('Upit Drugi', 'upit.drugi');
+  const m = client();
+  await m.login('upit.prvi', 'memberpass1');
+  const list = await m.request('/mitglied/privatni-cas');
+  const confirmUrl = `/mitglied/privatni-cas/${slot.id}`;
+  assert.match(privateSlots(list.text).find((s) => s.id === slot.id).html, new RegExp(`href="${confirmUrl}"`));
+  // Sicherheitsabfrage
+  const confirm = await m.request(confirmUrl);
+  assert.equal(confirm.status, 200);
+  assert.match(confirm.text, /Želite li poslati upit za ovaj privatni čas\?/);
+  assert.match(confirm.text, /Srijeda, 28\.10\.2026\. 16:00–17:00/);
+  assert.match(confirm.text, /<button class="btn btn-primary" type="submit">Da, pošalji upit<\/button>/);
+  assert.match(confirm.text, /<a class="btn btn-ghost" href="\/mitglied\/privatni-cas">Ne, slučajno sam kliknuo<\/a>/);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM private_requests').get().n, 0); // nur Anzeigen speichert nichts
+
+  sentMails.length = 0;
+  const sent = await m.post(confirmUrl, {}, confirmUrl);
+  assert.equal(sent.status, 302);
+  assert.equal(sent.location, '/mitglied/privatni-cas');
+  const after = await m.request('/mitglied/privatni-cas');
+  assert.match(after.text, /Hvala! Trener će vas uskoro kontaktirati\./);
+  const req1 = db.prepare('SELECT * FROM private_requests WHERE user_id = ?').get(a);
+  assert.ok(req1);
+  assert.equal(req1.slot_id, slot.id);
+  assert.equal(req1.done, 0);
+  // Mail nur an den Admin, nicht an das Mitglied
+  assert.equal(sentMails.length, 1);
+  assert.equal(sentMails[0].to, 'bettertennis.net@gmail.com');
+  assert.match(sentMails[0].text, /Upit Prvi/);
+  assert.match(sentMails[0].text, /28\.10\.2026\. 16:00–17:00/);
+  // Termin bleibt sichtbar; als angefragt markiert, keine Doppelanfrage
+  const mine = privateSlots(after.text).find((s) => s.id === slot.id);
+  assert.match(mine.text, /Upit poslan/);
+  await m.post(confirmUrl, {}, '/mitglied/privatni-cas');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM private_requests WHERE user_id = ?').get(a).n, 1);
+  assert.equal(sentMails.length, 1);
+  // Ein anderes Mitglied kann denselben Termin anfragen
+  const o = client();
+  await o.login('upit.drugi', 'memberpass1');
+  assert.ok(privateSlots((await o.request('/mitglied/privatni-cas')).text).some((s) => s.id === slot.id));
+  await o.post(confirmUrl, {}, confirmUrl);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM private_requests WHERE slot_id = ?').get(slot.id).n, 2);
+  assert.equal(sentMails.length, 2);
+
+  // Admin: offene und erledigte Anfragen getrennt; abhaken und zurück
+  let adminPage = (await admin.request(base)).text;
+  const openPart = () => /<section class="card" id="otvoreni-upiti">([\s\S]*?)<\/section>/.exec(adminPage)[1];
+  const donePart = () => /<section class="card" id="zavrseni-upiti">([\s\S]*?)<\/section>/.exec(adminPage)[1];
+  assert.match(openPart(), /Upit Prvi[\s\S]*28\.10\.2026\. 16:00–17:00[\s\S]*09\.10\.2026\. u 10:00/);
+  assert.match(openPart(), /Upit Drugi/);
+  assert.doesNotMatch(donePart(), /Upit Prvi/);
+  await admin.post(`${base}/upit/${req1.id}/zavrseno`, {}, base);
+  adminPage = (await admin.request(base)).text;
+  assert.doesNotMatch(openPart(), /Upit Prvi/);
+  assert.match(donePart(), /Upit Prvi/);
+  await admin.post(`${base}/upit/${req1.id}/otvoreno`, {}, base);
+  adminPage = (await admin.request(base)).text;
+  assert.match(openPart(), /Upit Prvi/);
+
+  // Blockiert oder begonnen → keine Anfrage mehr möglich
+  await admin.post(`${base}/${slot.id}/blokiraj`, {}, base);
+  const p = client();
+  makeMember('Upit Treci', 'upit.treci');
+  await p.login('upit.treci', 'memberpass1');
+  assert.equal((await p.post(confirmUrl, {}, '/mitglied/privatni-cas')).status, 302);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM private_requests r JOIN users u ON u.id = r.user_id WHERE u.username = 'upit.treci'").get().n, 0);
+  assert.match((await p.request('/mitglied/privatni-cas')).text, /više nije dostupan/);
+  await admin.post(`${base}/${slot.id}/odblokiraj`, {}, base);
+  await atTime('2026-10-28T16:00:00+01:00', async () => {
+    const q = client();
+    await q.login('upit.treci', 'memberpass1');
+    await q.post(confirmUrl, {}, '/mitglied/privatni-cas');
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM private_requests r JOIN users u ON u.id = r.user_id WHERE u.username = 'upit.treci'").get().n, 0);
+  });
+  // Termin löschen: Anfragen bleiben mit Datum/Uhrzeit sichtbar
+  await admin.post(`${base}/${slot.id}/obrisi`, {}, base);
+  adminPage = (await admin.request(base)).text;
+  assert.match(openPart(), /Upit Prvi[\s\S]*28\.10\.2026\. 16:00–17:00/);
+  // Keine automatische Übernahme in den Trainingsplan
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM lessons WHERE date = '2026-10-28' AND start_time = '16:00'").get().n, 0);
+});
+
+test('Privatstunden: fehlgeschlagene Admin-Benachrichtigung → Anfrage trotzdem gespeichert, Grund im Log', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await admin.post('/admin/privatni-casovi', { date: '2026-10-29', start_time: '15:00', end_time: '16:00' }, '/admin/privatni-casovi');
+  const slot = db.prepare("SELECT * FROM private_slots WHERE date = '2026-10-29'").get();
+  makeMember('Upit Greska', 'upit.greska');
+  const m = client();
+  await m.login('upit.greska', 'memberpass1');
+  const errors = [];
+  const orig = console.error;
+  console.error = (...x) => errors.push(x.join(' '));
+  testMailer.fail = true;
+  try {
+    await m.post(`/mitglied/privatni-cas/${slot.id}`, {}, `/mitglied/privatni-cas/${slot.id}`);
+  } finally {
+    testMailer.fail = false;
+    console.error = orig;
+  }
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM private_requests WHERE slot_id = ?').get(slot.id).n, 1);
+  assert.match((await m.request('/mitglied/privatni-cas')).text, /Hvala! Trener će vas uskoro kontaktirati\./);
+  assert.ok(errors.some((e) => /Obavijest o upitu za privatni čas nije poslana/.test(e)), errors.join('\n'));
+});

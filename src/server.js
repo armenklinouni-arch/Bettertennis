@@ -72,6 +72,7 @@ const app = createApp(db, {
   // E-Mails (Passwort vergessen) über Resend; Links zeigen immer auf die feste Adresse der Seite.
   mailer,
   backupEmail,
+  ...(cleanEnv('NOTIFY_EMAIL') ? { notifyEmail: cleanEnv('NOTIFY_EMAIL') } : {}),
   appUrl: (cleanEnv('APP_URL') || (process.env.RAILWAY_ENVIRONMENT ? 'https://bettertennis.net' : `http://localhost:${PORT}`)).replace(/\/+$/, ''),
 });
 

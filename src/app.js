@@ -17,11 +17,13 @@ const groupRoutes = require('./routes/groups');
 const financeRoutes = require('./routes/finance');
 const parentPortalRoutes = require('./routes/parent-portal');
 const parentAccountRoutes = require('./routes/parents');
+const privateAdminRoutes = require('./routes/private-admin');
+const { NOTIFY_EMAIL_DEFAULT } = require('./private-lessons');
 
 function createApp(db, {
   secret, secureCookies = false, trustProxy = false, publicHomepage = true,
   mailer = createResendMailer({ apiKey: process.env.RESEND_API_KEY }), appUrl = 'http://localhost:3000',
-  backupEmail = BACKUP_EMAIL_DEFAULT, mailDelayMs = 600,
+  backupEmail = BACKUP_EMAIL_DEFAULT, mailDelayMs = 600, notifyEmail = NOTIFY_EMAIL_DEFAULT,
 } = {}) {
   const app = express();
   // Öffentliche Startseite (Početna): standardmäßig an. Mit PUBLIC_HOMEPAGE=0 führt „/“ direkt zum Login.
@@ -60,13 +62,14 @@ function createApp(db, {
   app.use('/', publicRoutes(db, {
     loginLimiter: createLoginLimiter(), resetLimiter: createLoginLimiter({ maxAttempts: 20 }), resetEmailLimiter: createLoginLimiter({ maxAttempts: 3 }), mailer, appUrl,
   }));
-  app.use('/mitglied', memberRoutes(db));
+  app.use('/mitglied', memberRoutes(db, { mailer, notifyEmail }));
   app.use('/trener', trainerPortalRoutes(db));
   app.use('/roditelj', parentPortalRoutes(db));
   app.use('/admin/treneri', trainerRoutes(db));
   app.use('/admin/grupe', groupRoutes(db));
   app.use('/admin/finansije', financeRoutes(db));
   app.use('/admin/roditelji', parentAccountRoutes(db));
+  app.use('/admin/privatni-casovi', privateAdminRoutes(db));
   app.use('/admin', adminRoutes(db, { mailer, backupEmail, mailDelayMs }));
 
   app.use((req, res) => {

@@ -390,6 +390,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .recipient-table .select-all { gap: 8px; align-items: center; text-transform: none; letter-spacing: 0; }
 .recipient-table .is-unavailable td { color: var(--muted); }
 
+/* Privatni časovi: lista slobodnih termina za članove */
+.private-slots { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.private-slot { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--border); border-radius: 10px; }
+.private-slot > .private-slot-label { padding: 12px 14px; }
+.private-slot > .tag { margin-right: 14px; }
+.private-slot-link { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; color: var(--text); text-decoration: none; border-radius: 10px; transition: background-color 160ms ease-out; }
+.private-slot-link:hover { background: var(--primary-soft); }
+.private-slot-link:active { transform: scale(0.99); }
+.private-slot-label { font-weight: 600; }
+.private-slot-cta { color: var(--positive); font-weight: 600; white-space: nowrap; }
+.confirm-card { max-width: 560px; }
+.confirm-card h1 { font-size: 1.3rem; }
+
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
 
