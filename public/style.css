@@ -495,6 +495,8 @@ main.main-full { flex: 1; }
   background: linear-gradient(180deg, rgba(20, 55, 102, 0.06) 0%, rgba(11, 31, 58, 0.3) 100%);
 }
 .home .program-body { padding: 18px 20px 22px; }
+/* Karten ohne eigenes Foto: Linien-Icon in derselben Kachel wie bei den Vorteilen */
+.home .program-card > .program-icon { margin: 22px 20px 0; }
 .home .program-body .tag { background: var(--home-ice); color: var(--home-navy-2); border: 1px solid var(--home-line); font-weight: 700; }
 .home .program-body h3 { color: var(--home-navy); }
 

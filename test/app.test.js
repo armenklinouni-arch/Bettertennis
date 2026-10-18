@@ -584,14 +584,13 @@ test('Login akzeptiert versehentliche Leerzeichen um das Passwort', async () => 
   assert.equal(bad.status, 401);
 });
 
-test('Startseite: Programme mit Unsplash-Fotos und lokalen Ersatzbildern, ohne Kinderbereich und ohne „2–8 igrača“', async () => {
+test('Startseite: Programme ohne Kinderbereich und ohne „2–8 igrača“', async () => {
   const home = await client().request('/');
   assert.match(home.text, /Trening po tvojoj mjeri/);
   assert.doesNotMatch(home.text, /Učimo kroz igru|Tenis za djecu/);
   assert.doesNotMatch(home.text, /2–8 igrača/);
   assert.doesNotMatch(home.text, /probni trening/i);
   for (const f of ['individualni', 'grupni', 'video-analiza', 'konsultacije']) {
-    assert.match(home.text, new RegExp(`src="https://unsplash\\.com/photos/[\\w-]+/download\\?w=800" data-fallback="/static/img/illustracije/${f}\\.svg"`));
     const img = await fetch(`${base}/static/img/illustracije/${f}.svg`);
     assert.equal(img.status, 200);
   }
@@ -1867,27 +1866,62 @@ test('Startseite: Hauptbild als sanfte Diashow mit 3–5 klaren Tennisfotos (fre
   assert.match(home, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.home \.hero-slide \{[^}]*animation: none/);
 });
 
-test('Startseite: neue, passende Tennisfotos auf den vier Programmkarten mit einheitlichem Ausschnitt und Farbwirkung', async () => {
+test('Startseite: Programmkarten zeigen Linien-Icons im Stil der Vorteile (ohne Fotos)', async () => {
   const res = await client().request('/');
-  const cards = [...res.text.matchAll(/<article class="program-card[\s\S]*?<img src="([^"]+)" data-fallback="([^"]+)"[^>]*>[\s\S]*?<h3>([^<]+)<\/h3>/g)];
-  assert.deepEqual(cards.map((c) => c[3]), ['Individualni trening', 'Grupni trening', 'Video analiza', 'Konsultacije']);
-  const ids = cards.map((c) => photoId(c[1]));
-  ids.forEach((id, i) => assert.ok(id, `kein freies Foto: ${cards[i][1]}`));
-  assert.equal(new Set(ids).size, 4);
-  // Neue Fotos (keines der bisherigen Kartenbilder) und keine Dopplung mit dem Hauptbild
-  for (const old of ['aIvWY0mxiDc', 'Z4Sxy1_3wdY', 'AldB5IWh8l4', 'LwxVG0VQ3RY']) assert.ok(!ids.includes(old), `altes Bild: ${old}`);
-  const heroIds = [...res.text.matchAll(/class="hero-photo hero-slide" src="([^"]+)"/g)].map((m) => photoId(m[1]));
-  for (const id of ids) assert.ok(!heroIds.includes(id), `doppelt mit Hauptbild: ${id}`);
-  // Lokale Ersatz-Illustrationen bleiben
-  assert.deepEqual(cards.map((c) => c[2]), ['individualni', 'grupni', 'video-analiza', 'konsultacije'].map((f) => `/static/img/illustracije/${f}.svg`));
-
+  const section = /<section class="section" id="programi"[\s\S]*?<\/section>/.exec(res.text)[0];
+  const cards = [...section.matchAll(/<article class="program-card[\s\S]*?<\/article>/g)].map((m) => m[0]);
+  assert.equal(cards.length, 4);
+  assert.deepEqual(cards.map((c) => /<h3>([^<]+)<\/h3>/.exec(c)[1]), ['Individualni trening', 'Grupni trening', 'Video analiza', 'Konsultacije']);
+  // Gleicher Stil wie die Icons bei den Vorteilen: gleiche Kachel, gleiches SVG-Format
+  const features = /<section class="section features"[\s\S]*?<\/section>/.exec(res.text)[0];
+  const svgOpen = /<svg[^>]*>/.exec(features)[0];
+  const icons = cards.map((c) => {
+    assert.doesNotMatch(c, /<img|unsplash|pexels/, 'Karte enthält noch ein Foto');
+    const m = /<div class="program-icon feature-icon" aria-hidden="true">(<svg[^>]*>)([\s\S]*?<\/svg>)<\/div>/.exec(c);
+    assert.ok(m, 'Icon fehlt');
+    assert.equal(m[1], svgOpen);
+    assert.doesNotMatch(m[2], /fill="(?!none)|style=/);
+    return m[2];
+  });
+  const featureIcons = [...features.matchAll(/<svg[^>]*>([\s\S]*?<\/svg>)/g)].map((m) => m[1]);
+  assert.equal(new Set([...icons, ...featureIcons]).size, 7, 'Icons müssen sich unterscheiden');
+  // Texte der Karten unverändert
+  assert.match(cards[0], /Trening jedan na jedan, potpuno prilagođen tvom tempu i ciljevima – najbrži napredak u tehnici i taktici\./);
+  assert.match(cards[3], /<span class="tag tag-kind is-group">Plan i savjeti<\/span>/);
+  // Abstand der Icon-Kachel in der Karte
   const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'style.css'), 'utf8');
   const home = css.slice(css.indexOf('/* === Početna (Startseite)'));
-  const rule = /\.home \.program-img img \{([^}]*)\}/.exec(home)[1];
+  assert.match(home, /\.home \.program-card > \.program-icon \{/);
+});
+
+test('Startseite: eigene Fotos für die Programmkarten lassen sich ohne Code einsetzen (Ordner public/img/programi)', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { programMedia, PROGRAM_PHOTO_DIR } = require('../src/routes/public');
+  // Ordner mit Anleitung ist im Projekt vorhanden
+  assert.equal(PROGRAM_PHOTO_DIR, path.join(__dirname, '..', 'public', 'img', 'programi'));
+  assert.ok(fs.existsSync(path.join(PROGRAM_PHOTO_DIR, 'LIESMICH.md')));
+  const pr = { slug: 'individualni', icon: 'racket', title: 'Individualni trening', alt: 'Individualni trening' };
+  // Ohne Foto: Icon
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-programi-'));
+  try {
+    assert.match(String(programMedia(pr, dir)), /^<div class="program-icon feature-icon" aria-hidden="true"><svg/);
+    // Mit Foto (jpg, jpeg, png oder webp): Bild im einheitlichen Kartenformat, Icon entfällt
+    fs.writeFileSync(path.join(dir, 'individualni.webp'), 'x');
+    const html = String(programMedia(pr, dir));
+    assert.match(html, /^<div class="program-img"><img src="\/static\/img\/programi\/individualni\.webp\?v=\d+" alt="Individualni trening" width="400" height="300" loading="lazy" decoding="async"><\/div>$/);
+    // Andere Karten bleiben beim Icon
+    assert.match(String(programMedia({ ...pr, slug: 'grupni', icon: 'group' }, dir)), /program-icon/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  // Einheitlicher Ausschnitt und Farbwirkung für eingesetzte Fotos bleiben im CSS
+  const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
+  const rule = /\.home \.program-img img \{([^}]*)\}/.exec(css.slice(css.indexOf('/* === Početna (Startseite)')))[1];
   assert.match(rule, /aspect-ratio: 4 \/ 3/);
   assert.match(rule, /object-fit: cover/);
   assert.match(rule, /filter: var\(--home-photo-filter\)/);
-  assert.match(home, /\.home \.program-img::after \{[^}]*background: linear-gradient/); // gleicher Farbschleier
 });
 
 test('Startseite: schlichte, einheitliche Linien-Icons bei den drei Vorteilen', async () => {

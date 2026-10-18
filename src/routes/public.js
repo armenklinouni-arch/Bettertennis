@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const express = require('express');
 const { html, raw } = require('../html');
 const { layout, csrfField, errorList } = require('../views');
@@ -21,10 +23,6 @@ function isValidPhone(phone) {
   return PHONE_RE.test(phone) && phone.replace(/\D/g, '').length >= 6;
 }
 
-// Programi na početnoj stranici. Fotografije se učitavaju s Unsplasha (Unsplash licenca, besplatno);
-// ako se fotografija ne može učitati, prikazuje se vlastita ilustracija iz public/img/illustracije.
-// Za drugu fotografiju dovoljno je zamijeniti `photo` ID-om s unsplash.com/photos/<…-ID>.
-const unsplash = (id) => `https://unsplash.com/photos/${id}/download?w=800`;
 const unsplashLarge = (id) => `https://unsplash.com/photos/${id}/download?w=1600`;
 // Hero: 4 tenis fotografije s Unsplasha (Unsplash licenca, besplatno), polako se smjenjuju.
 // Ako se neka ne učita, prikazuje se lokalna fotografija terena (HERO_PHOTO_SRC).
@@ -44,21 +42,52 @@ const ICONS = {
   calendar: LINE_ICON('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M8 14.5h3"/>'),
   // medalja
   medal: LINE_ICON('<circle cx="12" cy="15" r="5.5"/><circle cx="12" cy="15" r="2"/><path d="M8.6 10.6 6 3h4l2 4.4L14 3h4l-2.6 7.6"/>'),
+  // reket i loptica (individualni trening)
+  racket: LINE_ICON('<ellipse cx="9" cy="9" rx="6.5" ry="5" transform="rotate(45 9 9)"/><path d="M4.4 4.4 13.6 13.6"/><path d="M5.5 12.5 12.5 5.5"/><path d="m13.6 13.6 6.4 6.4"/><circle cx="19" cy="5" r="1.75"/>'),
+  // dvije osobe (grupni trening)
+  group: LINE_ICON('<circle cx="9" cy="8" r="3"/><path d="M3.5 19.5a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.1a4.5 4.5 0 0 1 5 4.4"/>'),
+  // kamera (video analiza)
+  video: LINE_ICON('<rect x="2.5" y="6.5" width="13.5" height="11" rx="2.5"/><path d="m16 10.5 5.5-3v9l-5.5-3"/>'),
+  // dva oblačića razgovora (konsultacije)
+  chat: LINE_ICON('<path d="M4.5 4.5h9a2 2 0 0 1 2 2V12a2 2 0 0 1-2 2H9l-3.5 3v-3h-1a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2z"/><path d="M18 9h1.5a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-1v2.5L15.5 18h-3"/>'),
 };
+// Programi na početnoj stranici. Svaka kartica prikazuje linijsku ikonu. Vlastitu fotografiju dodaješ bez izmjene
+// koda: snimi je u public/img/programi/ pod imenom kartice (npr. individualni.jpg) – vidi LIESMICH.md u tom folderu.
 const PROGRAMS = [
-  { photo: 'mmi0vkwHU0M', img: 'individualni.svg', tag: 'Jedan na jedan', title: 'Individualni trening',
-    alt: 'Teniser s reketom na terenu',
+  { slug: 'individualni', icon: 'racket', tag: 'Jedan na jedan', title: 'Individualni trening',
+    alt: 'Individualni trening',
     text: 'Trening jedan na jedan, potpuno prilagođen tvom tempu i ciljevima – najbrži napredak u tehnici i taktici.' },
-  { photo: 'Dhdck86QmyE', img: 'grupni.svg', tag: 'Mala grupa', title: 'Grupni trening',
-    alt: 'Grupa igrača trenira na teniskom terenu',
+  { slug: 'grupni', icon: 'group', tag: 'Mala grupa', title: 'Grupni trening',
+    alt: 'Grupni trening',
     text: 'Trening u maloj grupi igrača sličnog nivoa. Više igre, motivacije i druženja.' },
-  { photo: '7WHP76DFAiY', img: 'video-analiza.svg', tag: 'Tehnika', title: 'Video analiza',
-    alt: 'Sjena tenisera u trenutku udarca',
+  { slug: 'video-analiza', icon: 'video', tag: 'Tehnika', title: 'Video analiza',
+    alt: 'Video analiza',
     text: 'Snimamo tvoje udarce i analiziramo ih usporeno, kadar po kadar – vidiš tačno šta i kako popraviti.' },
-  { photo: 'pPJtHB1zoIE', img: 'konsultacije.svg', tag: 'Plan i savjeti', title: 'Konsultacije',
-    alt: 'Teniski reket i loptica na terenu',
+  { slug: 'konsultacije', icon: 'chat', tag: 'Plan i savjeti', title: 'Konsultacije',
+    alt: 'Konsultacije',
     text: 'Razgovaramo o tvojim ciljevima, planu treninga, opremi i pripremi za turnire.' },
 ];
+
+// Folder za vlastite fotografije kartica i dozvoljeni formati (koristi se prvi pronađeni).
+const PROGRAM_PHOTO_DIR = path.join(__dirname, '..', '..', 'public', 'img', 'programi');
+const PROGRAM_PHOTO_TYPES = ['jpg', 'jpeg', 'png', 'webp'];
+
+// Gornji dio kartice: vlastita fotografija iz public/img/programi/<slug>.(jpg|jpeg|png|webp), inače linijska ikona.
+function programMedia(pr, dir = PROGRAM_PHOTO_DIR) {
+  for (const type of PROGRAM_PHOTO_TYPES) {
+    let stat = null;
+    try {
+      stat = fs.statSync(path.join(dir, `${pr.slug}.${type}`));
+    } catch {
+      // nema fotografije u ovom formatu
+    }
+    if (stat && stat.isFile()) {
+      // ?v= osigurava da preglednik nakon zamjene fotografije učita novu verziju
+      return html`<div class="program-img"><img src="/static/img/programi/${pr.slug}.${type}?v=${Math.floor(stat.mtimeMs)}" alt="${pr.alt}" width="400" height="300" loading="lazy" decoding="async"></div>`;
+    }
+  }
+  return html`<div class="program-icon feature-icon" aria-hidden="true">${ICONS[pr.icon]}</div>`;
+}
 
 function str(v, max = 500) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
@@ -115,7 +144,7 @@ module.exports = function publicRoutes(db, {
         <div class="program-grid">
           ${PROGRAMS.map((pr, i) => html`
           <article class="program-card lift reveal delay-${i % 4}">
-            <div class="program-img"><img src="${unsplash(pr.photo)}" data-fallback="/static/img/illustracije/${pr.img}" alt="${pr.alt}" width="400" height="260" loading="lazy" referrerpolicy="no-referrer"></div>
+            ${programMedia(pr)}
             <div class="program-body">
               <span class="tag tag-kind is-group">${pr.tag}</span>
               <h3>${pr.title}</h3>
@@ -455,3 +484,5 @@ module.exports = function publicRoutes(db, {
 module.exports.LEVELS = LEVELS;
 module.exports.EMAIL_RE = EMAIL_RE;
 module.exports.str = str;
+module.exports.programMedia = programMedia;
+module.exports.PROGRAM_PHOTO_DIR = PROGRAM_PHOTO_DIR;

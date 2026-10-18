@@ -226,10 +226,9 @@ Fotos der Startseite (alle frei nutzbar, Unsplash-Lizenz; geladen direkt von uns
   [Aufschlag](https://unsplash.com/photos/man-serving-a-tennis-ball-on-a-court-AldB5IWh8l4),
   [Platz von oben](https://unsplash.com/photos/aerial-photography-of-two-person-playing-tennis-aG6ByqGXiXg),
   [Bälle am Netz](https://unsplash.com/photos/many-tennis-balls-scattered-on-a-court-near-net-LwxVG0VQ3RY)
-- Karten: [Individualni](https://unsplash.com/photos/a-man-standing-on-a-tennis-court-holding-a-racquet-mmi0vkwHU0M),
-  [Grupni](https://unsplash.com/photos/a-group-of-people-playing-tennis-on-a-tennis-court-Dhdck86QmyE),
-  [Video analiza](https://unsplash.com/photos/a-shadow-of-a-tennis-player-hitting-a-tennis-ball-7WHP76DFAiY),
-  [Konsultacije](https://unsplash.com/photos/a-tennis-racket-and-ball-on-the-court-pPJtHB1zoIE)
+- Karten (Individualni, Grupni, Video analiza, Konsultacije): Linien-Icons im Stil der Vorteile. **Eigene Fotos**
+  einfach als `individualni.jpg`, `grupni.jpg`, `video-analiza.jpg` bzw. `konsultacije.jpg` (auch .jpeg/.png/.webp)
+  in `public/img/programi/` legen – ohne Codeänderung erscheint dann das Foto statt des Icons (siehe LIESMICH.md dort).
 - Lokales Ersatzbild: [Aleksandr Galichkin auf Unsplash](https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc)
 
 Design der Startseite: Dunkelblau, Hellblau, Weiß mit Neongelb-Akzent; Stile im Block „Početna (Startseite)“ am Ende von `public/style.css`.
