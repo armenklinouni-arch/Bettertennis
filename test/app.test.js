@@ -13,7 +13,17 @@ const { parseMoney, formatMoney } = require('../src/money');
 let server;
 // Statt echter E-Mails: alle versendeten Nachrichten werden hier gesammelt.
 const sentMails = [];
-const testMailer = { async send(message) { sentMails.push(message); return true; } };
+const testMailer = {
+  fail: false, // für Fehlertests: Versand schlägt fehl (Grund wird wie bei Resend geloggt)
+  async send(message) {
+    if (this.fail) {
+      console.error(`Resend: slanje nije uspjelo (422): test-greška za ${message.to}`);
+      return false;
+    }
+    sentMails.push(message);
+    return true;
+  },
+};
 let base;
 let db;
 
@@ -23,7 +33,7 @@ before(async () => {
   db = openDatabase(':memory:');
   ensureAdmin(db, { email: 'admin@test.de', password: 'adminpass123' });
   // Hauptinstanz mit eingeschalteter Startseite (deren Tests bleiben so erhalten).
-  const app = createApp(db, { secret: 'test-secret', publicHomepage: true, mailer: testMailer, appUrl: 'https://bettertennis.net' });
+  const app = createApp(db, { secret: 'test-secret', publicHomepage: true, mailer: testMailer, appUrl: 'https://bettertennis.net', mailDelayMs: 0 });
   await new Promise((resolve) => {
     server = app.listen(0, resolve);
   });
@@ -2119,4 +2129,211 @@ test('Admin: fehlgeschlagene Backup-Mail zeigt Hinweis, Grund steht im Log', asy
     console.error = origError;
     srv.close();
   }
+});
+
+
+// ---------------------------------------------------------------- Mails nur auf Knopfdruck: Absage und Aktuelnosti
+// Liest die Auswahlliste (Zeilen mit Kästchen, Name, E-Mail/Status).
+function recipientRows(text) {
+  return [...text.matchAll(/<tr class="recipient-row[^"]*">([\s\S]*?)<\/tr>/g)].map((m) => {
+    const row = m[1];
+    const box = /<input type="checkbox" name="recipients" value="(\d+)"([^>]*)>/.exec(row);
+    return {
+      id: box && Number(box[1]),
+      disabled: !!box && /disabled/.test(box[2]),
+      checked: !!box && /checked/.test(box[2]),
+      name: /<td class="recipient-name">([^<]+)<\/td>/.exec(row)[1],
+      info: /<td class="recipient-mail">([\s\S]*?)<\/td>/.exec(row)[1].replace(/<[^>]+>/g, '').trim(),
+    };
+  });
+}
+
+function makeMailMember(name, username, email) {
+  const id = makeMember(name, username);
+  db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email || `${username}@bez-emaila.bettertennis.local`, id);
+  return id;
+}
+
+test('Absage-Mail: nur auf Knopfdruck, Auswahlliste, optionaler Grund, „bereits informiert“', async () => {
+  const a = makeMailMember('Otkaz Prvi', 'otkaz.prvi', 'otkaz.prvi@primjer.ba');
+  const b = makeMailMember('Otkaz Drugi', 'otkaz.drugi', 'otkaz.drugi@primjer.ba');
+  const c = makeMailMember('Otkaz Treci', 'otkaz.treci', null); // ohne E-Mail
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  // Feste Gruppe mit genau diesen Spielern → ihr Name erscheint in der Mail
+  await admin.post('/admin/grupe', { name: 'Grupa Otkaz', member_ids: [a, b, c].map(String) }, '/admin/grupe');
+  await admin.post('/admin/termine', {
+    kind: 'group', user_id: String(a), member_ids: [String(b), String(c)], date: '2026-10-21', start_time: '17:00', duration_min: '60', price: '10', repeat: '1',
+  }, '/admin/termine');
+  const lesson = db.prepare("SELECT * FROM lessons WHERE user_id = ? AND date = '2026-10-21'").get(a);
+  const page = `/admin/termine/${lesson.id}/obavijest-otkazivanje`;
+  const week = '/admin/termine?woche=2026-10-19';
+
+  // Vor dem Absagen kein Knopf, keine Mail-Seite
+  assert.doesNotMatch((await admin.request(week)).text, new RegExp(`href="${page}"`));
+  assert.equal((await admin.request(page)).status, 302);
+
+  // Absagen wie bisher – dabei geht KEINE Mail raus, Termin bleibt sichtbar als „Otkazan“
+  sentMails.length = 0;
+  await admin.post(`/admin/termine/${lesson.id}/status`, { status: 'cancelled', back: week }, week);
+  assert.equal(sentMails.length, 0);
+  assert.deepEqual(db.prepare('SELECT cancelled FROM lessons WHERE group_id = ?').all(lesson.group_id).map((r) => r.cancelled), [1, 1, 1]);
+  const weekText = (await admin.request(week)).text;
+  assert.match(weekText, /Otkazan/);
+  assert.match(weekText, new RegExp(`<a class="btn btn-ghost btn-sm" href="${page}">Pošalji e-mail o otkazivanju</a>`));
+
+  // Auswahlliste: alle Teilnehmer, nichts angehakt, ohne E-Mail nicht wählbar
+  let r = await admin.request(page);
+  assert.equal(r.status, 200);
+  assert.match(r.text, /Srijeda, 21\.10\.2026\./);
+  assert.match(r.text, /17:00–18:00/);
+  assert.match(r.text, /<input type="checkbox" data-select-all>/);
+  assert.match(r.text, /<textarea name="message"/);
+  let rows = recipientRows(r.text);
+  assert.deepEqual(rows.map((x) => x.name), ['Otkaz Drugi', 'Otkaz Prvi', 'Otkaz Treci']);
+  assert.ok(rows.every((x) => !x.checked));
+  assert.deepEqual(rows.map((x) => x.info), ['otkaz.drugi@primjer.ba', 'otkaz.prvi@primjer.ba', 'nije dostupno']);
+  assert.deepEqual(rows.map((x) => x.disabled), [false, false, true]);
+
+  // Senden an A ohne Grund → neutrale, freundliche Mail auf Bosnisch
+  r = await admin.post(page, { recipients: String(a), message: '   ' }, page);
+  assert.equal(r.status, 302);
+  assert.equal(sentMails.length, 1);
+  let mail = sentMails[0];
+  assert.equal(mail.to, 'otkaz.prvi@primjer.ba');
+  assert.match(mail.subject, /Otkazan trening/);
+  assert.match(mail.text, /Zdravo Otkaz Prvi/);
+  assert.match(mail.text, /Srijeda, 21\.10\.2026\./);
+  assert.match(mail.text, /17:00–18:00/);
+  assert.match(mail.text, /Grupa Otkaz/);
+  assert.match(mail.text, /Hvala na razumijevanju/);
+  assert.doesNotMatch(mail.text, /Napomena|Razlog/);
+  assert.doesNotMatch(mail.text, /Otkaz Drugi|Otkaz Treci/); // keine Namen anderer Spieler
+  assert.ok(mail.html.includes('21.10.2026.'));
+
+  // A ist jetzt „bereits informiert“ und nicht mehr wählbar
+  rows = recipientRows((await admin.request(page)).text);
+  assert.deepEqual(rows.map((x) => [x.name, x.disabled]), [['Otkaz Drugi', false], ['Otkaz Prvi', true], ['Otkaz Treci', true]]);
+  assert.match(rows[1].info, /već obaviješten/);
+
+  // Alle drei auswählen + Grund → nur B bekommt eine Mail (A schon informiert, C ohne E-Mail)
+  await admin.post(page, { recipients: [a, b, c].map(String), message: 'Zbog kiše. Zamjenski termin u četvrtak u 17 h.' }, page);
+  assert.equal(sentMails.length, 2);
+  mail = sentMails[1];
+  assert.equal(mail.to, 'otkaz.drugi@primjer.ba');
+  assert.match(mail.text, /Napomena: Zbog kiše\. Zamjenski termin u četvrtak u 17 h\./);
+  assert.ok(mail.html.includes('Zbog kiše.'));
+
+  // Einzeltraining: nur der eine Spieler; fremde IDs werden ignoriert
+  await admin.post('/admin/termine', { kind: 'individual', user_id: String(b), date: '2026-10-22', start_time: '09:00', duration_min: '60', repeat: '1' }, '/admin/termine');
+  const single = db.prepare("SELECT * FROM lessons WHERE user_id = ? AND date = '2026-10-22'").get(b);
+  await admin.post(`/admin/termine/${single.id}/status`, { status: 'cancelled' }, week);
+  const singlePage = `/admin/termine/${single.id}/obavijest-otkazivanje`;
+  assert.deepEqual(recipientRows((await admin.request(singlePage)).text).map((x) => x.name), ['Otkaz Drugi']);
+  await admin.post(singlePage, { recipients: [String(a), String(b)] }, singlePage);
+  assert.equal(sentMails.length, 3);
+  assert.equal(sentMails[2].to, 'otkaz.drugi@primjer.ba');
+  assert.match(sentMails[2].text, /Individualni trening/);
+  assert.match(sentMails[2].text, /Četvrtak, 22\.10\.2026\./);
+
+  // Nichts ausgewählt → keine Mail, Hinweis
+  const none = await admin.post(page, {}, page);
+  assert.equal(none.status, 302);
+  assert.equal(sentMails.length, 3);
+
+  // Nur Admins
+  const m = client();
+  await m.login('otkaz.prvi', 'memberpass1');
+  assert.equal((await m.request(page)).status, 403);
+  assert.equal((await m.post(page, { recipients: String(b) }, '/mitglied')).status, 403);
+  assert.equal(sentMails.length, 3);
+});
+
+test('Absage-Mail: fehlgeschlagener Versand → Grund im Log, Empfänger bleibt wählbar', async () => {
+  const a = makeMailMember('Greska Mejl', 'greska.mejl', 'greska.mejl@primjer.ba');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await admin.post('/admin/termine', { kind: 'individual', user_id: String(a), date: '2026-10-23', start_time: '10:00', duration_min: '60', repeat: '1' }, '/admin/termine');
+  const lesson = db.prepare("SELECT * FROM lessons WHERE user_id = ? AND date = '2026-10-23'").get(a);
+  await admin.post(`/admin/termine/${lesson.id}/status`, { status: 'cancelled' }, '/admin/termine');
+  const page = `/admin/termine/${lesson.id}/obavijest-otkazivanje`;
+  const errors = [];
+  const orig = console.error;
+  console.error = (...x) => errors.push(x.join(' '));
+  testMailer.fail = true;
+  try {
+    await admin.post(page, { recipients: String(a) }, page);
+  } finally {
+    testMailer.fail = false;
+    console.error = orig;
+  }
+  assert.ok(errors.some((e) => /test-greška za greska\.mejl@primjer\.ba/.test(e)));
+  assert.ok(errors.some((e) => /E-mail o otkazivanju nije poslan.*greska\.mejl@primjer\.ba/.test(e)), errors.join('\n'));
+  const after = await admin.request(page);
+  assert.match(after.text, /nije poslan/);
+  assert.deepEqual(recipientRows(after.text).map((x) => x.disabled), [false]);
+});
+
+test('Aktuelnosti per Mail: nur auf Knopfdruck, Auswahl aller Mitglieder, Titel und Text, „bereits informiert“', async () => {
+  const a = makeMailMember('Vijest Prvi', 'vijest.prvi', 'vijest.prvi@primjer.ba');
+  const b = makeMailMember('Vijest Drugi', 'vijest.drugi', 'vijest.drugi@primjer.ba');
+  makeMailMember('Vijest Bez', 'vijest.bez', null);
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  sentMails.length = 0;
+  // Erstellen wie bisher – ohne Mail
+  const created = await admin.post('/admin/aktuelnosti', { title: 'Zimski turnir', body: 'Turnir je u subotu u 10 h.\nPrijave do četvrtka.', audience: 'all' }, '/admin/aktuelnosti');
+  assert.equal(created.status, 302);
+  assert.equal(sentMails.length, 0);
+  const news = db.prepare("SELECT * FROM news WHERE title = 'Zimski turnir'").get();
+  const page = `/admin/aktuelnosti/${news.id}/email`;
+  // Knopf in der Liste (nach dem Erstellen) und auf der Detailseite
+  const list = await admin.request('/admin/aktuelnosti');
+  assert.match(list.text, new RegExp(`<a class="btn btn-ghost btn-sm" href="${page}">Pošalji e-mailom</a>`));
+  const detail = await admin.request(`/admin/aktuelnosti/${news.id}`);
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Zimski turnir/);
+  assert.match(detail.text, /Turnir je u subotu u 10 h\./);
+  assert.match(detail.text, new RegExp(`href="${page}"`));
+
+  // Auswahl: alle aktiven Mitglieder (ohne Kinder-Konten), nichts angehakt
+  let r = await admin.request(page);
+  assert.equal(r.status, 200);
+  let rows = recipientRows(r.text);
+  const memberCount = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'member' AND active = 1 AND parent_id IS NULL").get().n;
+  assert.equal(rows.length, memberCount);
+  assert.ok(rows.every((x) => !x.checked));
+  const bez = rows.find((x) => x.name === 'Vijest Bez');
+  assert.equal(bez.info, 'nije dostupno');
+  assert.equal(bez.disabled, true);
+  assert.match(r.text, /<input type="checkbox" data-select-all>/);
+  assert.doesNotMatch(r.text, /<textarea/); // hier kein Zusatztext nötig
+
+  await admin.post(page, { recipients: [String(a), String(b)] }, page);
+  assert.equal(sentMails.length, 2);
+  assert.deepEqual(sentMails.map((m) => m.to).sort(), ['vijest.drugi@primjer.ba', 'vijest.prvi@primjer.ba']);
+  for (const m of sentMails) {
+    assert.match(m.subject, /Zimski turnir/);
+    assert.match(m.text, /Turnir je u subotu u 10 h\.\nPrijave do četvrtka\./);
+    assert.match(m.text, /Aktuelnosti/);
+    assert.ok(m.html.includes('Zimski turnir'));
+  }
+  // Bereits informiert → nicht mehr wählbar, kein doppelter Versand
+  rows = recipientRows((await admin.request(page)).text);
+  for (const name of ['Vijest Prvi', 'Vijest Drugi']) {
+    const row = rows.find((x) => x.name === name);
+    assert.equal(row.disabled, true);
+    assert.match(row.info, /već obaviješten/);
+  }
+  await admin.post(page, { recipients: [String(a)] }, page);
+  assert.equal(sentMails.length, 2);
+  // Bisherige Funktion unverändert: Aktuelnost im Postfach der Mitglieder
+  const m = client();
+  await m.login('vijest.prvi', 'memberpass1');
+  assert.match((await m.request('/mitglied/aktuelnosti')).text, /Zimski turnir/);
+  assert.equal((await m.request(page)).status, 403);
+  // „Alle auswählen“ wählt nur wählbare Kästchen (Skript)
+  const js = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  assert.match(js, /data-select-all/);
+  assert.match(js, /:not\(:disabled\)/);
 });

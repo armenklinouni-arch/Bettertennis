@@ -152,6 +152,21 @@ Tests: `npm test`
 - **Admin:** pflegt beim Mitglied die E-Mail-Adresse (leer = keine E-Mail) und kann Passwörter wie bisher
   selbst zurücksetzen. Die Massenanlage bleibt ohne E-Mail.
 
+## E-Mails an Mitglieder (nur auf Knopfdruck)
+
+Diese Mails gehen **nie automatisch** raus – nur, wenn der Admin Empfänger auswählt und „Pošalji“ drückt.
+Versand über Resend (`RESEND_API_KEY`), Texte auf Bosnisch, jede Person bekommt eine eigene Mail.
+
+- **Absage-Mail:** Bei einem abgesagten Termin (Termini → „Označi: Otkazan“) erscheint der Knopf
+  „Pošalji e-mail o otkazivanju“. Die Seite listet alle Teilnehmer; optionales Textfeld für Grund/Nachricht
+  (leer = neutrale, freundliche Absage). Die Mail enthält Trainingsart, ggf. Name der festen Gruppe, Datum, Uhrzeit, Platz.
+- **Aktuelnosti:** In der Liste und auf der Detailseite einer Neuigkeit gibt es „Pošalji e-mailom“ – Liste aller
+  aktiven Mitglieder, Mail mit Titel und Text.
+- **Auswahlliste (beide gleich):** Kästchen, Name, E-Mail; ohne E-Mail „nije dostupno“ (nicht wählbar);
+  oben „Označi sve“; nichts ist vorausgewählt. Wer für diesen Termin bzw. diese Neuigkeit schon eine Mail bekommen
+  hat, ist als „već obaviješten/a“ markiert und wird nicht erneut angeschrieben.
+- Fehlgeschlagener Versand: Grund im Log (Resend-Antwort + „… nije poslan na …“), Hinweis im Admin-Bereich.
+
 ## Automatische Sicherung per E-Mail
 
 - **Jeden Sonntag um 22:00 Uhr (Sarajevo)** wird eine aktuelle Kopie der Datenbank – dieselbe Datei wie bei

@@ -95,3 +95,17 @@ document.addEventListener('change', (event) => {
   const form = event.target.form;
   if (form && form.hasAttribute('data-autosubmit')) form.submit();
 });
+
+// Lista primalaca: „Označi sve“ označava samo dostupne (ne one bez e-maila ni već obaviještene).
+document.addEventListener('change', (event) => {
+  const box = event.target;
+  const form = box.form;
+  if (!form || !form.classList.contains('recipient-form')) return;
+  const all = form.querySelector('[data-select-all]');
+  const boxes = [...form.querySelectorAll('input[name="recipients"]:not(:disabled)')];
+  if (box === all) {
+    boxes.forEach((b) => { b.checked = all.checked; });
+  } else if (box.name === 'recipients' && all) {
+    all.checked = boxes.length > 0 && boxes.every((b) => b.checked);
+  }
+});

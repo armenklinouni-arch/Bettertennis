@@ -21,7 +21,7 @@ const parentAccountRoutes = require('./routes/parents');
 function createApp(db, {
   secret, secureCookies = false, trustProxy = false, publicHomepage = true,
   mailer = createResendMailer({ apiKey: process.env.RESEND_API_KEY }), appUrl = 'http://localhost:3000',
-  backupEmail = BACKUP_EMAIL_DEFAULT,
+  backupEmail = BACKUP_EMAIL_DEFAULT, mailDelayMs = 600,
 } = {}) {
   const app = express();
   // Öffentliche Startseite (Početna): standardmäßig an. Mit PUBLIC_HOMEPAGE=0 führt „/“ direkt zum Login.
@@ -67,7 +67,7 @@ function createApp(db, {
   app.use('/admin/grupe', groupRoutes(db));
   app.use('/admin/finansije', financeRoutes(db));
   app.use('/admin/roditelji', parentAccountRoutes(db));
-  app.use('/admin', adminRoutes(db, { mailer, backupEmail }));
+  app.use('/admin', adminRoutes(db, { mailer, backupEmail, mailDelayMs }));
 
   app.use((req, res) => {
     res.status(404).send('Stranica nije pronađena.');

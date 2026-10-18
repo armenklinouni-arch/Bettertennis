@@ -372,6 +372,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
+/* Liste der E-Mail-Empfänger (Absage-Mail, Aktuelnosti) */
+.recipient-table input[type="checkbox"] { width: auto; margin: 0; }
+.recipient-table th:first-child, .recipient-table td:first-child { width: 170px; text-align: left; }
+.recipient-table .select-all { gap: 8px; align-items: center; text-transform: none; letter-spacing: 0; }
+.recipient-table .is-unavailable td { color: var(--muted); }
+
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
 

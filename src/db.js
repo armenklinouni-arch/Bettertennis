@@ -162,6 +162,16 @@ CREATE TABLE IF NOT EXISTS password_resets (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Ručno poslani e-mailovi (otkazivanje termina, aktuelnosti): ko je za šta već obaviješten.
+CREATE TABLE IF NOT EXISTS notification_log (
+  kind    TEXT NOT NULL,
+  ref     TEXT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  email   TEXT NOT NULL,
+  sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (kind, ref, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS news (
   id         INTEGER PRIMARY KEY,
   title      TEXT NOT NULL,

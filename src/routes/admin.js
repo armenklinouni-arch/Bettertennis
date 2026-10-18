@@ -20,6 +20,9 @@ const { EMAIL_RE, str } = require('./public');
 const { listGroupsWithMembers } = require('./groups');
 const { sendBackupMail, BACKUP_EMAIL_DEFAULT } = require('../backup');
 const {
+  informedIds, selectedIds, sendToSelected, resultMessage, recipientForm,
+} = require('../notify');
+const {
   weekStatus, releaseWeek, hideWeek, setAutoRelease, isMonday,
 } = require('../weeks');
 const {
@@ -37,7 +40,7 @@ function toId(v) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_EMAIL_DEFAULT } = {}) {
+module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_EMAIL_DEFAULT, mailDelayMs = 600 } = {}) {
   const router = express.Router();
   router.use(requireAdmin);
 
@@ -721,6 +724,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
           <input type="hidden" name="back" value="${back}">
           <button type="submit" class="link-btn">${l.cancelled ? `Označi: ${LESSON_STATUSES.done}` : `Označi: ${LESSON_STATUSES.cancelled}`}</button>
         </form>
+        ${l.cancelled ? html`<a class="btn btn-ghost btn-sm" href="/admin/termine/${l.id}/obavijest-otkazivanje">Pošalji e-mail o otkazivanju</a>` : ''}
       </div>`;
 
     res.send(String(layout(req, {
@@ -910,6 +914,101 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     res.flash('success', `Status termina: ${cancelled ? LESSON_STATUSES.cancelled : LESSON_STATUSES.done}.`);
     const back = typeof req.body.back === 'string' && req.body.back.startsWith('/admin/termine') ? req.body.back : `/admin/termine?woche=${D.mondayOf(lesson.date)}`;
     res.redirect(back);
+  });
+
+  // ---------------------------------------------------------------- E-mail o otkazivanju (samo ručno)
+  const participantsOf = (lesson) => {
+    const ids = lessonSet(lesson).map((r) => r.user_id);
+    return db.prepare(`SELECT * FROM users WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY name COLLATE NOCASE`).all(...ids);
+  };
+  // Naziv stalne grupe ako su učesnici tačno njeni članovi (termin sam ne čuva grupu).
+  const groupNameOf = (lesson, users) => {
+    if (!lesson.group_id) return null;
+    const ids = users.map((u) => u.id).sort((x, y) => x - y).join(',');
+    const match = listGroupsWithMembers(db).find((g) => g.members.map((m) => m.id).sort((x, y) => x - y).join(',') === ids);
+    return match ? match.name : null;
+  };
+  const cancelInfo = (lesson, users) => {
+    const group = groupNameOf(lesson, users);
+    return {
+      kind: `${LESSON_KINDS[lesson.kind] || 'Trening'}${group ? ` (${group})` : ''}`,
+      date: D.formatDateLong(lesson.date),
+      time: lessonTimeRange(lesson),
+      court: lesson.court ? `Teren ${lesson.court}` : '',
+    };
+  };
+  const cancelRef = (lesson) => (lesson.group_id ? `g:${lesson.group_id}` : `l:${lesson.id}`);
+
+  function cancelMail(info, message) {
+    return (user) => {
+      const what = `${info.kind}, ${info.date} od ${info.time} h${info.court ? `, ${info.court}` : ''}`;
+      return {
+        subject: `Otkazan trening – ${info.date} u ${info.time.split('–')[0]}`,
+        text: `Zdravo ${user.name},\n\nobavještavamo te da je sljedeći trening otkazan:\n${what}\n`
+          + `${message ? `\nNapomena: ${message}\n` : ''}`
+          + '\nHvala na razumijevanju – vidimo se na sljedećem treningu!\n\nSportski pozdrav,\nBetterTennis',
+        html: String(html`<p>Zdravo ${user.name},</p>
+          <p>obavještavamo te da je sljedeći trening <strong>otkazan</strong>:<br>${what}</p>
+          ${message ? html`<p><strong>Napomena:</strong> <span style="white-space:pre-line">${message}</span></p>` : ''}
+          <p>Hvala na razumijevanju – vidimo se na sljedećem treningu!</p><p>Sportski pozdrav,<br>BetterTennis</p>`),
+      };
+    };
+  }
+
+  function cancelMailPage(req, lesson) {
+    const users = participantsOf(lesson);
+    const info = cancelInfo(lesson, users);
+    return layout(req, {
+      title: 'E-mail o otkazivanju',
+      body: html`
+      <div class="page-head">
+        <h1>E-mail o otkazivanju</h1>
+        <a class="btn btn-ghost" href="/admin/termine?woche=${D.mondayOf(lesson.date)}">← Nazad na termine</a>
+      </div>
+      <section class="card">
+        <p><span class="tag tag-cancelled">${LESSON_STATUSES.cancelled}</span> <strong>${info.kind}</strong> · ${info.date} · ${info.time} h${info.court ? ` · ${info.court}` : ''}</p>
+        <p class="muted small">E-mail se šalje samo odabranim igračima, tek kad pritisneš „Pošalji“. Svako dobija svoj e-mail (bez imena drugih igrača).</p>
+        ${recipientForm(req, {
+          action: `/admin/termine/${lesson.id}/obavijest-otkazivanje`,
+          users,
+          informed: informedIds(db, 'cancel', cancelRef(lesson)),
+          fields: html`<label>Razlog ili lična poruka (opcionalno)
+            <textarea name="message" rows="3" maxlength="1000" placeholder="npr. zbog kiše · zamjenski termin u četvrtak u 17 h"></textarea>
+            <span class="small muted">Ako ostane prazno, šalje se kratka, ljubazna obavijest bez razloga.</span></label>`,
+        })}
+      </section>`,
+    });
+  }
+
+  router.get('/termine/:id/obavijest-otkazivanje', (req, res) => {
+    const lesson = getLesson.get(toId(req.params.id));
+    if (!lesson) return notFound(res, 'termin');
+    if (!lesson.cancelled) {
+      res.flash('error', 'E-mail o otkazivanju je moguć tek kad je termin označen kao otkazan.');
+      return res.redirect(`/admin/termine?woche=${D.mondayOf(lesson.date)}`);
+    }
+    res.send(String(cancelMailPage(req, lesson)));
+  });
+
+  router.post('/termine/:id/obavijest-otkazivanje', async (req, res, next) => {
+    try {
+      const lesson = getLesson.get(toId(req.params.id));
+      if (!lesson) return notFound(res, 'termin');
+      const back = `/admin/termine/${lesson.id}/obavijest-otkazivanje`;
+      if (!lesson.cancelled) return res.redirect(back);
+      const users = participantsOf(lesson);
+      const info = cancelInfo(lesson, users);
+      const message = str(req.body.message, 1000);
+      const result = await sendToSelected(db, mailer, {
+        kind: 'cancel', ref: cancelRef(lesson), users, selected: selectedIds(req.body),
+        build: cancelMail(info, message), delayMs: mailDelayMs,
+        logLabel: 'E-mail o otkazivanju', logContext: `termin ${info.date} ${info.time}`,
+      });
+      res.flash(result.failed ? 'error' : 'success', resultMessage(result));
+      res.redirect(back);
+    } catch (err) {
+      next(err);
+    }
   });
 
   router.post('/termine/:id/loeschen', (req, res) => {
@@ -1231,8 +1330,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
           : html`<ul class="list">${items.map((n) => html`
             <li class="news-row">
               <div>
-                <strong>${n.title}</strong> <span class="muted small">· ${D.formatDate(n.created_at.slice(0, 10))} · pročitalo ${n.readers} od ${n.recipients}</span>
+                <a href="/admin/aktuelnosti/${n.id}"><strong>${n.title}</strong></a> <span class="muted small">· ${D.formatDate(n.created_at.slice(0, 10))} · pročitalo ${n.readers} od ${n.recipients}</span>
                 <div class="pre muted small">${n.body.length > 200 ? `${n.body.slice(0, 200)}…` : n.body}</div>
+                <a class="btn btn-ghost btn-sm" href="/admin/aktuelnosti/${n.id}/email">Pošalji e-mailom</a>
               </div>
               <form method="post" action="/admin/aktuelnosti/${n.id}/loeschen" data-confirm="Obrisati aktuelnost „${n.title}“? Nestat će i iz sandučića članova.">
                 ${csrfField(req)}<button class="btn btn-danger btn-sm" type="submit">Obriši</button>
@@ -1277,6 +1377,75 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     }
     res.flash('success', `Aktuelnost je poslana (primaoci: ${recipients.length}).`);
     res.redirect('/admin/aktuelnosti');
+  });
+
+  // ---------------------------------------------------------------- Aktuelnost: pregled i slanje e-mailom (samo ručno)
+  const getNews = db.prepare('SELECT * FROM news WHERE id = ?');
+
+  router.get('/aktuelnosti/:id', (req, res) => {
+    const item = getNews.get(toId(req.params.id));
+    if (!item) return notFound(res, 'aktuelnost');
+    res.send(String(layout(req, {
+      title: item.title,
+      body: html`
+      <div class="page-head">
+        <a class="btn btn-ghost" href="/admin/aktuelnosti">← Sve aktuelnosti</a>
+        <a class="btn btn-primary" href="/admin/aktuelnosti/${item.id}/email">Pošalji e-mailom</a>
+      </div>
+      <article class="card news-article">
+        <p class="muted small">${D.formatDateLong(item.created_at.slice(0, 10))}</p>
+        <h1>${item.title}</h1>
+        <div class="pre">${item.body}</div>
+      </article>`,
+    })));
+  });
+
+  function newsMail(item) {
+    return (user) => ({
+      subject: `BetterTennis – ${item.title}`,
+      text: `Zdravo ${user.name},\n\n${item.title}\n\n${item.body}\n\n`
+        + 'Ovu obavijest možeš pročitati i u svom profilu pod „Aktuelnosti“ na bettertennis.net.\n\nSportski pozdrav,\nBetterTennis',
+      html: String(html`<p>Zdravo ${user.name},</p><h2 style="margin:16px 0 8px">${item.title}</h2>
+        <p style="white-space:pre-line">${item.body}</p>
+        <p style="color:#666">Ovu obavijest možeš pročitati i u svom profilu pod „Aktuelnosti“ na bettertennis.net.</p>
+        <p>Sportski pozdrav,<br>BetterTennis</p>`),
+    });
+  }
+
+  router.get('/aktuelnosti/:id/email', (req, res) => {
+    const item = getNews.get(toId(req.params.id));
+    if (!item) return notFound(res, 'aktuelnost');
+    res.send(String(layout(req, {
+      title: `E-mail: ${item.title}`,
+      body: html`
+      <div class="page-head">
+        <h1>Pošalji aktuelnost e-mailom</h1>
+        <a class="btn btn-ghost" href="/admin/aktuelnosti/${item.id}">← Nazad</a>
+      </div>
+      <section class="card">
+        <h2>${item.title}</h2>
+        <div class="pre muted">${item.body.length > 400 ? `${item.body.slice(0, 400)}…` : item.body}</div>
+      </section>
+      <section class="card">
+        <p class="muted small">E-mail se šalje samo odabranim članovima, tek kad pritisneš „Pošalji“. Svako dobija svoj e-mail.</p>
+        ${recipientForm(req, { action: `/admin/aktuelnosti/${item.id}/email`, users: newsMembers.all(), informed: informedIds(db, 'news', item.id) })}
+      </section>`,
+    })));
+  });
+
+  router.post('/aktuelnosti/:id/email', async (req, res, next) => {
+    try {
+      const item = getNews.get(toId(req.params.id));
+      if (!item) return notFound(res, 'aktuelnost');
+      const result = await sendToSelected(db, mailer, {
+        kind: 'news', ref: item.id, users: newsMembers.all(), selected: selectedIds(req.body),
+        build: newsMail(item), delayMs: mailDelayMs, logLabel: 'E-mail s aktuelnošću', logContext: `„${item.title}“`,
+      });
+      res.flash(result.failed ? 'error' : 'success', resultMessage(result));
+      res.redirect(`/admin/aktuelnosti/${item.id}/email`);
+    } catch (err) {
+      next(err);
+    }
   });
 
   router.post('/aktuelnosti/:id/loeschen', (req, res) => {
