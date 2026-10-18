@@ -221,7 +221,9 @@ Die vier Programmkarten (Individualni, Grupni, Video analiza, Konsultacije) zeig
 Lädt ein Foto nicht, erscheint automatisch die eigene Illustration aus `public/img/illustracije/`. Die Startseite nutzt sanfte Scroll- und Hover-Animationen;
 bei der Systemeinstellung „Bewegung reduzieren“ werden sie automatisch abgeschaltet.
 
-Foto auf der Startseite: [Aleksandr Galichkin auf Unsplash](https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc)
+Startseite: Hero-Foto [„Tennis player on court with spectators in stadium“ auf Unsplash](https://unsplash.com/photos/tennis-player-on-court-with-spectators-in-stadium-TDahyDz3gPI)
+(Unsplash-Lizenz); Ersatzbild lokal: [Aleksandr Galichkin auf Unsplash](https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc).
+Design der Startseite: Dunkelblau, Hellblau, Weiß mit Neongelb-Akzent; Stile im Block „Početna (Startseite)“ am Ende von `public/style.css`.
 (Unsplash-Lizenz, kostenlos nutzbar, Namensnennung nicht erforderlich – daher auf der Seite ohne Bildnachweis).
 Das Foto liegt lokal unter `public/img/tennisplatz.jpg` und erscheint daher auch ohne Internetverbindung.
 

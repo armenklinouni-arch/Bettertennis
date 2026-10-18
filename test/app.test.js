@@ -105,7 +105,8 @@ test('Interessent kann sich auf der Startseite eintragen', async () => {
   assert.equal(home.status, 200);
   assert.match(home.text, /Zanimaju te časovi tenisa/);
   assert.match(home.text, /<html lang="bs">/);
-  assert.match(home.text, /class="hero-photo" src="\/static\/img\/tennisplatz\.jpg"/);
+  // Hero-Foto (Unsplash) mit dem lokalen Platzfoto als Ersatz
+  assert.match(home.text, /class="hero-photo hero-bg" src="https:\/\/unsplash\.com\/[^"]+" data-fallback="\/static\/img\/tennisplatz\.jpg"/);
   assert.doesNotMatch(home.text, /figcaption/);
   assert.match(home.text, /certificirani ITF treneri/);
   assert.doesNotMatch(home.text, /Transparentni/);
@@ -1180,7 +1181,7 @@ test('Startseite aktiv (Standard): bettertennis.net zeigt die Početna, von dort
     assert.equal(root.status, 200);
     const home = await root.text();
     assert.match(home, /Igraj <span class="hl">bolji tenis<\/span>/);
-    assert.match(home, /class="hero-photo"/);
+    assert.match(home, /class="hero-photo[ "]/);
     assert.match(home, /Trening po tvojoj mjeri/);
     assert.match(home, /id="anmeldung"/);
     assert.match(home, />Početna</);
@@ -1712,4 +1713,115 @@ test('Passwort vergessen: höchstens 3 Links pro E-Mail-Adresse in 15 Minuten; n
   // Trainer-E-Mail führt zu keinem Link (Funktion ist für Mitglieder)
   await anon.post('/zaboravljena-lozinka', { email: 'trener.mejl@primjer.ba' }, '/zaboravljena-lozinka');
   assert.equal(sentMails.length, 3);
+});
+
+// ---------------------------------------------------------------- Startseite: neues Design
+// Alle sichtbaren Texte der Startseite vor dem Redesign – sie müssen vollständig erhalten bleiben.
+const HOME_TEXTS = [
+  'Teniska škola',
+  'Igraj',
+  'bolji tenis',
+  '– uz trening koji ti odgovara.',
+  'Individualni i grupni časovi za sve nivoe znanja. Prijavi se bez obaveze i javit ćemo ti se u najkraćem roku.',
+  'Prijavi se sada',
+  'Već sam član',
+  'ITF treneri',
+  'Djeca i odrasli',
+  'Video analiza',
+  'Naši programi',
+  'Trening po tvojoj mjeri',
+  'Biraj između individualnog i grupnog treninga, a uz to nudimo video analizu i konsultacije.',
+  'Jedan na jedan',
+  'Individualni trening',
+  'Trening jedan na jedan, potpuno prilagođen tvom tempu i ciljevima – najbrži napredak u tehnici i taktici.',
+  'Mala grupa',
+  'Grupni trening',
+  'Trening u maloj grupi igrača sličnog nivoa. Više igre, motivacije i druženja.',
+  'Tehnika',
+  'Snimamo tvoje udarce i analiziramo ih usporeno, kadar po kadar – vidiš tačno šta i kako popraviti.',
+  'Plan i savjeti',
+  'Konsultacije',
+  'Razgovaramo o tvojim ciljevima, planu treninga, opremi i pripremi za turnire.',
+  '🎾',
+  'Za svaki nivo',
+  'Treninzi su prilagođeni svim nivoima – od početnika do naprednih igrača. Nudimo grupne i individualne treninge, video analizu i konsultacije.',
+  '📅',
+  'Sedmični raspored',
+  'Kao član u svom profilu vidiš sve termine treninga od ponedjeljka do nedjelje.',
+  '🏅',
+  'Treneri',
+  'Svi naši treneri su certificirani ITF treneri sa dugogodišnjim iskustvom.',
+  'Zanimaju te časovi tenisa?',
+  'Popuni obrazac – javit ćemo ti se u roku od nekoliko dana.',
+  'Ime i prezime *',
+  'E-mail *',
+  'Broj telefona *',
+  'Nivo znanja',
+  'Početnik',
+  'Povratnik',
+  'Napredni',
+  'Takmičar',
+  'Kada imaš vremena? (dani / sati)',
+  'Poruka',
+  'Molimo ostavite prazno',
+  'Slažem se da se moji podaci sačuvaju radi kontakta. *',
+  'Prijavi se bez obaveze'
+];
+
+test('Startseite (neues Design): alle bisherigen Texte und Inhalte bleiben erhalten', async () => {
+  const res = await client().request('/');
+  assert.equal(res.status, 200);
+  const main = res.text.slice(res.text.indexOf('<main'), res.text.indexOf('</main>'));
+  const visible = main.replace(/<[^>]+>/g, ' ').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+  for (const t of HOME_TEXTS) assert.ok(visible.includes(t), `Text fehlt: ${t}`);
+  // Formular und Links funktionieren wie bisher
+  assert.match(main, /<form method="post" action="\/anmeldung"/);
+  assert.match(main, /href="#anmeldung"[^>]*>Prijavi se sada</);
+  assert.match(main, /id="programi"/);
+  assert.equal((main.match(/class="program-card/g) || []).length, 4);
+});
+
+test('Startseite (neues Design): großer Hero mit Tennisfoto, Slogan und klarem Login-Button', async () => {
+  const res = await client().request('/');
+  const main = res.text.slice(res.text.indexOf('<main'), res.text.indexOf('</main>'));
+  // Eigener Rahmen nur für die Startseite (andere Seiten bleiben unberührt)
+  assert.match(main, /<div class="home">/);
+  const hero = /<section class="hero home-hero"[\s\S]*?<\/section>/.exec(main);
+  assert.ok(hero, 'Hero-Bereich fehlt');
+  // Dynamisches Tennisfoto: frei nutzbar von Unsplash, mit lokalem Ersatzbild
+  assert.match(hero[0], /<img class="hero-photo hero-bg" src="https:\/\/unsplash\.com\/photos\/[\w-]+\/download\?w=1600" data-fallback="\/static\/img\/tennisplatz\.jpg"[^>]*alt="[^"]+"/);
+  assert.match(hero[0], /<h1>Igraj <span class="hl">bolji tenis<\/span> – uz trening koji ti odgovara\.<\/h1>/);
+  // Klarer Login-Button im Neon-Akzent, als erster Button
+  const actions = /<div class="hero-actions">([\s\S]*?)<\/div>/.exec(hero[0])[1];
+  assert.match(actions.trim(), /^<a class="btn btn-neon btn-lg" href="\/login">Već sam član<\/a>/);
+  assert.match(actions, /<a class="btn btn-outline-light btn-lg" href="#anmeldung">Prijavi se sada<\/a>/);
+  // Bildquellen nur von freien Bilddiensten bzw. lokal
+  const srcs = [...main.matchAll(/(?:src|data-fallback)="([^"]+)"/g)].map((m) => m[1]);
+  for (const s of srcs) assert.match(s, /^(\/static\/|https:\/\/unsplash\.com\/photos\/)/, s);
+  // Andere Seiten bekommen das Startseiten-Design nicht
+  assert.doesNotMatch((await client().request('/login')).text, /class="home"/);
+});
+
+test('Startseite (neues Design): Farben Dunkelblau/Hellblau/Weiß mit Neongelb, kurze und dezente Animationen', async () => {
+  const fs = require('node:fs');
+  const css = fs.readFileSync(require('node:path').join(__dirname, '..', 'public', 'style.css'), 'utf8');
+  const start = css.indexOf('/* === Početna (Startseite)');
+  assert.ok(start >= 0, 'Startseiten-Block im CSS fehlt');
+  const home = css.slice(start);
+  // Farbpalette
+  for (const v of ['--home-navy', '--home-sky', '--home-ice', '--home-neon']) assert.match(home, new RegExp(`${v}:\\s*#[0-9a-f]{6}`, 'i'), v);
+  // Alle Regeln des Blocks sind auf die Startseite beschränkt
+  const selectors = [...home.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/(^|})\s*([^{}@]+)\{/g)].map((m) => m[2].trim()).filter((s) => s && !/^(from|to|\d+%)/.test(s));
+  for (const sel of selectors) for (const part of sel.split(',')) assert.match(part.trim(), /^\.home\b/, `nicht auf .home beschränkt: ${part}`);
+  // Animationen nach emil-design-eng: kurz, eigene ease-out-Kurve, keine „transition: all“, kein scale(0), kein ease-in
+  assert.match(home, /--home-ease:\s*cubic-bezier\(0\.23,\s*1,\s*0\.32,\s*1\)/);
+  assert.doesNotMatch(home, /transition:\s*all/);
+  assert.doesNotMatch(home, /scale\(0\)/);
+  assert.doesNotMatch(home, /\bease-in\b(?!-out)/);
+  for (const m of home.matchAll(/(\d+)ms/g)) assert.ok(Number(m[1]) <= 600, `zu lange Animation: ${m[0]}`);
+  assert.doesNotMatch(home, /\d(\.\d+)?s\b(?![a-z])/, 'Zeitangaben in ms angeben');
+  // Druck-Feedback auf Buttons, Hover nur bei echter Maus, Rücksicht auf reduzierte Bewegung
+  assert.match(home, /\.home \.btn:active\s*\{[^}]*scale\(0\.97\)/);
+  assert.match(home, /@media \(hover: hover\) and \(pointer: fine\)/);
+  assert.match(home, /@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*\.home/);
 });

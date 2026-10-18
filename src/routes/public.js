@@ -25,6 +25,10 @@ function isValidPhone(phone) {
 // ako se fotografija ne može učitati, prikazuje se vlastita ilustracija iz public/img/illustracije.
 // Za drugu fotografiju dovoljno je zamijeniti `photo` ID-om s unsplash.com/photos/<…-ID>.
 const unsplash = (id) => `https://unsplash.com/photos/${id}/download?w=800`;
+const unsplashLarge = (id) => `https://unsplash.com/photos/${id}/download?w=1600`;
+// Hero: dinamična fotografija s Unsplasha (Unsplash licenca, besplatno) – teniser na stadionu.
+// Ako se ne učita, prikazuje se lokalna fotografija terena (HERO_PHOTO_SRC).
+const HERO_ACTION_PHOTO = 'TDahyDz3gPI';
 const PROGRAMS = [
   { photo: 'aIvWY0mxiDc', img: 'individualni.svg', tag: 'Jedan na jedan', title: 'Individualni trening',
     alt: 'Igrač udara tenisku lopticu reketom',
@@ -57,29 +61,33 @@ module.exports = function publicRoutes(db, {
   function homePage(req, { values = {}, errors = [] } = {}) {
     return layout(req, {
       title: 'Časovi tenisa',
+      fullBleed: true,
       body: html`
-      <section class="hero">
-        <div class="hero-text reveal">
-          <img class="logo-full hero-logo" src="/static/img/logo.png" alt="BetterTennis – teniska škola" width="96" height="127">
-          <p class="eyebrow">Teniska škola</p>
-          <h1>Igraj <span class="hl">bolji tenis</span> – uz trening koji ti odgovara.</h1>
-          <p class="lead">Individualni i grupni časovi za sve nivoe znanja. Prijavi se bez obaveze
-            i javit ćemo ti se u najkraćem roku.</p>
-          <div class="hero-actions">
-            <a class="btn btn-accent btn-lg" href="#anmeldung">Prijavi se sada</a>
-            <a class="btn btn-ghost btn-lg" href="/login">Već sam član</a>
+      <div class="home">
+      <section class="hero home-hero" aria-label="BetterTennis – teniska škola">
+        <img class="hero-photo hero-bg" src="${unsplashLarge(HERO_ACTION_PHOTO)}" data-fallback="${HERO_PHOTO_SRC}"
+          alt="Teniser u akciji na teniskom terenu" width="1600" height="1067" loading="eager" fetchpriority="high" referrerpolicy="no-referrer">
+        <div class="home-hero-shade" aria-hidden="true"></div>
+        <div class="home-hero-inner">
+          <div class="hero-text">
+            <img class="logo-full hero-logo" src="/static/img/logo.png" alt="BetterTennis – teniska škola" width="96" height="127">
+            <p class="eyebrow">Teniska škola</p>
+            <h1>Igraj <span class="hl">bolji tenis</span> – uz trening koji ti odgovara.</h1>
+            <p class="lead">Individualni i grupni časovi za sve nivoe znanja. Prijavi se bez obaveze
+              i javit ćemo ti se u najkraćem roku.</p>
+            <div class="hero-actions">
+              <a class="btn btn-neon btn-lg" href="/login">Već sam član</a>
+              <a class="btn btn-outline-light btn-lg" href="#anmeldung">Prijavi se sada</a>
+            </div>
+            <ul class="hero-chips" aria-label="Ukratko">
+              <li>ITF treneri</li><li>Djeca i odrasli</li><li>Video analiza</li>
+            </ul>
           </div>
-          <ul class="hero-chips" aria-label="Ukratko">
-            <li>ITF treneri</li><li>Djeca i odrasli</li><li>Video analiza</li>
-          </ul>
         </div>
-        <figure class="hero-art reveal delay-1">
-          <div class="court" aria-hidden="true"><span></span></div>
-          <img class="hero-photo" src="${HERO_PHOTO_SRC}" alt="Teniski teren od šljake s bijelim linijama"
-            width="366" height="488" loading="eager">
-        </figure>
       </section>
 
+      <div class="home-band">
+      <div class="home-wrap">
       <section class="section" id="programi" aria-labelledby="programi-naslov">
         <div class="section-head reveal">
           <p class="eyebrow">Naši programi</p>
@@ -98,7 +106,10 @@ module.exports = function publicRoutes(db, {
           </article>`)}
         </div>
       </section>
+      </div>
+      </div>
 
+      <div class="home-wrap">
       <section class="section features" aria-label="Zašto BetterTennis">
         <div class="feature card lift reveal">
           <div class="feature-icon" aria-hidden="true">🎾</div>
@@ -153,7 +164,9 @@ module.exports = function publicRoutes(db, {
           </label>
           <div class="span-2"><button class="btn btn-accent btn-lg" type="submit">Prijavi se bez obaveze</button></div>
         </form>
-      </section>`,
+      </section>
+      </div>
+      </div>`,
     });
   }
 

@@ -18,7 +18,7 @@ const ASSET_VERSION = (() => {
   return hash.digest('hex').slice(0, 10);
 })();
 
-function layout(req, { title, body, wide = false }) {
+function layout(req, { title, body, wide = false, fullBleed = false }) {
   const user = req.user;
   const flash = req.takeFlash();
   const path = req.path;
@@ -96,10 +96,15 @@ function layout(req, { title, body, wide = false }) {
         : ''}
     </div>
   </header>
-  <main class="container${wide ? ' wide' : ''}">
+  ${fullBleed
+    ? html`<main class="main-full">
+    ${flash ? html`<div class="container"><div class="flash flash-${flash.type}" role="status">${flash.message}</div></div>` : ''}
+    ${body}
+  </main>`
+    : html`<main class="container${wide ? ' wide' : ''}">
     ${flash ? html`<div class="flash flash-${flash.type}" role="status">${flash.message}</div>` : ''}
     ${body}
-  </main>
+  </main>`}
   <footer class="site-footer">
     <div class="container${wide ? ' wide' : ''}">© ${new Date().getFullYear()} ${SITE_NAME} · Teniska škola</div>
   </footer>

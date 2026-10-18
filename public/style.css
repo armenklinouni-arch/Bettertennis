@@ -371,3 +371,175 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .week-release.is-released { border-left: 4px solid var(--primary); }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
+main.main-full { flex: 1; }
+
+/* === Početna (Startseite) – Dunkelblau, Hellblau, Weiß, Neongelb ===
+   Alle Regeln sind auf .home beschränkt; andere Seiten bleiben unverändert.
+   Animationen (emil-design-eng): nur transform/opacity, starke ease-out-Kurve, kurz (≤ 600 ms),
+   nichts wächst aus dem Nichts, Hover nur bei echter Maus, „Bewegung reduzieren“ wird respektiert. */
+.home {
+  --home-navy: #0b1f3a;
+  --home-navy-2: #143766;
+  --home-sky: #4cb8ff;
+  --home-ice: #eaf5ff;
+  --home-line: #d4e8fb;
+  --home-white: #ffffff;
+  --home-neon: #e4ff3a;
+  --home-ink: #0b1f3a;
+  --home-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --home-radius: 20px;
+  padding-bottom: 64px;
+}
+.home .home-wrap { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+
+/* Hero: bildschirmbreit, Foto mit dunkelblauem Verlauf, weiße Schrift, neongelber Akzent */
+.home .home-hero {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: grid; grid-template-columns: 1fr; align-items: center; gap: 0;
+  min-height: clamp(520px, 80vh, 760px); margin: 0; padding: 72px 0 88px;
+  background: var(--home-navy); color: var(--home-white);
+}
+.home .hero-bg {
+  position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%;
+  aspect-ratio: auto; object-fit: cover; object-position: 68% center;
+  border: 0; border-radius: 0; box-shadow: none; background: var(--home-navy);
+  animation: home-photo-in 600ms var(--home-ease) both;
+}
+.home .home-hero-shade {
+  position: absolute; inset: 0; z-index: -1;
+  background:
+    linear-gradient(100deg, rgba(11, 31, 58, 0.96) 0%, rgba(11, 31, 58, 0.86) 36%, rgba(20, 55, 102, 0.5) 66%, rgba(76, 184, 255, 0.16) 100%),
+    linear-gradient(0deg, rgba(11, 31, 58, 0.55) 0%, transparent 35%);
+}
+.home .home-hero-shade::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px;
+  background: linear-gradient(90deg, var(--home-neon) 0%, var(--home-sky) 70%, transparent 100%);
+}
+.home .home-hero-inner { width: 100%; max-width: 980px; margin: 0 auto; padding: 0 16px; }
+.home .home-hero .hero-text { max-width: 640px; }
+.home .home-hero .hero-logo {
+  width: 64px; height: auto; margin: 0 0 22px; padding: 8px 10px;
+  background: var(--home-white); border-radius: 16px; box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.5);
+}
+.home .home-hero .eyebrow {
+  display: inline-flex; align-items: center; gap: 10px; margin: 0 0 14px;
+  color: var(--home-neon); letter-spacing: 0.16em; font-size: 0.8rem;
+}
+.home .home-hero .eyebrow::before { content: ""; width: 28px; height: 2px; background: currentColor; }
+.home .home-hero h1 {
+  margin: 0 0 18px; color: var(--home-white); font-weight: 800;
+  font-size: clamp(2.3rem, 5.6vw, 4.1rem); line-height: 1.04; letter-spacing: -0.03em;
+}
+.home .home-hero .hl { color: var(--home-neon); background: none; padding: 0; }
+.home .home-hero .lead { max-width: 540px; margin: 0 0 30px; color: rgba(255, 255, 255, 0.84); font-size: 1.15rem; }
+.home .home-hero .hero-actions { gap: 12px; margin-bottom: 28px; }
+.home .home-hero .hero-chips li {
+  color: var(--home-white); background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(6px);
+}
+.home .home-hero .hero-chips li::before { color: var(--home-neon); }
+
+/* Buttons: klarer Neon-Login, heller Rahmen-Button; Druck-Feedback */
+.home .btn {
+  transition: transform 160ms var(--home-ease), box-shadow 200ms ease, background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+}
+.home .btn:hover, .home .lift:hover, .home .lift:hover .program-img img { transform: none; }
+.home .btn-neon {
+  background: var(--home-neon); color: var(--home-ink); border-color: var(--home-neon);
+  box-shadow: 0 12px 30px -12px rgba(228, 255, 58, 0.6);
+}
+.home .btn-outline-light { background: transparent; color: var(--home-white); border: 1.5px solid rgba(255, 255, 255, 0.55); }
+.home .btn:focus-visible { outline: 3px solid var(--home-sky); outline-offset: 3px; }
+
+/* Programme: hellblaues Band, weiße Karten */
+.home .home-band { padding: 72px 0 8px; background: linear-gradient(180deg, var(--home-ice) 0%, var(--bg) 100%); }
+.home .section { margin: 0 0 64px; }
+.home .section-head .eyebrow { display: inline-flex; align-items: center; gap: 8px; color: var(--home-navy-2); letter-spacing: 0.16em; }
+.home .section-head .eyebrow::before {
+  content: ""; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--home-neon); box-shadow: 0 0 0 3px var(--home-navy);
+}
+.home .section-head h2 { color: var(--home-navy); font-weight: 800; letter-spacing: -0.02em; }
+.home .program-grid { gap: 20px; }
+.home .program-card {
+  border: 1px solid var(--home-line); border-radius: var(--home-radius);
+  box-shadow: 0 1px 2px rgba(11, 31, 58, 0.06), 0 16px 36px -22px rgba(11, 31, 58, 0.45);
+  transition: transform 200ms var(--home-ease), box-shadow 200ms ease;
+}
+.home .program-img { background: var(--home-ice); }
+.home .program-img img { transition: transform 300ms var(--home-ease); }
+.home .program-body { padding: 18px 20px 22px; }
+.home .program-body .tag { background: var(--home-ice); color: var(--home-navy-2); border: 1px solid var(--home-line); font-weight: 700; }
+.home .program-body h3 { color: var(--home-navy); }
+
+/* Vorteile */
+.home .features { gap: 20px; }
+.home .feature { border-radius: var(--home-radius); border-color: var(--home-line); transition: transform 200ms var(--home-ease), box-shadow 200ms ease; }
+.home .feature h3 { color: var(--home-navy); }
+.home .feature-icon { background: var(--home-navy); border-radius: 14px; box-shadow: inset 0 -3px 0 var(--home-neon); }
+
+/* Anmeldeformular: dunkelblaue Karte mit Neon-Button */
+.home .form-card {
+  border: 0; border-radius: 24px; padding: 40px clamp(20px, 4vw, 48px);
+  background: var(--home-navy); color: var(--home-white);
+  box-shadow: 0 30px 60px -30px rgba(11, 31, 58, 0.6);
+}
+.home .form-card h2 { color: var(--home-white); font-weight: 800; letter-spacing: -0.02em; }
+.home .form-card .muted { color: rgba(255, 255, 255, 0.75); }
+.home .form-card label { color: rgba(255, 255, 255, 0.92); }
+.home .form-card input:not([type="checkbox"]), .home .form-card select, .home .form-card textarea {
+  background: var(--home-white); color: var(--home-ink); border-color: transparent;
+}
+.home .form-card input:focus-visible, .home .form-card select:focus-visible, .home .form-card textarea:focus-visible {
+  outline: 3px solid var(--home-neon); outline-offset: 1px;
+}
+.home .form-card .btn-accent { background: var(--home-neon); color: var(--home-ink); box-shadow: none; }
+.home .form-card .flash { color: var(--text); }
+
+/* Einblenden beim Laden: kurz, gestaffelt (60 ms), nur opacity/transform */
+@keyframes home-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes home-photo-in { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: scale(1); } }
+@keyframes home-fade { from { opacity: 0; } to { opacity: 1; } }
+.home .home-hero .hero-text > * { animation: home-rise 500ms var(--home-ease) both; }
+.home .home-hero .hero-text > :nth-child(2) { animation-delay: 60ms; }
+.home .home-hero .hero-text > :nth-child(3) { animation-delay: 120ms; }
+.home .home-hero .hero-text > :nth-child(4) { animation-delay: 180ms; }
+.home .home-hero .hero-text > :nth-child(5) { animation-delay: 240ms; }
+.home .home-hero .hero-text > :nth-child(6) { animation-delay: 300ms; }
+.home .reveal { transition-duration: 450ms; }
+
+/* Hover nur bei echter Maus (auf Touch-Geräten kein „hängender“ Hover) */
+@media (hover: hover) and (pointer: fine) {
+  .home .btn-neon:hover { transform: translateY(-1px); box-shadow: 0 16px 36px -12px rgba(228, 255, 58, 0.75); }
+  .home .btn-outline-light:hover { transform: translateY(-1px); background: rgba(255, 255, 255, 0.1); border-color: var(--home-white); }
+  .home .program-card:hover, .home .feature:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgba(11, 31, 58, 0.06), 0 22px 44px -22px rgba(11, 31, 58, 0.5); }
+  .home .program-card:hover .program-img img { transform: scale(1.03); }
+}
+/* Druck-Feedback (nach den Hover-Regeln, damit es immer gewinnt) */
+.home .btn:active { transform: scale(0.97); }
+
+@media (max-width: 720px) {
+  .home .home-hero { min-height: 0; padding: 48px 0 64px; }
+  .home .hero-bg { object-position: 62% center; }
+  .home .home-hero-shade { background: linear-gradient(180deg, rgba(11, 31, 58, 0.78) 0%, rgba(11, 31, 58, 0.94) 100%); }
+  .home .home-hero .hero-actions .btn { flex: 1 1 100%; }
+  .home .home-band { padding-top: 48px; }
+  .home .home-wrap, .home .home-hero-inner { padding: 0 16px; }
+}
+
+@media (prefers-color-scheme: dark) {
+  .home { --home-ice: #10243f; --home-line: #24405f; }
+  .home .section-head .eyebrow { color: var(--home-sky); }
+  .home .section-head h2, .home .program-body h3, .home .feature h3 { color: var(--home-white); }
+  .home .program-body .tag { color: var(--home-white); }
+  .home .form-card { box-shadow: 0 0 0 1px var(--home-line); }
+}
+
+/* „Bewegung reduzieren“: keine Bewegung, nur sanftes Einblenden */
+@media (prefers-reduced-motion: reduce) {
+  .home .home-hero .hero-text > *, .home .hero-bg { animation: home-fade 200ms ease both; }
+  .home .btn, .home .program-card, .home .feature, .home .program-img img { transition-property: box-shadow, background-color, color, border-color; }
+  .home .btn:active, .home .program-card:hover, .home .feature:hover, .home .program-card:hover .program-img img { transform: none; }
+}
