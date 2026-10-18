@@ -151,6 +151,9 @@ Tests: `npm test`
   existiert; höchstens 3 Links pro Adresse und 20 Anfragen pro IP in 15 Minuten. Gilt für Mitglieder-Konten.
 - **Admin:** pflegt beim Mitglied die E-Mail-Adresse (leer = keine E-Mail) und kann Passwörter wie bisher
   selbst zurücksetzen. Die Massenanlage bleibt ohne E-Mail.
+- **Fenster nach dem Login:** Hat ein Mitglied noch keine E-Mail-Adresse, erscheint nach dem Login ein kleines Fenster
+  („Molimo unesite svoju e-mail adresu …“) mit Eingabefeld, „Spremi“ und „Kasnije“ – höchstens bei den ersten drei
+  Logins, nie mehr, sobald eine Mail eingetragen ist, nie bei Kinder-Konten. Der Hinweis auf der Seite bleibt wie bisher.
 
 ## Anwesenheit und Berechnung je Spieler (nur Admin)
 

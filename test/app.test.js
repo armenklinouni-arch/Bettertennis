@@ -2705,3 +2705,91 @@ test('Privatstunden: fehlgeschlagene Admin-Benachrichtigung → Anfrage trotzdem
   assert.match((await m.request('/mitglied/privatni-cas')).text, /Hvala! Trener će vas uskoro kontaktirati\./);
   assert.ok(errors.some((e) => /Obavijest o upitu za privatni čas nije poslana/.test(e)), errors.join('\n'));
 });
+
+// ---------------------------------------------------------------- E-Mail-Fenster nach dem Login
+const EMAIL_POPUP_TEXT = 'Molimo unesite svoju e-mail adresu kako biste mogli sami resetovati lozinku i primati važne informacije o treninzima.';
+const hasEmailPopup = (text) => /id="email-prozor"/.test(text);
+function makeMemberWithoutEmail(name, username) {
+  const id = makeMember(name, username);
+  db.prepare('UPDATE users SET email = ? WHERE id = ?').run(`${username}@bez-emaila.bettertennis.local`, id);
+  return id;
+}
+
+test('E-Mail-Fenster: erscheint höchstens bei den ersten drei Logins ohne E-Mail; „Kasnije“ schließt es; Hinweis bleibt', async () => {
+  makeMemberWithoutEmail('Prozor Clan', 'prozor.clan');
+  for (let i = 1; i <= 3; i++) {
+    const m = client();
+    assert.equal((await m.login('prozor.clan', 'memberpass1')).location, '/mitglied');
+    const home = await m.request('/mitglied');
+    assert.ok(hasEmailPopup(home.text), `Login ${i}: Fenster fehlt`);
+    assert.ok(home.text.includes(EMAIL_POPUP_TEXT));
+    assert.match(home.text, /<input[^>]*name="email"[^>]*type="email"/);
+    assert.match(home.text, /<button class="btn btn-primary" type="submit">Spremi<\/button>/);
+    assert.match(home.text, /<button class="btn btn-ghost" type="submit">Kasnije<\/button>/);
+    // Der bisherige Hinweis bleibt unverändert
+    assert.match(home.text, /<a class="notice notice-link" href="\/mitglied\/email">✉️ Molimo unesi svoju e-mail adresu kako bi mogao\/la sam\/a resetovati lozinku i primati važne informacije o treninzima\. Unesi e-mail →<\/a>/);
+    // „Kasnije“ schließt das Fenster für diese Anmeldung
+    const later = await m.post('/mitglied/email-prozor/kasnije', {}, '/mitglied');
+    assert.equal(later.status, 302);
+    assert.equal(later.location, '/mitglied');
+    const again = await m.request('/mitglied');
+    assert.ok(!hasEmailPopup(again.text));
+    assert.match(again.text, /notice-link" href="\/mitglied\/email"/);
+  }
+  // Vierter Login: kein Fenster mehr, der Hinweis bleibt
+  const m4 = client();
+  await m4.login('prozor.clan', 'memberpass1');
+  const home4 = await m4.request('/mitglied');
+  assert.ok(!hasEmailPopup(home4.text));
+  assert.match(home4.text, /notice-link" href="\/mitglied\/email"/);
+  assert.equal(db.prepare("SELECT email FROM users WHERE username = 'prozor.clan'").get().email, 'prozor.clan@bez-emaila.bettertennis.local');
+});
+
+test('E-Mail-Fenster: „Spremi“ speichert die Mail (Prüfung wie bisher), danach erscheint es nie wieder', async () => {
+  makeMemberWithoutEmail('Prozor Dva', 'prozor.dva');
+  makeMember('Prozor Zauzet', 'prozor.zauzet'); // hat prozor.zauzet@kids-test.de
+  const m = client();
+  await m.login('prozor.dva', 'memberpass1');
+  assert.ok(hasEmailPopup((await m.request('/mitglied')).text));
+  // Ungültige oder bereits vergebene Adresse → Fehler im Fenster, nichts gespeichert
+  for (const email of ['kein-mail', 'prozor.zauzet@kids-test.de']) {
+    const bad = await m.post('/mitglied/email-prozor', { email }, '/mitglied');
+    assert.equal(bad.location, '/mitglied');
+    const page = await m.request('/mitglied');
+    assert.ok(hasEmailPopup(page.text));
+    assert.match(page.text, /ispravnu e-mail adresu|već koristi/);
+  }
+  assert.match(db.prepare("SELECT email FROM users WHERE username = 'prozor.dva'").get().email, /bez-emaila/);
+  // Gültig → gespeichert, Fenster und Hinweis weg
+  const ok = await m.post('/mitglied/email-prozor', { email: 'Prozor.Dva@Primjer.ba ' }, '/mitglied');
+  assert.equal(ok.location, '/mitglied');
+  assert.equal(db.prepare("SELECT email FROM users WHERE username = 'prozor.dva'").get().email, 'Prozor.Dva@Primjer.ba');
+  const after = await m.request('/mitglied');
+  assert.ok(!hasEmailPopup(after.text));
+  assert.doesNotMatch(after.text, /notice-link" href="\/mitglied\/email"/);
+  assert.match(after.text, /e-mail adresa je sačuvana/);
+  // Nie wieder, auch bei weiteren Logins
+  const m2 = client();
+  await m2.login('prozor.dva', 'memberpass1');
+  assert.ok(!hasEmailPopup((await m2.request('/mitglied')).text));
+  // Ohne angemeldetes Fenster kann über diesen Weg nichts geändert werden
+  const late = await m2.post('/mitglied/email-prozor', { email: 'andere@primjer.ba' }, '/mitglied');
+  assert.equal(late.status, 302);
+  assert.equal(db.prepare("SELECT email FROM users WHERE username = 'prozor.dva'").get().email, 'Prozor.Dva@Primjer.ba');
+});
+
+test('E-Mail-Fenster: nicht für Kinder-Konten und nicht für Mitglieder mit E-Mail', async () => {
+  makeMember('Prozor Mail', 'prozor.mail');
+  const m = client();
+  await m.login('prozor.mail', 'memberpass1');
+  assert.ok(!hasEmailPopup((await m.request('/mitglied')).text));
+  // Kind ohne E-Mail (Platzhalter) – auch beim ersten Login kein Fenster
+  await m.post('/mitglied/djeca', { name: 'Prozor Dijete', username: 'prozor.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
+  assert.match(db.prepare("SELECT email FROM users WHERE username = 'prozor.kid'").get().email, /bez-emaila/);
+  const kid = client();
+  await kid.login('prozor.kid', 'kid-pass-123');
+  const kidHome = await kid.request('/mitglied');
+  assert.ok(!hasEmailPopup(kidHome.text));
+  assert.ok(!kidHome.text.includes(EMAIL_POPUP_TEXT));
+  assert.equal((await kid.post('/mitglied/email-prozor', { email: 'kid@primjer.ba' }, '/mitglied')).status, 403);
+});

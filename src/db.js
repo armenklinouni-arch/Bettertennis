@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
   billing_mode      TEXT NOT NULL DEFAULT 'schedule',
   parent_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
   children_limit    INTEGER,
+  email_prompt_logins INTEGER NOT NULL DEFAULT 0,
   notes             TEXT,
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -284,6 +285,14 @@ function isPlaceholderEmail(email) {
   return typeof email === 'string' && email.toLowerCase().endsWith(`@${PLACEHOLDER_DOMAIN}`);
 }
 
+// Prozor „unesite e-mail“ nakon prijave: samo član (ne dječiji račun) bez e-maila, najviše kod prve tri prijave.
+const EMAIL_PROMPT_MAX_LOGINS = 3;
+function needsEmailPrompt(user) {
+  return !!user && user.role === 'member' && !user.parent_id
+    && (!user.email || isPlaceholderEmail(user.email))
+    && (user.email_prompt_logins || 0) < EMAIL_PROMPT_MAX_LOGINS;
+}
+
 // Postojeći članovi i treneri (iz vremena prijave e-mailom) jednom dobiju korisničko ime – podaci ostaju netaknuti.
 function assignMissingUsernames(db) {
   const members = db.prepare("SELECT id, email FROM users WHERE role = 'member' AND (username IS NULL OR username = '') ORDER BY id").all();
@@ -321,6 +330,8 @@ const NEW_COLUMNS = [
   ['lessons', 'attendance', 'TEXT'],
   ['lessons', 'attendance_note', 'TEXT'],
   ['lessons', 'billable', 'INTEGER NOT NULL DEFAULT 1'],
+  // Koliko puta je članu bez e-maila nakon prijave prikazan prozor za unos e-maila (najviše 3 puta).
+  ['users', 'email_prompt_logins', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 
 function addMissingColumns(db) {
@@ -419,6 +430,6 @@ function ensureAdmin(db, { email, password, name } = {}) {
 
 module.exports = {
   openDatabase, getSetting, setSetting, sessionSecret, ensureAdmin,
-  USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername, placeholderEmail, isPlaceholderEmail,
+  USERNAME_RE, normalizeUsername, usernameTaken, suggestUsername, placeholderEmail, isPlaceholderEmail, needsEmailPrompt, EMAIL_PROMPT_MAX_LOGINS,
   CHILDREN_LIMIT,
 };

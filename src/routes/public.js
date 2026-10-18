@@ -7,7 +7,7 @@ const express = require('express');
 const { html, raw } = require('../html');
 const { layout, csrfField, errorList } = require('../views');
 const { verifyPassword, hashPassword, DUMMY_HASH, homeFor } = require('../auth');
-const { isPlaceholderEmail } = require('../db');
+const { isPlaceholderEmail, needsEmailPrompt } = require('../db');
 
 const LEVELS = ['Početnik', 'Povratnik', 'Napredni', 'Takmičar'];
 
@@ -333,8 +333,14 @@ module.exports = function publicRoutes(db, {
 
     loginLimiter.reset(key);
     const csrf = crypto.randomBytes(18).toString('base64url');
-    if (user) req.session = { uid: user.id, csrf };
-    else if (trainer) req.session = { tid: trainer.id, csrf };
+    if (user) {
+      req.session = { uid: user.id, csrf };
+      // Prozor za unos e-maila: prikazuje se u ovoj prijavi (najviše kod prve tri prijave bez e-maila).
+      if (needsEmailPrompt(user)) {
+        db.prepare('UPDATE users SET email_prompt_logins = email_prompt_logins + 1 WHERE id = ?').run(user.id);
+        req.session.emailPrompt = 1;
+      }
+    } else if (trainer) req.session = { tid: trainer.id, csrf };
     else req.session = { pid: parentAccount.id, csrf };
     res.saveSession();
     res.redirect(safeNext(next, user ? homeFor(user) : trainer ? '/trener' : '/roditelj'));

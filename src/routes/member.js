@@ -18,6 +18,7 @@ const {
   isSlotOpen, slotStartMs, slotLabel, formatSarajevo, NOTIFY_EMAIL_DEFAULT,
 } = require('../private-lessons');
 
+const EMAIL_POPUP_TEXT = 'Molimo unesite svoju e-mail adresu kako biste mogli sami resetovati lozinku i primati važne informacije o treninzima.';
 const EMAIL_HINT = 'Molimo unesi svoju e-mail adresu kako bi mogao/la sam/a resetovati lozinku i primati važne informacije o treninzima.';
 
 function text(v, max) {
@@ -70,6 +71,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
     const isChild = !!req.user.parent_id;
     const statement = isChild ? null : monthlyStatement(db, req.user, month);
     const upcoming = visibleOnly(upcomingLessons.all(req.user.id, today)).slice(0, 5);
+    const emailPrompt = takeEmailPrompt(req, res);
     const weekMinutes = lessons.filter((l) => !l.cancelled).reduce((s, l) => s + l.duration_min, 0);
 
     res.send(String(layout(req, {
@@ -110,8 +112,77 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
               (l) => html`<li><strong>${D.formatDateLong(l.date)}</strong> · ${lessonTimeRange(l)} h
                 ${l.court ? html`· Teren ${l.court}` : ''} · ${lessonKindLabel(l)} — ${req.user.name}</li>`
             )}</ul>`}
-      </section>`,
+      </section>
+      ${emailPrompt ? emailPromptDialog(req, emailPrompt) : ''}`,
     })));
+  });
+
+  // ---------------------------------------------------------------- Prozor „unesite e-mail“ nakon prijave
+  // Pojavljuje se samo u prijavi u kojoj je označen (vidi /login) i samo dok član nema e-mail.
+  // Postojeća napomena na stranici ostaje nepromijenjena.
+  const hasNoEmail = (user) => !user.email || isPlaceholderEmail(user.email);
+  const showEmailPrompt = (req) => !!req.session.emailPrompt && !req.user.parent_id && hasNoEmail(req.user);
+
+  // Podaci za prozor (greška i upisana adresa iz prethodnog pokušaja se prikazuju samo jednom).
+  function takeEmailPrompt(req, res) {
+    if (!showEmailPrompt(req)) return null;
+    const prompt = { error: req.session.emailPromptError || null, value: req.session.emailPromptValue || '' };
+    if (prompt.error || prompt.value) {
+      delete req.session.emailPromptError;
+      delete req.session.emailPromptValue;
+      res.saveSession();
+    }
+    return prompt;
+  }
+
+  function emailPromptDialog(req, { error, value }) {
+    return html`
+      <div class="modal-backdrop" id="email-prozor">
+        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="email-prozor-title">
+          <h2 id="email-prozor-title">✉️ E-mail adresa</h2>
+          <p>${EMAIL_POPUP_TEXT}</p>
+          ${error ? html`<p class="modal-error" role="alert">${error}</p>` : ''}
+          <form method="post" action="/mitglied/email-prozor" class="stack">
+            ${csrfField(req)}
+            <label>E-mail
+              <input name="email" type="email" required maxlength="200" autocomplete="email" autofocus value="${value}">
+            </label>
+            <button class="btn btn-primary" type="submit">Spremi</button>
+          </form>
+          <form method="post" action="/mitglied/email-prozor/kasnije" class="modal-later">
+            ${csrfField(req)}
+            <button class="btn btn-ghost" type="submit">Kasnije</button>
+          </form>
+        </section>
+      </div>`;
+  }
+
+  router.post('/email-prozor', (req, res) => {
+    if (!showEmailPrompt(req)) return res.redirect('/mitglied');
+    const email = text(req.body.email, 200);
+    let error = null;
+    if (!EMAIL_RE.test(email) || isPlaceholderEmail(email)) error = 'Molimo upišite ispravnu e-mail adresu.';
+    else if (db.prepare('SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?').get(email, req.user.id)) {
+      error = 'Ova e-mail adresa se već koristi za drugi račun.';
+    }
+    if (error) {
+      req.session.emailPromptError = error;
+      req.session.emailPromptValue = email;
+      res.saveSession();
+      return res.redirect('/mitglied');
+    }
+    db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, req.user.id);
+    delete req.session.emailPrompt;
+    res.flash('success', 'Vaša e-mail adresa je sačuvana. Hvala!');
+    res.redirect('/mitglied');
+  });
+
+  router.post('/email-prozor/kasnije', (req, res) => {
+    delete req.session.emailPrompt;
+    delete req.session.emailPromptError;
+    delete req.session.emailPromptValue;
+    res.saveSession();
+    res.redirect('/mitglied');
   });
 
   // Mjesečni iznos (samo informativno, bez funkcije plaćanja).
