@@ -414,6 +414,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .modal-backdrop, .modal { animation: none; } }
 
+/* Moji podaci */
+.my-data { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 0 0 6px; }
+.my-data div { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.my-data dt { font-size: 0.78rem; color: var(--muted); }
+.my-data dd { margin: 2px 0 0; font-weight: 600; }
+.stack label .hint { display: block; font-size: 0.82rem; font-weight: 400; color: var(--muted); margin-top: 4px; }
+.confirm-box { border: 1px solid var(--accent); background: var(--primary-soft); border-radius: 10px; padding: 12px 14px; }
+.confirm-box p { margin-top: 0; }
+
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
 

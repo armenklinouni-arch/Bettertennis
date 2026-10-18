@@ -1576,7 +1576,7 @@ test('Mailversand über Resend: Schlüssel aus RESEND_API_KEY, Absender @bettert
   assert.equal(await noKey.send({ to: 'a@b.ba', subject: 's', text: 't' }), false);
 });
 
-test('Mitglied trägt eigene E-Mail-Adresse ein und ändert sie; Hinweis solange keine hinterlegt ist', async () => {
+test('Moji podaci: Mitglied trägt E-Mail und Telefon ohne Passwort ein; Hinweis solange keine E-Mail hinterlegt ist', async () => {
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
   // Massenanlage bleibt unverändert (ohne E-Mail)
@@ -1584,32 +1584,127 @@ test('Mitglied trägt eigene E-Mail-Adresse ein und ändert sie; Hinweis solange
   const pw = /<td><code>mejl\.bezadrese<\/code><\/td><td><code>([^<]+)<\/code>/.exec(bulk.text)[1];
   const m = client();
   await m.login('mejl.bezadrese', pw);
+  await m.post('/mitglied/email-prozor/kasnije', {}, '/mitglied');
   const hint = /Molimo unesi svoju e-mail adresu kako bi mogao\/la sam\/a resetovati lozinku i primati važne informacije o treninzima/;
-  assert.match((await m.request('/mitglied')).text, hint);
-  const page = await m.request('/mitglied/email');
+  const home = (await m.request('/mitglied')).text;
+  assert.match(home, hint);
+  assert.match(home, /href="\/mitglied\/moji-podaci"[^>]*>Moji podaci</);
+  assert.doesNotMatch(home, />E-mail<\/a>/); // alter Reiter ersetzt
+  // Alte Adresse führt zur neuen Seite
+  assert.equal((await m.request('/mitglied/email')).location, '/mitglied/moji-podaci');
+  const page = await m.request('/mitglied/moji-podaci');
   assert.equal(page.status, 200);
+  assert.match(page.text, /<h1>Moji podaci<\/h1>/);
   assert.match(page.text, hint);
+  assert.match(page.text, /Mejl Bezadrese/);
+  assert.match(page.text, /mejl\.bezadrese/);
+  assert.doesNotMatch(page.text, /name="name"|name="username"/); // Name und Benutzername nur angezeigt
+  assert.match(page.text, /<input[^>]*name="email"/);
+  assert.match(page.text, /<input[^>]*name="phone"/);
+  assert.match(page.text, /<button class="btn btn-primary" type="submit">Spremi<\/button>/);
+  assert.doesNotMatch(page.text, /Trenutna lozinka|name="password"|Vaša lozinka za BetterTennis/);
   assert.doesNotMatch(page.text, /bez-emaila/); // interne Ersatzadresse wird nicht angezeigt
-  // Ungültig, falsches Passwort, bereits vergeben → abgelehnt
-  assert.equal((await m.post('/mitglied/email', { email: 'kein-mail', password: pw }, '/mitglied/email')).status, 400);
-  assert.equal((await m.post('/mitglied/email', { email: 'neu@mejl.ba', password: 'falsch-123' }, '/mitglied/email')).status, 400);
-  assert.equal((await m.post('/mitglied/email', { email: 'admin@test.de', password: pw }, '/mitglied/email')).status, 400);
-  assert.equal((await m.post('/mitglied/email', { email: 'x@bez-emaila.bettertennis.local', password: pw }, '/mitglied/email')).status, 400);
-  // Eintragen
-  assert.equal((await m.post('/mitglied/email', { email: ' Mejl@Primjer.ba ', password: pw }, '/mitglied/email')).status, 302);
-  const user = db.prepare("SELECT * FROM users WHERE username = 'mejl.bezadrese'").get();
+  // Ungültig oder bereits vergeben → abgelehnt, nichts gespeichert
+  for (const email of ['kein-mail', 'admin@test.de', 'x@bez-emaila.bettertennis.local']) {
+    assert.equal((await m.post('/mitglied/moji-podaci', { email, phone: '061 111 222' }, '/mitglied/moji-podaci')).status, 400, email);
+  }
+  assert.equal((await m.post('/mitglied/moji-podaci', { email: '', phone: 'abc<script>' }, '/mitglied/moji-podaci')).status, 400);
+  let user = db.prepare("SELECT * FROM users WHERE username = 'mejl.bezadrese'").get();
+  assert.match(user.email, /bez-emaila/);
+  assert.equal(user.phone, null);
+  // Nur Telefon (noch keine E-Mail) → ohne Passwort gespeichert, Ersatzadresse bleibt
+  assert.equal((await m.post('/mitglied/moji-podaci', { email: '', phone: '+387 61 111 222' }, '/mitglied/moji-podaci')).status, 302);
+  user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  assert.equal(user.phone, '+387 61 111 222');
+  assert.match(user.email, /bez-emaila/);
+  // Erstes Eintragen der E-Mail → ohne Passwort; Name/Benutzername im Formular werden ignoriert
+  const first = await m.post('/mitglied/moji-podaci', { email: ' Mejl@Primjer.ba ', phone: '+387 61 111 222', name: 'Hacker', username: 'hacker' }, '/mitglied/moji-podaci');
+  assert.equal(first.status, 302);
+  assert.equal(first.location, '/mitglied/moji-podaci');
+  user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   assert.equal(user.email, 'Mejl@Primjer.ba');
+  assert.equal(user.name, 'Mejl Bezadrese');
+  assert.equal(user.username, 'mejl.bezadrese');
+  const saved = await m.request('/mitglied/moji-podaci');
+  assert.match(saved.text, /Vaši podaci su sačuvani/);
+  assert.match(saved.text, /value="Mejl@Primjer\.ba"/);
+  assert.match(saved.text, /value="\+387 61 111 222"/);
   assert.doesNotMatch((await m.request('/mitglied')).text, hint);
-  assert.match((await m.request('/mitglied/email')).text, /value="Mejl@Primjer\.ba"/);
-  // Ändern
-  assert.equal((await m.post('/mitglied/email', { email: 'drugi@primjer.ba', password: pw }, '/mitglied/email')).status, 302);
-  assert.equal(db.prepare('SELECT email FROM users WHERE id = ?').get(user.id).email, 'drugi@primjer.ba');
-  // Kinder-Konto hat keinen Zugriff auf diese Seite
+  // Telefon ändern (E-Mail gleich) → kein Passwort; Telefon leeren ist erlaubt
+  assert.equal((await m.post('/mitglied/moji-podaci', { email: 'Mejl@Primjer.ba', phone: '062 333 444' }, '/mitglied/moji-podaci')).status, 302);
+  assert.equal(db.prepare('SELECT phone FROM users WHERE id = ?').get(user.id).phone, '062 333 444');
+  assert.equal((await m.post('/mitglied/moji-podaci', { email: 'Mejl@Primjer.ba', phone: '' }, '/mitglied/moji-podaci')).status, 302);
+  assert.equal(db.prepare('SELECT phone FROM users WHERE id = ?').get(user.id).phone, null);
+  // Eine vorhandene E-Mail darf nicht geleert werden
+  assert.equal((await m.post('/mitglied/moji-podaci', { email: '', phone: '' }, '/mitglied/moji-podaci')).status, 400);
+  assert.equal(db.prepare('SELECT email FROM users WHERE id = ?').get(user.id).email, 'Mejl@Primjer.ba');
+
+  // Kinder-Konto hat keinen Zugriff
   await m.post('/mitglied/djeca', { name: 'Mejl Dijete', username: 'mejl.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
   const kid = client();
   await kid.login('mejl.kid', 'kid-pass-123');
-  assert.equal((await kid.request('/mitglied/email')).status, 403);
-  assert.doesNotMatch((await kid.request('/mitglied')).text, hint);
+  assert.equal((await kid.request('/mitglied/moji-podaci')).status, 403);
+  assert.equal((await kid.post('/mitglied/moji-podaci', { email: 'kid@primjer.ba', phone: '1' }, '/mitglied')).status, 403);
+  const kidHome = (await kid.request('/mitglied')).text;
+  assert.doesNotMatch(kidHome, hint);
+  assert.doesNotMatch(kidHome, /moji-podaci/);
+});
+
+test('Moji podaci: Ändern einer vorhandenen E-Mail fragt nach dem BetterTennis-Passwort', async () => {
+  makeMember('Podaci Clan', 'podaci.clan'); // hat podaci.clan@kids-test.de, Passwort memberpass1
+  const m = client();
+  await m.login('podaci.clan', 'memberpass1');
+  const id = db.prepare("SELECT id FROM users WHERE username = 'podaci.clan'").get().id;
+  const emailOf = () => db.prepare('SELECT email, phone FROM users WHERE id = ?').get(id);
+  // Ohne Passwort → Rückfrage statt Speichern (auch Telefon wird noch nicht gespeichert)
+  const ask = await m.post('/mitglied/moji-podaci', { email: 'novi@primjer.ba', phone: '061 000 111' }, '/mitglied/moji-podaci');
+  assert.equal(ask.status, 200);
+  assert.match(ask.text, /<label>Vaša lozinka za BetterTennis/);
+  assert.match(ask.text, /Unesite lozinku kojom se prijavljujete na BetterTennis, ne lozinku vašeg e-mail računa\./);
+  assert.match(ask.text, /<input[^>]*name="password"[^>]*type="password"/);
+  assert.match(ask.text, /value="novi@primjer\.ba"/);
+  assert.match(ask.text, /value="061 000 111"/);
+  assert.deepEqual({ ...emailOf() }, { email: 'podaci.clan@kids-test.de', phone: null });
+  // Falsches Passwort → Fehler, nichts gespeichert
+  const wrong = await m.post('/mitglied/moji-podaci', { email: 'novi@primjer.ba', phone: '061 000 111', password: 'falsch-123' }, '/mitglied/moji-podaci');
+  assert.equal(wrong.status, 400);
+  assert.match(wrong.text, /Vaša lozinka za BetterTennis/);
+  assert.equal(emailOf().email, 'podaci.clan@kids-test.de');
+  // Richtiges Passwort → beides gespeichert
+  const ok = await m.post('/mitglied/moji-podaci', { email: 'novi@primjer.ba', phone: '061 000 111', password: 'memberpass1' }, '/mitglied/moji-podaci');
+  assert.equal(ok.status, 302);
+  assert.deepEqual({ ...emailOf() }, { email: 'novi@primjer.ba', phone: '061 000 111' });
+  // Gleiche Adresse (nur Groß-/Kleinschreibung) oder nur Telefon → kein Passwort
+  assert.equal((await m.post('/mitglied/moji-podaci', { email: 'Novi@Primjer.ba', phone: '061 000 222' }, '/mitglied/moji-podaci')).status, 302);
+  assert.deepEqual({ ...emailOf() }, { email: 'Novi@Primjer.ba', phone: '061 000 222' });
+  // Normale Seite zeigt kein Passwortfeld
+  assert.doesNotMatch((await m.request('/mitglied/moji-podaci')).text, /name="password"/);
+  // Passwort ändern bleibt ein eigener Bereich
+  const pwPage = await m.request('/mitglied/passwort');
+  assert.equal(pwPage.status, 200);
+  assert.match(pwPage.text, /Trenutna lozinka/);
+  assert.match((await m.request('/mitglied')).text, /href="\/mitglied\/passwort"[^>]*>Lozinka</);
+});
+
+test('Moji podaci: Admin sieht E-Mail und Telefon beim Mitglied und kann sie ändern', async () => {
+  const id = makeMember('Podaci Admin', 'podaci.admin');
+  const m = client();
+  await m.login('podaci.admin', 'memberpass1');
+  await m.post('/mitglied/moji-podaci', { email: 'podaci.admin@kids-test.de', phone: '061 555 666' }, '/mitglied/moji-podaci');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const list = (await admin.request('/admin/mitglieder')).text;
+  assert.match(list, /podaci\.admin@kids-test\.de<br>061 555 666/);
+  const edit = (await admin.request(`/admin/mitglieder/${id}`)).text;
+  assert.match(edit, /name="email"[^>]*value="podaci\.admin@kids-test\.de"/);
+  assert.match(edit, /name="phone"[^>]*value="061 555 666"/);
+  await admin.post(`/admin/mitglieder/${id}`, {
+    name: 'Podaci Admin', username: 'podaci.admin', email: 'admin.promijenio@primjer.ba', phone: '062 777 888', active: '1', hourly_rate: '40', monthly_fee: '0',
+  }, `/admin/mitglieder/${id}`);
+  assert.deepEqual({ ...db.prepare('SELECT email, phone FROM users WHERE id = ?').get(id) }, { email: 'admin.promijenio@primjer.ba', phone: '062 777 888' });
+  const page = (await m.request('/mitglied/moji-podaci')).text;
+  assert.match(page, /value="admin\.promijenio@primjer\.ba"/);
+  assert.match(page, /value="062 777 888"/);
 });
 
 test('Passwort vergessen: Link per E-Mail, neues Passwort setzen, Benutzername bleibt gleich', async () => {
@@ -2727,21 +2822,21 @@ test('E-Mail-Fenster: erscheint höchstens bei den ersten drei Logins ohne E-Mai
     assert.match(home.text, /<button class="btn btn-primary" type="submit">Spremi<\/button>/);
     assert.match(home.text, /<button class="btn btn-ghost" type="submit">Kasnije<\/button>/);
     // Der bisherige Hinweis bleibt unverändert
-    assert.match(home.text, /<a class="notice notice-link" href="\/mitglied\/email">✉️ Molimo unesi svoju e-mail adresu kako bi mogao\/la sam\/a resetovati lozinku i primati važne informacije o treninzima\. Unesi e-mail →<\/a>/);
+    assert.match(home.text, /<a class="notice notice-link" href="\/mitglied\/moji-podaci">✉️ Molimo unesi svoju e-mail adresu kako bi mogao\/la sam\/a resetovati lozinku i primati važne informacije o treninzima\. Unesi e-mail →<\/a>/);
     // „Kasnije“ schließt das Fenster für diese Anmeldung
     const later = await m.post('/mitglied/email-prozor/kasnije', {}, '/mitglied');
     assert.equal(later.status, 302);
     assert.equal(later.location, '/mitglied');
     const again = await m.request('/mitglied');
     assert.ok(!hasEmailPopup(again.text));
-    assert.match(again.text, /notice-link" href="\/mitglied\/email"/);
+    assert.match(again.text, /notice-link" href="\/mitglied\/moji-podaci"/);
   }
   // Vierter Login: kein Fenster mehr, der Hinweis bleibt
   const m4 = client();
   await m4.login('prozor.clan', 'memberpass1');
   const home4 = await m4.request('/mitglied');
   assert.ok(!hasEmailPopup(home4.text));
-  assert.match(home4.text, /notice-link" href="\/mitglied\/email"/);
+  assert.match(home4.text, /notice-link" href="\/mitglied\/moji-podaci"/);
   assert.equal(db.prepare("SELECT email FROM users WHERE username = 'prozor.clan'").get().email, 'prozor.clan@bez-emaila.bettertennis.local');
 });
 
@@ -2766,7 +2861,7 @@ test('E-Mail-Fenster: „Spremi“ speichert die Mail (Prüfung wie bisher), dan
   assert.equal(db.prepare("SELECT email FROM users WHERE username = 'prozor.dva'").get().email, 'Prozor.Dva@Primjer.ba');
   const after = await m.request('/mitglied');
   assert.ok(!hasEmailPopup(after.text));
-  assert.doesNotMatch(after.text, /notice-link" href="\/mitglied\/email"/);
+  assert.doesNotMatch(after.text, /notice-link" href="\/mitglied\/moji-podaci"/);
   assert.match(after.text, /e-mail adresa je sačuvana/);
   // Nie wieder, auch bei weiteren Logins
   const m2 = client();

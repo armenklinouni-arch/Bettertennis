@@ -65,7 +65,7 @@ function layout(req, { title, body, wide = false, fullBleed = false }) {
       ${navLink('/mitglied/privatni-cas', 'Zatraži privatni čas')}
       ${navLink('/mitglied/aktuelnosti', html`Aktuelnosti${req.unreadNews ? html` <span class="count" aria-label="nepročitano">${req.unreadNews}</span>` : ''}`)}
       ${navLink('/mitglied/djeca', 'Djeca')}
-      ${navLink('/mitglied/email', 'E-mail')}
+      ${navLink('/mitglied/moji-podaci', 'Moji podaci')}
       ${navLink('/mitglied/passwort', 'Lozinka')}`;
   }
 

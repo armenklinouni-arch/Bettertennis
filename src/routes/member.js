@@ -97,7 +97,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
             </a>`}
       </div>
       ${!isChild && isPlaceholderEmail(req.user.email)
-        ? html`<a class="notice notice-link" href="/mitglied/email">✉️ ${EMAIL_HINT} Unesi e-mail →</a>`
+        ? html`<a class="notice notice-link" href="/mitglied/moji-podaci">✉️ ${EMAIL_HINT} Unesi e-mail →</a>`
         : ''}
       ${req.unreadNews && !isChild
         ? html`<a class="notice notice-link" href="/mitglied/aktuelnosti">📬 Imaš nepročitane aktuelnosti: <strong>${req.unreadNews}</strong> – otvori sandučić →</a>`
@@ -411,55 +411,91 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
   });
 
   // ---------------------------------------------------------------- Vlastita e-mail adresa
-  function emailPage(req, { email, errors = [] } = {}) {
-    const missing = isPlaceholderEmail(req.user.email);
-    const current = email !== undefined ? email : (missing ? '' : req.user.email);
+  // ---------------------------------------------------------------- Moji podaci (e-mail i telefon)
+  // Ime i korisničko ime se samo prikazuju. Lozinka se traži samo kad se mijenja već upisana e-mail adresa.
+  const PHONE_RE = /^[0-9+()\/.\s-]{0,50}$/;
+  const realEmail = (user) => (user.email && !isPlaceholderEmail(user.email) ? user.email : '');
+
+  function myDataPage(req, { values, errors = [], askPassword = false } = {}) {
+    const saved = realEmail(req.user);
+    const v = values || { email: saved, phone: req.user.phone || '' };
     return layout(req, {
-      title: 'E-mail adresa',
+      title: 'Moji podaci',
       body: html`
       <section class="card narrow">
-        <h1>Moja e-mail adresa</h1>
-        ${missing ? html`<p class="notice">${EMAIL_HINT}</p>`
-          : html`<p class="muted">Na ovu adresu šaljemo link za novu lozinku i važne informacije o treninzima.</p>`}
+        <h1>Moji podaci</h1>
+        ${saved ? '' : html`<p class="notice">${EMAIL_HINT}</p>`}
+        <dl class="my-data">
+          <div><dt>Ime i prezime</dt><dd>${req.user.name}</dd></div>
+          <div><dt>Korisničko ime</dt><dd>${req.user.username || '–'}</dd></div>
+        </dl>
+        <p class="muted small">Ime, prezime i korisničko ime može promijeniti samo teniska škola.</p>
         ${errorList(errors)}
-        <form method="post" action="/mitglied/email" class="stack">
+        <form method="post" action="/mitglied/moji-podaci" class="stack">
           ${csrfField(req)}
-          <label>E-mail adresa
-            <input name="email" type="email" required maxlength="200" autocomplete="email" value="${current}">
+          <label>E-mail
+            <input name="email" type="email" maxlength="200" autocomplete="email" value="${v.email}"${saved ? ' required' : ''}>
+            <span class="hint">Koristi se za resetovanje lozinke i e-mailove teniske škole.</span>
           </label>
-          <label>Trenutna lozinka (radi sigurnosti)
-            <input name="password" type="password" required autocomplete="current-password">
+          <label>Telefon
+            <input name="phone" type="tel" maxlength="50" autocomplete="tel" value="${v.phone}">
           </label>
-          <button class="btn btn-primary" type="submit">Sačuvaj</button>
+          ${askPassword ? html`<div class="confirm-box">
+            <p><strong>Mijenjate e-mail adresu.</strong> Radi sigurnosti molimo potvrdite lozinkom.</p>
+            <label>Vaša lozinka za BetterTennis
+              <input name="password" type="password" required autocomplete="current-password" autofocus>
+              <span class="hint">Unesite lozinku kojom se prijavljujete na BetterTennis, ne lozinku vašeg e-mail računa.</span>
+            </label>
+          </div>` : ''}
+          <button class="btn btn-primary" type="submit">Spremi</button>
+          ${askPassword ? html`<a class="btn btn-ghost" href="/mitglied/moji-podaci">Odustani</a>` : ''}
         </form>
       </section>`,
     });
   }
 
-  router.get('/email', (req, res) => {
+  router.get('/moji-podaci', (req, res) => {
     if (req.user.role !== 'member') return res.redirect('/');
-    res.send(String(emailPage(req)));
+    res.send(String(myDataPage(req)));
   });
 
-  router.post('/email', (req, res) => {
+  router.post('/moji-podaci', (req, res) => {
     if (req.user.role !== 'member') return res.status(403).send('Nemate pristup.');
-    const email = text(req.body.email, 200);
+    const values = { email: text(req.body.email, 200), phone: text(req.body.phone, 50) };
+    const saved = realEmail(req.user);
     const errors = [];
-    if (!EMAIL_RE.test(email) || isPlaceholderEmail(email)) errors.push('Molimo upiši ispravnu e-mail adresu.');
-    else if (db.prepare('SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?').get(email, req.user.id)) {
+    if (values.email === '') {
+      if (saved) errors.push('E-mail adresa ne može biti prazna.');
+    } else if (!EMAIL_RE.test(values.email) || isPlaceholderEmail(values.email)) {
+      errors.push('Molimo unesite ispravnu e-mail adresu.');
+    } else if (db.prepare('SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?').get(values.email, req.user.id)) {
       errors.push('Ova e-mail adresa se već koristi za drugi račun.');
     }
-    if (!verifyPassword(typeof req.body.password === 'string' ? req.body.password : '', req.user.password_hash)) {
-      errors.push('Trenutna lozinka nije ispravna.');
-    }
+    if (!PHONE_RE.test(values.phone)) errors.push('Neispravan broj telefona (dozvoljeni su brojevi, razmak, +, -, /, ( i )).');
+    // Promjena već upisane adrese (ne samo velika/mala slova) traži lozinku za BetterTennis.
+    const emailChanged = !!saved && values.email.toLowerCase() !== saved.toLowerCase();
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
     if (errors.length) {
       res.status(400);
-      return res.send(String(emailPage(req, { email, errors })));
+      return res.send(String(myDataPage(req, { values, errors, askPassword: emailChanged && !!values.email })));
     }
-    db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, req.user.id);
-    res.flash('success', 'Tvoja e-mail adresa je sačuvana.');
-    res.redirect('/mitglied/email');
+    if (emailChanged) {
+      if (!password) return res.send(String(myDataPage(req, { values, askPassword: true })));
+      if (!verifyPassword(password, req.user.password_hash)) {
+        res.status(400);
+        return res.send(String(myDataPage(req, { values, askPassword: true, errors: ['Lozinka nije ispravna.'] })));
+      }
+    }
+    // Bez e-maila ostaje interna zamjenska adresa (kao do sada).
+    db.prepare('UPDATE users SET email = ?, phone = ? WHERE id = ?')
+      .run(values.email || req.user.email, values.phone || null, req.user.id);
+    res.flash('success', 'Vaši podaci su sačuvani.');
+    res.redirect('/mitglied/moji-podaci');
   });
+
+  // Ranija stranica „E-mail“ je sada dio „Moji podaci“.
+  router.get('/email', (req, res) => res.redirect('/mitglied/moji-podaci'));
+  router.post('/email', (req, res) => res.redirect('/mitglied/moji-podaci'));
 
   function passwordPage(req, errors = []) {
     return layout(req, {

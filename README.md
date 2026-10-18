@@ -144,8 +144,13 @@ Tests: `npm test`
   `BetterTennis <no-reply@bettertennis.net>` (änderbar über `MAIL_FROM`). Links in E-Mails zeigen auf
   `https://bettertennis.net` (änderbar über `APP_URL`). Ohne Schlüssel startet die App normal, verschickt
   aber keine E-Mails (Hinweis im Log).
-- **Mitglied:** trägt unter **E-mail** selbst seine Adresse ein bzw. ändert sie (mit aktuellem Passwort).
-  Solange keine hinterlegt ist, erscheint ein Hinweis auf der Startseite des Mitglieds.
+- **Mitglied → „Moji podaci“:** zeigt Vor- und Nachname und Benutzername (nur lesbar, ändert der Admin) und
+  Felder für **E-mail** und **Telefon** mit einem Knopf „Spremi“. Kein Passwort beim ersten Eintragen der E-Mail
+  und beim Ändern der Telefonnummer; nur wenn eine bereits eingetragene E-Mail geändert wird, fragt die Seite nach
+  „Vaša lozinka za BetterTennis“ (Hinweis: Login-Passwort, nicht das Passwort des E-Mail-Kontos). Eine vorhandene
+  E-Mail kann nicht geleert werden. Die alte Adresse `/mitglied/email` leitet hierher weiter. Passwort ändern bleibt
+  unter „Lozinka“. Nicht für Kinder-Konten. Solange keine E-Mail hinterlegt ist, erscheint ein Hinweis auf der
+  Startseite des Mitglieds (führt zu „Moji podaci“).
 - **Login → „Zaboravljena lozinka?“:** E-Mail eingeben → Link (60 Minuten gültig, nur einmal verwendbar) →
   neues Passwort setzen. Der Benutzername bleibt immer gleich. Die Antwort verrät nicht, ob eine Adresse
   existiert; höchstens 3 Links pro Adresse und 20 Anfragen pro IP in 15 Minuten. Gilt für Mitglieder-Konten.
