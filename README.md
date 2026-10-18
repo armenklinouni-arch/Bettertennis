@@ -221,8 +221,18 @@ Die vier Programmkarten (Individualni, Grupni, Video analiza, Konsultacije) zeig
 Lädt ein Foto nicht, erscheint automatisch die eigene Illustration aus `public/img/illustracije/`. Die Startseite nutzt sanfte Scroll- und Hover-Animationen;
 bei der Systemeinstellung „Bewegung reduzieren“ werden sie automatisch abgeschaltet.
 
-Startseite: Hero-Foto [„Tennis player on court with spectators in stadium“ auf Unsplash](https://unsplash.com/photos/tennis-player-on-court-with-spectators-in-stadium-TDahyDz3gPI)
-(Unsplash-Lizenz); Ersatzbild lokal: [Aleksandr Galichkin auf Unsplash](https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc).
+Fotos der Startseite (alle frei nutzbar, Unsplash-Lizenz; geladen direkt von unsplash.com, lokale Ersatzbilder falls nicht erreichbar):
+- Hauptbild (wechselt langsam): [Spielerin in Bewegung](https://unsplash.com/photos/a-woman-is-playing-tennis-on-a-tennis-court-yKMJLLtoDv4),
+  [Aufschlag](https://unsplash.com/photos/man-serving-a-tennis-ball-on-a-court-AldB5IWh8l4),
+  [Platz von oben](https://unsplash.com/photos/aerial-photography-of-two-person-playing-tennis-aG6ByqGXiXg),
+  [Ball und Schläger](https://unsplash.com/photos/a-close-up-of-a-tennis-ball-and-a-racket-QBCiW-A_UNk),
+  [Bälle am Netz](https://unsplash.com/photos/many-tennis-balls-scattered-on-a-court-near-net-LwxVG0VQ3RY)
+- Karten: [Individualni](https://unsplash.com/photos/a-man-standing-on-a-tennis-court-holding-a-racquet-mmi0vkwHU0M),
+  [Grupni](https://unsplash.com/photos/a-group-of-people-playing-tennis-on-a-tennis-court-Dhdck86QmyE),
+  [Video analiza](https://unsplash.com/photos/a-shadow-of-a-tennis-player-hitting-a-tennis-ball-7WHP76DFAiY),
+  [Konsultacije](https://unsplash.com/photos/a-tennis-racket-and-ball-on-the-court-pPJtHB1zoIE)
+- Lokales Ersatzbild: [Aleksandr Galichkin auf Unsplash](https://unsplash.com/photos/a-clay-tennis-court-with-lines-msx3rGYfOEc)
+
 Design der Startseite: Dunkelblau, Hellblau, Weiß mit Neongelb-Akzent; Stile im Block „Početna (Startseite)“ am Ende von `public/style.css`.
 (Unsplash-Lizenz, kostenlos nutzbar, Namensnennung nicht erforderlich – daher auf der Seite ohne Bildnachweis).
 Das Foto liegt lokal unter `public/img/tennisplatz.jpg` und erscheint daher auch ohne Internetverbindung.

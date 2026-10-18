@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 const express = require('express');
-const { html } = require('../html');
+const { html, raw } = require('../html');
 const { layout, csrfField, errorList } = require('../views');
 const { verifyPassword, hashPassword, DUMMY_HASH, homeFor } = require('../auth');
 const { isPlaceholderEmail } = require('../db');
@@ -26,21 +26,38 @@ function isValidPhone(phone) {
 // Za drugu fotografiju dovoljno je zamijeniti `photo` ID-om s unsplash.com/photos/<…-ID>.
 const unsplash = (id) => `https://unsplash.com/photos/${id}/download?w=800`;
 const unsplashLarge = (id) => `https://unsplash.com/photos/${id}/download?w=1600`;
-// Hero: dinamična fotografija s Unsplasha (Unsplash licenca, besplatno) – teniser na stadionu.
-// Ako se ne učita, prikazuje se lokalna fotografija terena (HERO_PHOTO_SRC).
-const HERO_ACTION_PHOTO = 'TDahyDz3gPI';
+// Hero: 5 tenis fotografija s Unsplasha (Unsplash licenca, besplatno), polako se smjenjuju.
+// Ako se neka ne učita, prikazuje se lokalna fotografija terena (HERO_PHOTO_SRC).
+const HERO_SLIDES = [
+  'yKMJLLtoDv4', // igračica u pokretu
+  'AldB5IWh8l4', // servis
+  'aG6ByqGXiXg', // teren odozgo, dva igrača
+  'QBCiW-A_UNk', // loptica i reket izbliza
+  'LwxVG0VQ3RY', // loptice uz mrežu
+];
+
+// Jednostavne, jednake linijske ikone (24×24, stroke = currentColor).
+const LINE_ICON = (paths) => raw(`<svg class="line-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false">${paths}</svg>`);
+const ICONS = {
+  // nivoi: tri stupca
+  levels: LINE_ICON('<path d="M3 20h18"/><path d="M6 20v-5"/><path d="M12 20v-9"/><path d="M18 20V5"/>'),
+  // kalendar
+  calendar: LINE_ICON('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M8 14.5h3"/>'),
+  // medalja
+  medal: LINE_ICON('<circle cx="12" cy="15" r="5.5"/><circle cx="12" cy="15" r="2"/><path d="M8.6 10.6 6 3h4l2 4.4L14 3h4l-2.6 7.6"/>'),
+};
 const PROGRAMS = [
-  { photo: 'aIvWY0mxiDc', img: 'individualni.svg', tag: 'Jedan na jedan', title: 'Individualni trening',
-    alt: 'Igrač udara tenisku lopticu reketom',
+  { photo: 'mmi0vkwHU0M', img: 'individualni.svg', tag: 'Jedan na jedan', title: 'Individualni trening',
+    alt: 'Teniser s reketom na terenu',
     text: 'Trening jedan na jedan, potpuno prilagođen tvom tempu i ciljevima – najbrži napredak u tehnici i taktici.' },
-  { photo: 'Z4Sxy1_3wdY', img: 'grupni.svg', tag: 'Mala grupa', title: 'Grupni trening',
-    alt: 'Četiri igrača igraju dubl na teniskom terenu',
+  { photo: 'Dhdck86QmyE', img: 'grupni.svg', tag: 'Mala grupa', title: 'Grupni trening',
+    alt: 'Grupa igrača trenira na teniskom terenu',
     text: 'Trening u maloj grupi igrača sličnog nivoa. Više igre, motivacije i druženja.' },
-  { photo: 'AldB5IWh8l4', img: 'video-analiza.svg', tag: 'Tehnika', title: 'Video analiza',
-    alt: 'Igrač servira tenisku lopticu',
+  { photo: '7WHP76DFAiY', img: 'video-analiza.svg', tag: 'Tehnika', title: 'Video analiza',
+    alt: 'Sjena tenisera u trenutku udarca',
     text: 'Snimamo tvoje udarce i analiziramo ih usporeno, kadar po kadar – vidiš tačno šta i kako popraviti.' },
-  { photo: 'LwxVG0VQ3RY', img: 'konsultacije.svg', tag: 'Plan i savjeti', title: 'Konsultacije',
-    alt: 'Teniske loptice na terenu pored mreže',
+  { photo: 'pPJtHB1zoIE', img: 'konsultacije.svg', tag: 'Plan i savjeti', title: 'Konsultacije',
+    alt: 'Teniski reket i loptica na terenu',
     text: 'Razgovaramo o tvojim ciljevima, planu treninga, opremi i pripremi za turnire.' },
 ];
 
@@ -65,8 +82,10 @@ module.exports = function publicRoutes(db, {
       body: html`
       <div class="home">
       <section class="hero home-hero" aria-label="BetterTennis – teniska škola">
-        <img class="hero-photo hero-bg" src="${unsplashLarge(HERO_ACTION_PHOTO)}" data-fallback="${HERO_PHOTO_SRC}"
-          alt="Teniser u akciji na teniskom terenu" width="1600" height="1067" loading="eager" fetchpriority="high" referrerpolicy="no-referrer">
+        <div class="hero-slides" aria-hidden="true">${HERO_SLIDES.map((id, i) => html`
+          <img class="hero-photo hero-slide" src="${unsplashLarge(id)}" data-fallback="${HERO_PHOTO_SRC}" alt="" width="1600" height="1067"
+            loading="${i === 0 ? 'eager' : 'lazy'}" decoding="async" referrerpolicy="no-referrer"${i === 0 ? raw(' fetchpriority="high"') : ''}>`)}
+        </div>
         <div class="home-hero-shade" aria-hidden="true"></div>
         <div class="home-hero-inner">
           <div class="hero-text">
@@ -112,18 +131,18 @@ module.exports = function publicRoutes(db, {
       <div class="home-wrap">
       <section class="section features" aria-label="Zašto BetterTennis">
         <div class="feature card lift reveal">
-          <div class="feature-icon" aria-hidden="true">🎾</div>
+          <div class="feature-icon" aria-hidden="true">${ICONS.levels}</div>
           <h3>Za svaki nivo</h3>
           <p>Treninzi su prilagođeni svim nivoima – od početnika do naprednih igrača. Nudimo grupne i individualne treninge,
             video analizu i konsultacije.</p>
         </div>
         <div class="feature card lift reveal delay-1">
-          <div class="feature-icon" aria-hidden="true">📅</div>
+          <div class="feature-icon" aria-hidden="true">${ICONS.calendar}</div>
           <h3>Sedmični raspored</h3>
           <p>Kao član u svom profilu vidiš sve termine treninga od ponedjeljka do nedjelje.</p>
         </div>
         <div class="feature card lift reveal delay-2">
-          <div class="feature-icon" aria-hidden="true">🏅</div>
+          <div class="feature-icon" aria-hidden="true">${ICONS.medal}</div>
           <h3>Treneri</h3>
           <p>Svi naši treneri su certificirani ITF treneri sa dugogodišnjim iskustvom.</p>
         </div>

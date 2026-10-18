@@ -389,6 +389,8 @@ main.main-full { flex: 1; }
   --home-neon: #e4ff3a;
   --home-ink: #0b1f3a;
   --home-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Einheitliche Bildwirkung für alle Fotos (Hero und Karten) */
+  --home-photo-filter: saturate(0.82) contrast(1.06) brightness(0.97);
   --home-radius: 20px;
   padding-bottom: 64px;
 }
@@ -401,11 +403,26 @@ main.main-full { flex: 1; }
   min-height: clamp(520px, 80vh, 760px); margin: 0; padding: 72px 0 88px;
   background: var(--home-navy); color: var(--home-white);
 }
-.home .hero-bg {
-  position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%;
-  aspect-ratio: auto; object-fit: cover; object-position: 68% center;
-  border: 0; border-radius: 0; box-shadow: none; background: var(--home-navy);
-  animation: home-photo-in 600ms var(--home-ease) both;
+/* Hauptbild: 5 Tennisfotos, die langsam überblenden (nur opacity + leichter Zoom, ohne JavaScript).
+   Ein Bild ist 7 s sichtbar, die Überblendung dauert etwa 1,75 s; ein ganzer Durchlauf 35 s. */
+.home .hero-slide { animation: home-slide 35000ms linear infinite; filter: var(--home-photo-filter); }
+.home .hero-slides { position: absolute; inset: 0; z-index: -2; overflow: hidden; background: var(--home-navy); }
+.home .hero-slides .hero-slide {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  aspect-ratio: auto; object-fit: cover; object-position: center;
+  border: 0; border-radius: 0; box-shadow: none; background: transparent;
+  opacity: 0; will-change: opacity, transform;
+}
+.home .hero-slide:nth-child(2) { animation-delay: 7000ms; }
+.home .hero-slide:nth-child(3) { animation-delay: 14000ms; }
+.home .hero-slide:nth-child(4) { animation-delay: 21000ms; }
+.home .hero-slide:nth-child(5) { animation-delay: 28000ms; }
+@keyframes home-slide {
+  0% { opacity: 0; transform: scale(1.06); }
+  5% { opacity: 1; }
+  20% { opacity: 1; }
+  25% { opacity: 0; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.06); }
 }
 .home .home-hero-shade {
   position: absolute; inset: 0; z-index: -1;
@@ -468,8 +485,16 @@ main.main-full { flex: 1; }
   box-shadow: 0 1px 2px rgba(11, 31, 58, 0.06), 0 16px 36px -22px rgba(11, 31, 58, 0.45);
   transition: transform 200ms var(--home-ease), box-shadow 200ms ease;
 }
-.home .program-img { background: var(--home-ice); }
-.home .program-img img { transition: transform 300ms var(--home-ease); }
+.home .program-img { position: relative; background: var(--home-ice); }
+/* Einheitlicher Ausschnitt (4:3) und gleiche Farbwirkung für alle Kartenfotos */
+.home .program-img img {
+  aspect-ratio: 4 / 3; object-fit: cover; object-position: center;
+  filter: var(--home-photo-filter); transition: transform 300ms var(--home-ease);
+}
+.home .program-img::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(20, 55, 102, 0.06) 0%, rgba(11, 31, 58, 0.3) 100%);
+}
 .home .program-body { padding: 18px 20px 22px; }
 .home .program-body .tag { background: var(--home-ice); color: var(--home-navy-2); border: 1px solid var(--home-line); font-weight: 700; }
 .home .program-body h3 { color: var(--home-navy); }
@@ -478,7 +503,15 @@ main.main-full { flex: 1; }
 .home .features { gap: 20px; }
 .home .feature { border-radius: var(--home-radius); border-color: var(--home-line); transition: transform 200ms var(--home-ease), box-shadow 200ms ease; }
 .home .feature h3 { color: var(--home-navy); }
-.home .feature-icon { background: var(--home-navy); border-radius: 14px; box-shadow: inset 0 -3px 0 var(--home-neon); }
+.home .feature-icon {
+  position: relative; display: grid; place-items: center; width: 48px; height: 48px;
+  color: var(--home-navy-2); background: var(--home-ice); border: 1px solid var(--home-line); border-radius: 14px;
+}
+.home .feature-icon::after {
+  content: ""; position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--home-neon); box-shadow: 0 0 0 2px var(--surface);
+}
+.home .feature-icon .line-icon { display: block; width: 24px; height: 24px; }
 
 /* Anmeldeformular: dunkelblaue Karte mit Neon-Button */
 .home .form-card {
@@ -500,7 +533,6 @@ main.main-full { flex: 1; }
 
 /* Einblenden beim Laden: kurz, gestaffelt (60 ms), nur opacity/transform */
 @keyframes home-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-@keyframes home-photo-in { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: scale(1); } }
 @keyframes home-fade { from { opacity: 0; } to { opacity: 1; } }
 .home .home-hero .hero-text > * { animation: home-rise 500ms var(--home-ease) both; }
 .home .home-hero .hero-text > :nth-child(2) { animation-delay: 60ms; }
@@ -522,7 +554,7 @@ main.main-full { flex: 1; }
 
 @media (max-width: 720px) {
   .home .home-hero { min-height: 0; padding: 48px 0 64px; }
-  .home .hero-bg { object-position: 62% center; }
+  .home .hero-slides .hero-slide { object-position: 60% center; }
   .home .home-hero-shade { background: linear-gradient(180deg, rgba(11, 31, 58, 0.78) 0%, rgba(11, 31, 58, 0.94) 100%); }
   .home .home-hero .hero-actions .btn { flex: 1 1 100%; }
   .home .home-band { padding-top: 48px; }
@@ -534,12 +566,15 @@ main.main-full { flex: 1; }
   .home .section-head .eyebrow { color: var(--home-sky); }
   .home .section-head h2, .home .program-body h3, .home .feature h3 { color: var(--home-white); }
   .home .program-body .tag { color: var(--home-white); }
+  .home .feature-icon { color: var(--home-sky); }
   .home .form-card { box-shadow: 0 0 0 1px var(--home-line); }
 }
 
 /* „Bewegung reduzieren“: keine Bewegung, nur sanftes Einblenden */
 @media (prefers-reduced-motion: reduce) {
-  .home .home-hero .hero-text > *, .home .hero-bg { animation: home-fade 200ms ease both; }
+  .home .home-hero .hero-text > * { animation: home-fade 200ms ease both; }
+  .home .hero-slide { animation: none; opacity: 0; }
+  .home .hero-slides .hero-slide:first-child { opacity: 1; }
   .home .btn, .home .program-card, .home .feature, .home .program-img img { transition-property: box-shadow, background-color, color, border-color; }
   .home .btn:active, .home .program-card:hover, .home .feature:hover, .home .program-card:hover .program-img img { transform: none; }
 }

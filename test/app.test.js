@@ -105,8 +105,8 @@ test('Interessent kann sich auf der Startseite eintragen', async () => {
   assert.equal(home.status, 200);
   assert.match(home.text, /Zanimaju te časovi tenisa/);
   assert.match(home.text, /<html lang="bs">/);
-  // Hero-Foto (Unsplash) mit dem lokalen Platzfoto als Ersatz
-  assert.match(home.text, /class="hero-photo hero-bg" src="https:\/\/unsplash\.com\/[^"]+" data-fallback="\/static\/img\/tennisplatz\.jpg"/);
+  // Hero-Fotos (Unsplash) mit dem lokalen Platzfoto als Ersatz
+  assert.match(home.text, /class="hero-photo hero-slide" src="https:\/\/unsplash\.com\/[^"]+" data-fallback="\/static\/img\/tennisplatz\.jpg"/);
   assert.doesNotMatch(home.text, /figcaption/);
   assert.match(home.text, /certificirani ITF treneri/);
   assert.doesNotMatch(home.text, /Transparentni/);
@@ -1717,6 +1717,7 @@ test('Passwort vergessen: höchstens 3 Links pro E-Mail-Adresse in 15 Minuten; n
 
 // ---------------------------------------------------------------- Startseite: neues Design
 // Alle sichtbaren Texte der Startseite vor dem Redesign – sie müssen vollständig erhalten bleiben.
+// (Die früheren Emoji-Icons 🎾 📅 🏅 sind keine Texte; sie wurden durch Linien-Icons ersetzt.)
 const HOME_TEXTS = [
   'Teniska škola',
   'Igraj',
@@ -1742,13 +1743,10 @@ const HOME_TEXTS = [
   'Plan i savjeti',
   'Konsultacije',
   'Razgovaramo o tvojim ciljevima, planu treninga, opremi i pripremi za turnire.',
-  '🎾',
   'Za svaki nivo',
   'Treninzi su prilagođeni svim nivoima – od početnika do naprednih igrača. Nudimo grupne i individualne treninge, video analizu i konsultacije.',
-  '📅',
   'Sedmični raspored',
   'Kao član u svom profilu vidiš sve termine treninga od ponedjeljka do nedjelje.',
-  '🏅',
   'Treneri',
   'Svi naši treneri su certificirani ITF treneri sa dugogodišnjim iskustvom.',
   'Zanimaju te časovi tenisa?',
@@ -1788,8 +1786,8 @@ test('Startseite (neues Design): großer Hero mit Tennisfoto, Slogan und klarem 
   assert.match(main, /<div class="home">/);
   const hero = /<section class="hero home-hero"[\s\S]*?<\/section>/.exec(main);
   assert.ok(hero, 'Hero-Bereich fehlt');
-  // Dynamisches Tennisfoto: frei nutzbar von Unsplash, mit lokalem Ersatzbild
-  assert.match(hero[0], /<img class="hero-photo hero-bg" src="https:\/\/unsplash\.com\/photos\/[\w-]+\/download\?w=1600" data-fallback="\/static\/img\/tennisplatz\.jpg"[^>]*alt="[^"]+"/);
+  // Tennisfotos (Diashow): frei nutzbar von Unsplash, mit lokalem Ersatzbild
+  assert.match(hero[0], /<img class="hero-photo hero-slide" src="https:\/\/unsplash\.com\/photos\/[\w-]+\/download\?w=1600" data-fallback="\/static\/img\/tennisplatz\.jpg"/);
   assert.match(hero[0], /<h1>Igraj <span class="hl">bolji tenis<\/span> – uz trening koji ti odgovara\.<\/h1>/);
   // Klarer Login-Button im Neon-Akzent, als erster Button
   const actions = /<div class="hero-actions">([\s\S]*?)<\/div>/.exec(hero[0])[1];
@@ -1818,10 +1816,94 @@ test('Startseite (neues Design): Farben Dunkelblau/Hellblau/Weiß mit Neongelb, 
   assert.doesNotMatch(home, /transition:\s*all/);
   assert.doesNotMatch(home, /scale\(0\)/);
   assert.doesNotMatch(home, /\bease-in\b(?!-out)/);
-  for (const m of home.matchAll(/(\d+)ms/g)) assert.ok(Number(m[1]) <= 600, `zu lange Animation: ${m[0]}`);
+  // Kurz (≤ 600 ms) – einzige Ausnahme: der bewusst langsame Bildwechsel im Hero (.hero-slide)
+  for (const line of home.split('\n')) {
+    for (const m of line.matchAll(/(\d+)ms/g)) {
+      if (Number(m[1]) > 600) assert.match(line, /\.hero-slide/, `zu lange Animation: ${line.trim()}`);
+    }
+  }
   assert.doesNotMatch(home, /\d(\.\d+)?s\b(?![a-z])/, 'Zeitangaben in ms angeben');
   // Druck-Feedback auf Buttons, Hover nur bei echter Maus, Rücksicht auf reduzierte Bewegung
   assert.match(home, /\.home \.btn:active\s*\{[^}]*scale\(0\.97\)/);
   assert.match(home, /@media \(hover: hover\) and \(pointer: fine\)/);
   assert.match(home, /@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*\.home/);
+});
+
+
+// ---------------------------------------------------------------- Startseite: Bilder und Icons (Überarbeitung)
+const FREE_PHOTO = /^https:\/\/(unsplash\.com\/photos\/([\w-]+)\/download\?w=\d+|images\.pexels\.com\/photos\/(\d+)\/[\w.-]+\?[\w=&]+)$/;
+const photoId = (src) => { const m = FREE_PHOTO.exec(src); return m && (m[2] || m[3]); };
+
+test('Startseite: Hauptbild als sanfte Diashow mit 3–5 klaren Tennisfotos (frei nutzbar, einheitlicher Stil)', async () => {
+  const res = await client().request('/');
+  const hero = /<section class="hero home-hero"[\s\S]*?<\/section>/.exec(res.text)[0];
+  const slides = [...hero.matchAll(/<img class="hero-photo hero-slide" src="([^"]+)" data-fallback="([^"]+)"([^>]*)>/g)];
+  assert.ok(slides.length >= 3 && slides.length <= 5, `Anzahl Bilder: ${slides.length}`);
+  const ids = slides.map((m) => photoId(m[1]));
+  for (const [i, m] of slides.entries()) {
+    assert.ok(ids[i], `kein freies Foto: ${m[1]}`);
+    assert.equal(m[2], '/static/img/tennisplatz.jpg'); // lokales Ersatzbild
+  }
+  assert.equal(new Set(ids).size, slides.length, 'Bilder doppelt');
+  assert.doesNotMatch(res.text, /TDahyDz3gPI/); // keine Tribüne mehr
+  assert.match(slides[0][3], /loading="eager"/);
+  assert.match(hero, /<div class="hero-slides" aria-hidden="true">/);
+  // Texte, Login-Button und Struktur bleiben
+  assert.match(hero, /<a class="btn btn-neon btn-lg" href="\/login">Već sam član<\/a>/);
+
+  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'style.css'), 'utf8');
+  const home = css.slice(css.indexOf('/* === Početna (Startseite)'));
+  // Sanfter, langsamer Wechsel: nur Deckkraft (und leichter Zoom), lange Zykluszeit, je Bild eine Verzögerung
+  const kf = /@keyframes home-slide \{([\s\S]*?)\n\}/.exec(home);
+  assert.ok(kf, 'Keyframes für den Bildwechsel fehlen');
+  assert.doesNotMatch(kf[1].replace(/opacity|transform|scale\([\d.]+\)/g, ''), /[a-z-]+\s*:/);
+  const cycle = /\.home \.hero-slide \{[^}]*animation: home-slide (\d+)ms/.exec(home);
+  assert.ok(cycle && Number(cycle[1]) >= 20000, 'Bildwechsel zu schnell');
+  for (let i = 2; i <= slides.length; i++) assert.match(home, new RegExp(`\\.home \\.hero-slide:nth-child\\(${i}\\) \\{ animation-delay: \\d+ms; \\}`));
+  // Einheitlicher Bildstil für Hero und Karten
+  assert.match(home, /--home-photo-filter:\s*[^;]+;/);
+  assert.match(home, /\.home \.hero-slide \{[^}]*filter: var\(--home-photo-filter\)/);
+  // „Bewegung reduzieren“: kein Wechsel, nur das erste Bild
+  assert.match(home, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.home \.hero-slide \{[^}]*animation: none/);
+});
+
+test('Startseite: neue, passende Tennisfotos auf den vier Programmkarten mit einheitlichem Ausschnitt und Farbwirkung', async () => {
+  const res = await client().request('/');
+  const cards = [...res.text.matchAll(/<article class="program-card[\s\S]*?<img src="([^"]+)" data-fallback="([^"]+)"[^>]*>[\s\S]*?<h3>([^<]+)<\/h3>/g)];
+  assert.deepEqual(cards.map((c) => c[3]), ['Individualni trening', 'Grupni trening', 'Video analiza', 'Konsultacije']);
+  const ids = cards.map((c) => photoId(c[1]));
+  ids.forEach((id, i) => assert.ok(id, `kein freies Foto: ${cards[i][1]}`));
+  assert.equal(new Set(ids).size, 4);
+  // Neue Fotos (keines der bisherigen Kartenbilder) und keine Dopplung mit dem Hauptbild
+  for (const old of ['aIvWY0mxiDc', 'Z4Sxy1_3wdY', 'AldB5IWh8l4', 'LwxVG0VQ3RY']) assert.ok(!ids.includes(old), `altes Bild: ${old}`);
+  const heroIds = [...res.text.matchAll(/class="hero-photo hero-slide" src="([^"]+)"/g)].map((m) => photoId(m[1]));
+  for (const id of ids) assert.ok(!heroIds.includes(id), `doppelt mit Hauptbild: ${id}`);
+  // Lokale Ersatz-Illustrationen bleiben
+  assert.deepEqual(cards.map((c) => c[2]), ['individualni', 'grupni', 'video-analiza', 'konsultacije'].map((f) => `/static/img/illustracije/${f}.svg`));
+
+  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'style.css'), 'utf8');
+  const home = css.slice(css.indexOf('/* === Početna (Startseite)'));
+  const rule = /\.home \.program-img img \{([^}]*)\}/.exec(home)[1];
+  assert.match(rule, /aspect-ratio: 4 \/ 3/);
+  assert.match(rule, /object-fit: cover/);
+  assert.match(rule, /filter: var\(--home-photo-filter\)/);
+  assert.match(home, /\.home \.program-img::after \{[^}]*background: linear-gradient/); // gleicher Farbschleier
+});
+
+test('Startseite: schlichte, einheitliche Linien-Icons bei den drei Vorteilen', async () => {
+  const res = await client().request('/');
+  const features = /<section class="section features"[\s\S]*?<\/section>/.exec(res.text)[0];
+  const icons = [...features.matchAll(/<div class="feature-icon" aria-hidden="true">([\s\S]*?)<\/div>/g)].map((m) => m[1].trim());
+  assert.equal(icons.length, 3);
+  for (const icon of icons) {
+    assert.equal((icon.match(/<svg/g) || []).length, 1);
+    assert.match(icon, /^<svg class="line-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1\.75" stroke-linecap="round" stroke-linejoin="round" focusable="false">/);
+    assert.doesNotMatch(icon, /fill="(?!none)|style=/);
+  }
+  assert.equal(new Set(icons).size, 3);
+  assert.doesNotMatch(features, /🎾|📅|🏅/);
+  // Reihenfolge und Texte der Vorteile unverändert
+  assert.deepEqual([...features.matchAll(/<h3>([^<]+)<\/h3>/g)].map((m) => m[1]), ['Za svaki nivo', 'Sedmični raspored', 'Treneri']);
+  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'style.css'), 'utf8');
+  assert.match(css.slice(css.indexOf('/* === Početna (Startseite)')), /\.home \.feature-icon \.line-icon \{[^}]*width: 24px/);
 });
