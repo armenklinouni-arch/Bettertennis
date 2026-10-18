@@ -225,7 +225,6 @@ Fotos der Startseite (alle frei nutzbar, Unsplash-Lizenz; geladen direkt von uns
 - Hauptbild (wechselt langsam): [Spielerin in Bewegung](https://unsplash.com/photos/a-woman-is-playing-tennis-on-a-tennis-court-yKMJLLtoDv4),
   [Aufschlag](https://unsplash.com/photos/man-serving-a-tennis-ball-on-a-court-AldB5IWh8l4),
   [Platz von oben](https://unsplash.com/photos/aerial-photography-of-two-person-playing-tennis-aG6ByqGXiXg),
-  [Ball und Schläger](https://unsplash.com/photos/a-close-up-of-a-tennis-ball-and-a-racket-QBCiW-A_UNk),
   [Bälle am Netz](https://unsplash.com/photos/many-tennis-balls-scattered-on-a-court-near-net-LwxVG0VQ3RY)
 - Karten: [Individualni](https://unsplash.com/photos/a-man-standing-on-a-tennis-court-holding-a-racquet-mmi0vkwHU0M),
   [Grupni](https://unsplash.com/photos/a-group-of-people-playing-tennis-on-a-tennis-court-Dhdck86QmyE),

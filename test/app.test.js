@@ -1907,3 +1907,23 @@ test('Startseite: schlichte, einheitliche Linien-Icons bei den drei Vorteilen', 
   const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'style.css'), 'utf8');
   assert.match(css.slice(css.indexOf('/* === Početna (Startseite)')), /\.home \.feature-icon \.line-icon \{[^}]*width: 24px/);
 });
+
+test('Startseite: Federball-Bild aus dem Hauptbild entfernt, übrige Bilder und langsamer Übergang bleiben', async () => {
+  const res = await client().request('/');
+  const ids = [...res.text.matchAll(/class="hero-photo hero-slide" src="https:\/\/unsplash\.com\/photos\/([\w-]+)\//g)].map((m) => m[1]);
+  assert.doesNotMatch(res.text, /QBCiW-A_UNk/);
+  assert.deepEqual(ids, ['yKMJLLtoDv4', 'AldB5IWh8l4', 'aG6ByqGXiXg', 'LwxVG0VQ3RY']);
+  // Gleiches Tempo wie vorher: je Bild 7 s sichtbar, Überblendung knapp 2 s
+  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'style.css'), 'utf8');
+  const home = css.slice(css.indexOf('/* === Početna (Startseite)'));
+  const cycle = Number(/\.home \.hero-slide \{[^}]*animation: home-slide (\d+)ms/.exec(home)[1]);
+  assert.equal(cycle, ids.length * 7000);
+  for (let i = 2; i <= ids.length; i++) assert.match(home, new RegExp(`\\.home \\.hero-slide:nth-child\\(${i}\\) \\{ animation-delay: ${(i - 1) * 7000}ms; \\}`));
+  assert.doesNotMatch(home, /\.hero-slide:nth-child\(5\)/);
+  const kf = /@keyframes home-slide \{([\s\S]*?)\n\}/.exec(home)[1];
+  // Keyframes mit voller Deckkraft: [Ende des Einblendens, Ende der Standzeit]
+  const full = [...kf.matchAll(/(\d+)% \{ opacity: 1; \}/g)].map((m) => Number(m[1]) / 100 * cycle);
+  assert.equal(full.length, 2);
+  assert.ok(full[0] >= 1500 && full[0] <= 2000, `Überblendung ${full[0]} ms`);
+  assert.equal(full[1], 7000);
+});

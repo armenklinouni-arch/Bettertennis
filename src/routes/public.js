@@ -26,13 +26,12 @@ function isValidPhone(phone) {
 // Za drugu fotografiju dovoljno je zamijeniti `photo` ID-om s unsplash.com/photos/<…-ID>.
 const unsplash = (id) => `https://unsplash.com/photos/${id}/download?w=800`;
 const unsplashLarge = (id) => `https://unsplash.com/photos/${id}/download?w=1600`;
-// Hero: 5 tenis fotografija s Unsplasha (Unsplash licenca, besplatno), polako se smjenjuju.
+// Hero: 4 tenis fotografije s Unsplasha (Unsplash licenca, besplatno), polako se smjenjuju.
 // Ako se neka ne učita, prikazuje se lokalna fotografija terena (HERO_PHOTO_SRC).
 const HERO_SLIDES = [
   'yKMJLLtoDv4', // igračica u pokretu
   'AldB5IWh8l4', // servis
   'aG6ByqGXiXg', // teren odozgo, dva igrača
-  'QBCiW-A_UNk', // loptica i reket izbliza
   'LwxVG0VQ3RY', // loptice uz mrežu
 ];
 
