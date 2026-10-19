@@ -8,7 +8,7 @@ const { monthlyStatement, formatHours, memberMonthRange, MEMBER_MONTHS_BACK } = 
 const {
   layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, lessonTimeRange, lessonKindLabel,
 } = require('../views');
-const { requireMember, hashPassword, verifyPassword } = require('../auth');
+const { requireMember, hashPassword, verifyPassword, endSessionsFor } = require('../auth');
 const { isWeekReleased } = require('../weeks');
 const {
   USERNAME_RE, normalizeUsername, usernameTaken, placeholderEmail, isPlaceholderEmail, CHILDREN_LIMIT,
@@ -397,6 +397,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
       res.flash('error', 'Lozinka mora imati najmanje 8 znakova.');
     } else {
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ? AND parent_id = ?').run(hashPassword(password), child.id, req.user.id);
+      endSessionsFor(db, 'user', child.id);
       res.flash('success', `Nova lozinka za ${child.name} je postavljena.`);
     }
     res.redirect('/mitglied/djeca');
@@ -536,6 +537,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
       return res.send(String(passwordPage(req, errors)));
     }
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), req.user.id);
+    endSessionsFor(db, 'user', req.user.id, { keep: req.session.sid }); // ostali uređaji se odjavljuju
     res.flash('success', 'Tvoja lozinka je promijenjena.');
     res.redirect(req.user.role === 'admin' ? '/admin' : '/mitglied');
   });

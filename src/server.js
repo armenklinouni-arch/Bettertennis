@@ -62,8 +62,15 @@ if (created) {
 const mailer = createResendMailer({ apiKey: cleanEnv('RESEND_API_KEY'), from: cleanEnv('MAIL_FROM') || undefined });
 const backupEmail = cleanEnv('BACKUP_EMAIL') || BACKUP_EMAIL_DEFAULT;
 
+// Schlüssel für die Login-Cookies: SESSION_SECRET, falls gesetzt; sonst wird einmalig einer erzeugt und in der
+// Datenbank (Volume) gespeichert – er bleibt damit über Neustarts und Updates gleich.
+const sessionSecretEnv = cleanEnv('SESSION_SECRET');
+console.log(sessionSecretEnv
+  ? 'Anmeldungen: Schlüssel aus SESSION_SECRET.'
+  : 'Anmeldungen: fester Schlüssel aus der Datenbank (bleibt über Neustarts gleich).');
+
 const app = createApp(db, {
-  secret: process.env.SESSION_SECRET,
+  secret: sessionSecretEnv || undefined,
   secureCookies: production,
   // Hinter einem Proxy (z. B. Railway) die echte Besucher-IP verwenden (wichtig für die Login-Sperre).
   trustProxy: process.env.TRUST_PROXY === '1' || !!process.env.RAILWAY_ENVIRONMENT,

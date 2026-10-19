@@ -4,7 +4,7 @@
 const express = require('express');
 const { html } = require('../html');
 const { layout, csrfField, errorList } = require('../views');
-const { requireAdmin, hashPassword, readablePassword } = require('../auth');
+const { requireAdmin, hashPassword, readablePassword, endSessionsFor } = require('../auth');
 const { USERNAME_RE, normalizeUsername, usernameTaken } = require('../db');
 const { str } = require('./public');
 
@@ -168,7 +168,10 @@ module.exports = function parentAccountRoutes(db) {
     transaction(() => {
       db.prepare('UPDATE parent_accounts SET name = ?, username = ?, active = ? WHERE id = ?')
         .run(values.name, values.username, values.active ? 1 : 0, account.id);
-      if (values.password) db.prepare('UPDATE parent_accounts SET password_hash = ? WHERE id = ?').run(hashPassword(values.password), account.id);
+      if (values.password) {
+        db.prepare('UPDATE parent_accounts SET password_hash = ? WHERE id = ?').run(hashPassword(values.password), account.id);
+        endSessionsFor(db, 'parent', account.id);
+      }
       setPlayers(account.id, values.player_ids);
     });
     res.flash('success', `Promjene za ${values.name} su sačuvane.${values.password ? ` Nova lozinka: ${values.password}` : ''}`);

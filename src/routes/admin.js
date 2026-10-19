@@ -16,7 +16,7 @@ const {
   layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, LESSON_PLANNED,
   ATTENDANCE, attendanceSummary, billingMark,
 } = require('../views');
-const { requireAdmin, hashPassword, readablePassword } = require('../auth');
+const { requireAdmin, hashPassword, readablePassword, endSessionsFor } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
 const { listGroupsWithMembers } = require('./groups');
 const { sendBackupMail, BACKUP_EMAIL_DEFAULT } = require('../backup');
@@ -506,6 +506,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     ).run(values.name, values.username, values.email, values.phone || null, rate, fee, values.active ? 1 : 0, values.notes || null, member.id);
     if (values.password) {
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(values.password), member.id);
+      endSessionsFor(db, 'user', member.id, { keep: req.session.sid });
     }
     if (req.body.reprice === '1') {
       db.prepare('UPDATE lessons SET price_cents = CAST(ROUND(? * duration_min / 60.0) AS INTEGER) WHERE user_id = ? AND date >= ?')

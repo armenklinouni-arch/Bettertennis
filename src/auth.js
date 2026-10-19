@@ -3,7 +3,14 @@
 const crypto = require('node:crypto');
 
 const COOKIE_NAME = 'bt_session';
-const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 14; // 14 dana
+const DAY_MS = 1000 * 60 * 60 * 24;
+// „Ostani prijavljen“: 90 dana, produžava se pri svakom korištenju stranice.
+const SESSION_MAX_AGE_MS = 90 * DAY_MS;
+// Bez „Ostani prijavljen“: kolačić bez roka (briše ga zatvaranje preglednika); na serveru najviše 12 h neaktivnosti.
+const SHORT_SESSION_IDLE_MS = 12 * 60 * 60 * 1000;
+// Rok u bazi se osvježava najviše jednom na sat (manje upisivanja).
+const SESSION_TOUCH_MS = 60 * 60 * 1000;
+const SESSION_KEYS = { user: 'uid', trainer: 'tid', parent: 'pid' };
 
 // ---------- Lozinke (scrypt) ----------
 
@@ -77,12 +84,15 @@ function sessionMiddleware({ secret, secure }) {
 
     res.saveSession = () => {
       req.session.exp = Date.now() + SESSION_MAX_AGE_MS;
+      // Ko je prijavljen, određuje isključivo sesija u bazi (sid) – uid/tid/pid se ne upisuju u kolačić.
+      const { uid, tid, pid, ...stored } = req.session;
+      const browserOnly = !!req.session.sid && !req.session.rm;
       const parts = [
-        `${COOKIE_NAME}=${encodeSession(req.session, secret)}`,
+        `${COOKIE_NAME}=${encodeSession(stored, secret)}`,
         'Path=/',
         'HttpOnly',
         'SameSite=Lax',
-        `Max-Age=${Math.floor(SESSION_MAX_AGE_MS / 1000)}`,
+        ...(browserOnly ? [] : [`Max-Age=${Math.floor(SESSION_MAX_AGE_MS / 1000)}`]),
       ];
       if (secure) parts.push('Secure');
       res.setHeader('Set-Cookie', parts.join('; '));
@@ -104,6 +114,74 @@ function sessionMiddleware({ secret, secure }) {
     };
 
     if (isNew) res.saveSession();
+    next();
+  };
+}
+
+// ---------- Prijave u bazi (ostaju sačuvane i nakon ponovnog pokretanja) ----------
+
+const tokenHash = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
+const sessionLifetime = (remember) => (remember ? SESSION_MAX_AGE_MS : SHORT_SESSION_IDLE_MS);
+
+// Nova prijava: token u kolačiću, hash u bazi. Postavlja req.session (sačuvati s res.saveSession()).
+function startSession(db, req, { kind, id, remember }) {
+  const now = Date.now();
+  db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
+  const token = crypto.randomBytes(32).toString('base64url');
+  db.prepare(
+    'INSERT INTO sessions (token_hash, kind, account_id, remember, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(tokenHash(token), kind, id, remember ? 1 : 0, now, now, now + sessionLifetime(remember));
+  req.session.sid = token;
+  req.session.rm = remember ? 1 : 0;
+  req.session[SESSION_KEYS[kind]] = id;
+}
+
+// Odjava ovog uređaja.
+function endSession(db, req) {
+  if (typeof req.session.sid === 'string') db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(req.session.sid));
+}
+
+// Nakon promjene/resetovanja lozinke: sve prijave tog računa prestaju (osim, po želji, trenutnog uređaja).
+function endSessionsFor(db, kind, id, { keep } = {}) {
+  db.prepare('DELETE FROM sessions WHERE kind = ? AND account_id = ? AND token_hash != ?')
+    .run(kind, id, typeof keep === 'string' ? tokenHash(keep) : '');
+}
+
+// Middleware: provjerava sesiju u bazi i produžava je pri korištenju („Ostani prijavljen“ → opet 90 dana).
+function loadSession(db) {
+  const get = db.prepare('SELECT * FROM sessions WHERE token_hash = ?');
+  const touch = db.prepare('UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?');
+  const remove = db.prepare('DELETE FROM sessions WHERE token_hash = ?');
+  return (req, res, next) => {
+    const hadAccount = req.session.uid || req.session.tid || req.session.pid;
+    delete req.session.uid;
+    delete req.session.tid;
+    delete req.session.pid;
+    const token = req.session.sid;
+    if (typeof token !== 'string') {
+      // Stari kolačići (bez sesije u bazi) više ne vrijede.
+      if (hadAccount || token !== undefined) {
+        delete req.session.sid;
+        delete req.session.rm;
+        res.saveSession();
+      }
+      return next();
+    }
+    const hash = tokenHash(token);
+    const row = get.get(hash);
+    const now = Date.now();
+    if (!row || row.expires_at <= now || !SESSION_KEYS[row.kind]) {
+      if (row) remove.run(hash);
+      delete req.session.sid;
+      delete req.session.rm;
+      res.saveSession();
+      return next();
+    }
+    req.session[SESSION_KEYS[row.kind]] = row.account_id;
+    if (now - row.last_seen_at >= SESSION_TOUCH_MS) {
+      touch.run(now, now + sessionLifetime(row.remember), hash);
+      if (row.remember) res.saveSession(); // i kolačić ponovo dobija 90 dana
+    }
     next();
   };
 }
@@ -252,6 +330,10 @@ module.exports = {
   PASSWORD_WORDS,
   DUMMY_HASH,
   sessionMiddleware,
+  loadSession,
+  startSession,
+  endSession,
+  endSessionsFor,
   loadUser,
   csrfProtection,
   requireLogin,

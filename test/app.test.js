@@ -66,7 +66,7 @@ function client() {
     });
     const set = res.headers.get('set-cookie');
     if (set) cookie = set.split(';')[0];
-    return { status: res.status, location: res.headers.get('location'), text: await res.text() };
+    return { status: res.status, location: res.headers.get('location'), text: await res.text(), setCookie: set };
   }
   async function csrf(path = '/') {
     const page = await request(path);
@@ -78,10 +78,15 @@ function client() {
     const token = await csrf(tokenFrom);
     return request(path, { method: 'POST', form: { _csrf: token, ...form } });
   }
-  async function login(email, password) {
-    return post('/login', { email, password }, '/login');
+  // Wie im Formular: „Ostani prijavljen“ ist standardmäßig angehakt.
+  async function login(email, password, { remember = true } = {}) {
+    return post('/login', { email, password, ...(remember ? { remember: '1' } : {}) }, '/login');
   }
-  return { request, post, csrf, login };
+  return {
+    request, post, csrf, login,
+    get cookie() { return cookie; },
+    set cookie(v) { cookie = v; },
+  };
 }
 
 test('Datums- und Geldhilfen', () => {
@@ -3023,4 +3028,253 @@ test('Termin-Status: „Planiran“ bis zur Endzeit (Sarajevo), danach automatis
   assert.equal(after.lessonCount, 4); // alle nicht abgesagten, auch geplante – wie bisher
   assert.deepEqual(db.prepare('SELECT id, cancelled FROM lessons WHERE user_id = ? ORDER BY id').all(id).map((r) => [r.id, r.cancelled]),
     [[past, 0], [endsNow, 0], [running, 0], [future, 0], [cancelledFuture, 1], [cancelledPast, 1]]);
+});
+
+// ---------------------------------------------------------------- Dauerhafte Anmeldung („Ostani prijavljen“)
+const DAY = 24 * 60 * 60 * 1000;
+const NOW0 = new Date('2026-10-09T10:00:00').getTime();
+const loggedIn = async (c, path = '/mitglied') => (await c.request(path)).status === 200;
+const sessionRows = (kind, id) => db.prepare('SELECT * FROM sessions WHERE kind = ? AND account_id = ?').all(kind, id);
+
+test('Ostani prijavljen: Kästchen standardmäßig an; 90 Tage, verlängert sich bei Benutzung; ohne Haken nur Browser-Sitzung', async () => {
+  const page = (await client().request('/login')).text;
+  assert.match(page, /<input type="checkbox" name="remember" value="1" checked>\s*<span>Ostani prijavljen<\/span>/);
+
+  const id = makeMember('Ostani Clan', 'ostani.clan');
+  // Mit Haken: Cookie gilt 90 Tage (Max-Age), Sitzung liegt in der Datenbank (nur Hash des Tokens)
+  const a = client();
+  const r = await a.login('ostani.clan', 'memberpass1');
+  assert.equal(r.location, '/mitglied');
+  assert.match(r.setCookie, /Max-Age=7776000/);
+  assert.match(r.setCookie, /HttpOnly/);
+  const rows = sessionRows('user', id);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].remember, 1);
+  assert.equal(rows[0].expires_at, NOW0 + 90 * DAY);
+  assert.ok(!a.cookie.includes(rows[0].token_hash));
+  assert.ok(await loggedIn(a));
+
+  // Benutzung nach 80 Tagen verlängert wieder auf 90 Tage → auch nach 160 Tagen noch angemeldet
+  await atTime(new Date(NOW0 + 80 * DAY).toISOString(), async () => {
+    const res = await a.request('/mitglied');
+    assert.equal(res.status, 200);
+    assert.match(res.setCookie || '', /Max-Age=7776000/);
+    assert.equal(sessionRows('user', id)[0].expires_at, NOW0 + 170 * DAY);
+  });
+  await atTime(new Date(NOW0 + 160 * DAY).toISOString(), async () => {
+    assert.ok(await loggedIn(a));
+  });
+  // Ohne Benutzung länger als 90 Tage → abgemeldet
+  const b = client();
+  await b.login('ostani.clan', 'memberpass1');
+  await atTime(new Date(NOW0 + 91 * DAY).toISOString(), async () => {
+    const res = await b.request('/mitglied');
+    assert.equal(res.status, 302);
+    assert.match(res.location, /^\/login/);
+  });
+
+  // Ohne Haken: Cookie ohne Max-Age/Expires (endet mit dem Browser)
+  const c = client();
+  const r2 = await c.login('ostani.clan', 'memberpass1', { remember: false });
+  assert.equal(r2.location, '/mitglied');
+  assert.doesNotMatch(r2.setCookie, /Max-Age|Expires/i);
+  assert.ok(await loggedIn(c));
+  const res = await c.request('/mitglied/abrechnung');
+  assert.doesNotMatch(res.setCookie || '', /Max-Age|Expires/i);
+  assert.equal(sessionRows('user', id).filter((s) => s.remember === 0).length, 1);
+});
+
+test('Ostani prijavljen: gilt für alle Kontoarten (Admin, Trainer, Elternkonto, Kinder-Konto)', async () => {
+  const admin = client();
+  assert.match((await admin.login('admin@test.de', 'adminpass123')).setCookie, /Max-Age=7776000/);
+  assert.ok(await loggedIn(admin, '/admin'));
+  await admin.post('/admin/treneri', { name: 'Sesija Trener', username: 'sesija.trener', password: 'trener-pass-1', rate_individual: '20', rate_group: '30', active: '1' }, '/admin/treneri/neu');
+  const t = client();
+  assert.match((await t.login('sesija.trener', 'trener-pass-1')).setCookie, /Max-Age=7776000/);
+  assert.ok(await loggedIn(t, '/trener'));
+  const pid = makeMember('Sesija Roditelj Clan', 'sesija.rc');
+  await createParentAccount(admin, { name: 'Sesija Roditelj', username: 'sesija.roditelj', password: 'roditelj-pass-1', players: [pid] });
+  const p = client();
+  assert.match((await p.login('sesija.roditelj', 'roditelj-pass-1')).setCookie, /Max-Age=7776000/);
+  assert.ok(await loggedIn(p, '/roditelj'));
+  const m = client();
+  await m.login('sesija.rc', 'memberpass1');
+  await m.post('/mitglied/djeca', { name: 'Sesija Dijete', username: 'sesija.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const k = client();
+  assert.match((await k.login('sesija.kid', 'kid-pass-123')).setCookie, /Max-Age=7776000/);
+  assert.ok(await loggedIn(k));
+  const k2 = client();
+  assert.doesNotMatch((await k2.login('sesija.kid', 'kid-pass-123', { remember: false })).setCookie, /Max-Age/);
+  assert.ok(await loggedIn(k2));
+});
+
+test('Odjava wirkt sofort und serverseitig; alte Cookies ohne Sitzung gelten nicht', async () => {
+  const id = makeMember('Odjava Clan', 'odjava.clan');
+  const a = client();
+  const b = client();
+  await a.login('odjava.clan', 'memberpass1');
+  await b.login('odjava.clan', 'memberpass1');
+  assert.equal(sessionRows('user', id).length, 2);
+  const stolen = a.cookie;
+  const out = await a.post('/logout', {}, '/mitglied');
+  assert.equal(out.location, '/login');
+  assert.ok(!(await loggedIn(a)));
+  assert.equal(sessionRows('user', id).length, 1);
+  // Auch ein vorher kopiertes Cookie ist nach der Abmeldung wertlos
+  const replay = client();
+  replay.cookie = stolen;
+  assert.ok(!(await loggedIn(replay)));
+  // Anderes Gerät bleibt angemeldet
+  assert.ok(await loggedIn(b));
+
+  // Altes Cookie-Format (nur uid, ohne Sitzung in der Datenbank) wird nicht mehr angenommen
+  const crypto = require('node:crypto');
+  const payload = Buffer.from(JSON.stringify({ uid: id, csrf: 'x'.repeat(24), exp: Date.now() + DAY })).toString('base64url');
+  const sig = crypto.createHmac('sha256', 'test-secret').update(payload).digest('base64url');
+  const legacy = client();
+  legacy.cookie = `bt_session=${payload}.${sig}`;
+  assert.ok(!(await loggedIn(legacy)));
+});
+
+test('Passwort geändert oder zurückgesetzt → alle anderen Anmeldungen dieses Kontos enden', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  // 1) Mitglied ändert eigenes Passwort: dieses Gerät bleibt, andere Geräte werden abgemeldet
+  const id = makeMember('Lozinka Sesija', 'lozinka.sesija');
+  const here = client();
+  const other = client();
+  await here.login('lozinka.sesija', 'memberpass1');
+  await other.login('lozinka.sesija', 'memberpass1');
+  const other2 = client();
+  other2.cookie = other.cookie;
+  assert.equal((await here.post('/mitglied/passwort', { current: 'memberpass1', password: 'NovaLozinka9', password2: 'NovaLozinka9' }, '/mitglied/passwort')).status, 302);
+  assert.ok(await loggedIn(here));
+  assert.ok(!(await loggedIn(other)));
+  assert.ok(!(await loggedIn(other2)));
+  assert.equal(sessionRows('user', id).length, 1);
+
+  // 2) Admin setzt das Passwort des Mitglieds → alle Anmeldungen des Mitglieds enden; Admin bleibt angemeldet
+  await admin.post(`/admin/mitglieder/${id}`, { name: 'Lozinka Sesija', username: 'lozinka.sesija', email: 'lozinka.sesija@kids-test.de', password: 'AdminDala77', active: '1' }, `/admin/mitglieder/${id}`);
+  assert.ok(!(await loggedIn(here)));
+  assert.equal(sessionRows('user', id).length, 0);
+  assert.ok(await loggedIn(admin, '/admin'));
+  // Admin speichert ohne neues Passwort → Anmeldungen bleiben
+  const again = client();
+  await again.login('lozinka.sesija', 'AdminDala77');
+  await admin.post(`/admin/mitglieder/${id}`, { name: 'Lozinka Sesija', username: 'lozinka.sesija', email: 'lozinka.sesija@kids-test.de', password: '', active: '1' }, `/admin/mitglieder/${id}`);
+  assert.ok(await loggedIn(again));
+
+  // 3) Zurücksetzen per E-Mail-Link → alle Anmeldungen enden
+  sentMails.length = 0;
+  await client().post('/zaboravljena-lozinka', { email: 'lozinka.sesija@kids-test.de' }, '/zaboravljena-lozinka');
+  const token = /nova-lozinka\/([A-Za-z0-9_-]+)/.exec(sentMails[0].text)[1];
+  const anon = client();
+  assert.equal((await anon.post(`/nova-lozinka/${token}`, { password: 'PoLinku55x', password2: 'PoLinku55x' }, `/nova-lozinka/${token}`)).status, 302);
+  assert.ok(!(await loggedIn(again)));
+  assert.equal(sessionRows('user', id).length, 0);
+
+  // 4) Elternteil setzt Passwort des Kinder-Kontos → Kind wird abgemeldet
+  const parent = client();
+  await parent.login('lozinka.sesija', 'PoLinku55x');
+  await parent.post('/mitglied/djeca', { name: 'Lozinka Dijete', username: 'lozinka.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const kidId = db.prepare("SELECT id FROM users WHERE username = 'lozinka.kid'").get().id;
+  const kid = client();
+  await kid.login('lozinka.kid', 'kid-pass-123');
+  assert.ok(await loggedIn(kid));
+  await parent.post(`/mitglied/djeca/${kidId}/lozinka`, { password: 'novo-kid-22' }, '/mitglied/djeca');
+  assert.ok(!(await loggedIn(kid)));
+  assert.ok(await loggedIn(parent));
+
+  // 5) Trainer: eigenes Passwort ändern (andere Geräte) und Admin setzt Passwort
+  await admin.post('/admin/treneri', { name: 'Lozinka Trener', username: 'lozinka.trener', password: 'trener-pass-1', rate_individual: '20', rate_group: '30', active: '1' }, '/admin/treneri/neu');
+  const tid = db.prepare("SELECT id FROM trainers WHERE username = 'lozinka.trener'").get().id;
+  const t1 = client();
+  const t2 = client();
+  await t1.login('lozinka.trener', 'trener-pass-1');
+  await t2.login('lozinka.trener', 'trener-pass-1');
+  const tForm = (await t1.request('/trener/lozinka')).text;
+  const fields = [...tForm.matchAll(/name="(\w+)" type="password"/g)].map((x) => x[1]);
+  const body = Object.fromEntries(fields.map((f, i) => [f, i === 0 ? 'trener-pass-1' : 'trener-novo-2']));
+  assert.equal((await t1.post('/trener/lozinka', body, '/trener/lozinka')).status, 302);
+  assert.ok(await loggedIn(t1, '/trener'));
+  assert.ok(!(await loggedIn(t2, '/trener')));
+  await admin.post(`/admin/treneri/${tid}`, { name: 'Lozinka Trener', username: 'lozinka.trener', password: 'trener-admin-3', rate_individual: '20', rate_group: '30', active: '1' }, `/admin/treneri/${tid}`);
+  assert.ok(!(await loggedIn(t1, '/trener')));
+  assert.equal(sessionRows('trainer', tid).length, 0);
+
+  // 6) Elternkonto: Admin setzt Passwort → abgemeldet
+  const pm = makeMember('Lozinka Igrac', 'lozinka.igrac');
+  await createParentAccount(admin, { name: 'Lozinka Roditelj', username: 'lozinka.roditelj', password: 'roditelj-pass-1', players: [pm] });
+  const paId = db.prepare("SELECT id FROM parent_accounts WHERE username = 'lozinka.roditelj'").get().id;
+  const pa = client();
+  await pa.login('lozinka.roditelj', 'roditelj-pass-1');
+  assert.ok(await loggedIn(pa, '/roditelj'));
+  await admin.post(`/admin/roditelji/${paId}`, { name: 'Lozinka Roditelj', username: 'lozinka.roditelj', password: 'roditelj-novo-2', player_ids: [String(pm)], active: '1' }, `/admin/roditelji/${paId}`);
+  assert.ok(!(await loggedIn(pa, '/roditelj')));
+  assert.equal(sessionRows('parent', paId).length, 0);
+});
+
+test('Anmeldungen und geheimer Schlüssel bleiben nach einem Neustart erhalten (Datenbank-Datei)', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-restart-'));
+  const file = path.join(dir, 'bettertennis.db');
+  const start = async () => {
+    const d = openDatabase(file);
+    const app = createApp(d, { mailer: testMailer, mailDelayMs: 0 }); // ohne SESSION_SECRET: Schlüssel aus der Datenbank
+    const srv = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+    return { d, srv, url: `http://127.0.0.1:${srv.address().port}` };
+  };
+  const req = async (url, cookie, p, form) => {
+    const res = await fetch(url + p, {
+      method: form ? 'POST' : 'GET', redirect: 'manual',
+      headers: { cookie, ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
+      body: form ? new URLSearchParams(form).toString() : undefined,
+    });
+    const set = res.headers.get('set-cookie');
+    return { status: res.status, text: await res.text(), cookie: set ? set.split(';')[0] : cookie };
+  };
+  let run = await start();
+  run.d.prepare("INSERT INTO users (name, username, email, password_hash) VALUES ('Restart Clan', 'restart.clan', 'r@primjer.ba', ?)").run(hashPassword('memberpass1'));
+  const secret1 = run.d.prepare("SELECT value FROM settings WHERE key = 'session_secret'").get().value;
+  let r = await req(run.url, '', '/login');
+  const csrf = /name="_csrf" value="([^"]+)"/.exec(r.text)[1];
+  r = await req(run.url, r.cookie, '/login', { _csrf: csrf, username: 'restart.clan', password: 'memberpass1', remember: '1' });
+  assert.equal(r.status, 302);
+  const cookie = r.cookie;
+  assert.equal((await req(run.url, cookie, '/mitglied')).status, 200);
+  run.srv.close();
+  run.d.close();
+
+  // „Neustart/Update“: neue App-Instanz, dieselbe Datenbank-Datei
+  run = await start();
+  try {
+    assert.equal(run.d.prepare("SELECT value FROM settings WHERE key = 'session_secret'").get().value, secret1);
+    assert.equal((await req(run.url, cookie, '/mitglied')).status, 200);
+    assert.equal(run.d.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 1);
+    assert.equal(run.d.prepare('SELECT COUNT(*) AS n FROM users WHERE username = ?').get('restart.clan').n, 1);
+  } finally {
+    run.srv.close();
+    run.d.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Gelöschtes Konto: seine Anmeldungen werden mitgelöscht (auch Kinder-Konten)', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const id = makeMember('Brisanje Sesija', 'brisanje.sesija');
+  const m = client();
+  await m.login('brisanje.sesija', 'memberpass1');
+  await m.post('/mitglied/djeca', { name: 'Brisanje Dijete', username: 'brisanje.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const kidId = db.prepare("SELECT id FROM users WHERE username = 'brisanje.kid'").get().id;
+  await client().login('brisanje.kid', 'kid-pass-123');
+  assert.equal(sessionRows('user', id).length, 1);
+  assert.equal(sessionRows('user', kidId).length, 1);
+  await admin.post(`/admin/mitglieder/${id}/loeschen`, {}, `/admin/mitglieder/${id}`);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users WHERE id IN (?, ?)').get(id, kidId).n, 0);
+  assert.equal(sessionRows('user', id).length, 0);
+  assert.equal(sessionRows('user', kidId).length, 0);
+  assert.ok(await loggedIn(admin, '/admin'));
 });

@@ -7,7 +7,7 @@ const { formatMoney, centsToInput, parseMoney, CURRENCY_SYMBOL } = require('../m
 const { formatHours } = require('../billing');
 const { trainerReport } = require('../trainers');
 const { layout, csrfField, errorList, monthNav, lessonTimeRange, LESSON_KINDS } = require('../views');
-const { requireAdmin, hashPassword } = require('../auth');
+const { requireAdmin, hashPassword, endSessionsFor } = require('../auth');
 const { EMAIL_RE, str } = require('./public');
 const { USERNAME_RE, normalizeUsername, usernameTaken } = require('../db');
 
@@ -230,9 +230,11 @@ module.exports = function trainerRoutes(db) {
     let access = '';
     if (values.revoke) {
       db.prepare('UPDATE trainers SET password_hash = NULL WHERE id = ?').run(trainer.id);
+      endSessionsFor(db, 'trainer', trainer.id);
       access = ' Pristup je uklonjen.';
     } else if (values.password) {
       db.prepare('UPDATE trainers SET password_hash = ? WHERE id = ?').run(hashPassword(values.password), trainer.id);
+      endSessionsFor(db, 'trainer', trainer.id);
       access = ` Prijava: ${values.username} / lozinka: ${values.password}`;
     }
     res.flash('success', `Promjene za trenera ${values.name} su sačuvane.${access}`);

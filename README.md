@@ -117,6 +117,19 @@ Tests: `npm test`
   danach automatisch **„Realizovan“**. Abgesagte Termine bleiben „Otkazan“.
 - Das ist nur Anzeige: In der Datenbank gibt es weiter nur „nicht abgesagt“/„abgesagt“, die Abrechnung bleibt unverändert.
 
+## Angemeldet bleiben
+
+- Login-Seite: Kästchen **„Ostani prijavljen“** (standardmäßig angehakt) → 90 Tage angemeldet auf diesem Gerät,
+  jede Benutzung verlängert wieder auf 90 Tage. Ohne Haken endet die Anmeldung beim Schließen des Browsers
+  (spätestens nach 12 Stunden ohne Benutzung). Gilt für alle Konten (Admin, Mitglieder, Kinder, Trainer, Eltern).
+- Anmeldungen liegen in der Tabelle `sessions` der Datenbank (im Volume); das Cookie enthält nur einen zufälligen
+  Schlüssel, in der Datenbank steht nur dessen Hash. Dadurch bleiben Anmeldungen nach Neustart/Update erhalten.
+- Der Cookie-Schlüssel wird einmal erzeugt und in der Datenbank gespeichert (bleibt gleich). Optional kann er mit
+  `SESSION_SECRET` fest vorgegeben werden – ein späteres Ändern meldet alle einmal ab.
+- **„Odjava“** löscht die Anmeldung sofort auf dem Server. **Passwort geändert/zurückgesetzt** (selbst, per
+  E-Mail-Link, durch Admin oder Elternteil) → alle Anmeldungen dieses Kontos enden; wer das eigene Passwort ändert,
+  bleibt auf dem aktuellen Gerät angemeldet. Gelöschte Konten verlieren ihre Anmeldungen ebenfalls.
+
 ## Wochenfreigabe (Trainingsplan)
 
 - Jede Woche (Mo–So) ist entweder **versteckt** oder **freigegeben**. Mitglieder und Kinder-Konten sehen Termine
@@ -257,7 +270,7 @@ Lokal gehen keine Daten verloren, solange der Ordner `data/` nicht gelöscht wir
 | `DB_FILE`        | Pfad der SQLite-Datenbank                                         | Railway-Volume, sonst `data/bettertennis.db`|
 | `ADMIN_EMAIL`    | E-Mail des ersten Admins (nur wenn noch kein Admin existiert)     | `admin@bettertennis.local` |
 | `ADMIN_PASSWORD` | Passwort des ersten Admins                                        | zufällig, wird geloggt |
-| `SESSION_SECRET` | Schlüssel für Session-Cookies                                     | wird erzeugt und in der DB gespeichert |
+| `SESSION_SECRET` | Schlüssel für Login-Cookies (optional; Ändern meldet alle ab)     | wird einmal erzeugt und in der DB gespeichert |
 | `NODE_ENV`       | `production` setzt Cookies auf `Secure` (HTTPS nötig)             | –                     |
 | `TRUST_PROXY`    | `1`, wenn die App hinter einem Reverse-Proxy läuft                | –                     |
 | `CURRENCY`       | Währung der Beträge, z. B. `BAM` (Konvertible Mark, „KM“) oder `EUR` | `BAM`              |

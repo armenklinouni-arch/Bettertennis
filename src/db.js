@@ -158,6 +158,26 @@ CREATE TABLE IF NOT EXISTS parent_account_players (
 );
 
 -- Linkovi za novu lozinku („Zaboravljena lozinka“): čuva se samo hash tokena; jednokratni, ističu nakon 60 min.
+-- Prijave (sesije): kolačić nosi samo nasumični token, ovdje se čuva njegov hash.
+-- Odjava i promjena lozinke brišu redove, pa djeluju odmah. kind: user | trainer | parent.
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash   TEXT PRIMARY KEY,
+  kind         TEXT NOT NULL,
+  account_id   INTEGER NOT NULL,
+  remember     INTEGER NOT NULL DEFAULT 1,
+  created_at   INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  expires_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_account ON sessions (kind, account_id);
+-- Obrisan račun → njegove prijave se brišu (ID se u SQLite-u može ponovo dodijeliti novom računu).
+CREATE TRIGGER IF NOT EXISTS sessions_users_delete AFTER DELETE ON users
+  BEGIN DELETE FROM sessions WHERE kind = 'user' AND account_id = OLD.id; END;
+CREATE TRIGGER IF NOT EXISTS sessions_trainers_delete AFTER DELETE ON trainers
+  BEGIN DELETE FROM sessions WHERE kind = 'trainer' AND account_id = OLD.id; END;
+CREATE TRIGGER IF NOT EXISTS sessions_parents_delete AFTER DELETE ON parent_accounts
+  BEGIN DELETE FROM sessions WHERE kind = 'parent' AND account_id = OLD.id; END;
+
 CREATE TABLE IF NOT EXISTS password_resets (
   token_hash TEXT PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -410,8 +430,11 @@ function ensureAdmin(db, { email, password, name } = {}) {
   if (email && password) {
     const account = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email);
     if (account) {
-      const hash = verifyPassword(password, account.password_hash) ? account.password_hash : hashPassword(password);
+      const unchanged = verifyPassword(password, account.password_hash);
+      const hash = unchanged ? account.password_hash : hashPassword(password);
       db.prepare("UPDATE users SET role = 'admin', active = 1, password_hash = ? WHERE id = ?").run(hash, account.id);
+      // Nova lozinka iz podešavanja → postojeće prijave ovog računa prestaju važiti.
+      if (!unchanged) db.prepare("DELETE FROM sessions WHERE kind = 'user' AND account_id = ?").run(account.id);
     } else {
       db.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'admin')")
         .run(name || 'Administrator', email, hashPassword(password));

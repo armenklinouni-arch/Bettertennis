@@ -6,7 +6,9 @@ const path = require('node:path');
 const express = require('express');
 const { html, raw } = require('../html');
 const { layout, csrfField, errorList } = require('../views');
-const { verifyPassword, hashPassword, DUMMY_HASH, homeFor } = require('../auth');
+const {
+  verifyPassword, hashPassword, DUMMY_HASH, homeFor, startSession, endSession, endSessionsFor,
+} = require('../auth');
 const { isPlaceholderEmail, needsEmailPrompt } = require('../db');
 
 const LEVELS = ['Početnik', 'Povratnik', 'Napredni', 'Takmičar'];
@@ -267,7 +269,7 @@ module.exports = function publicRoutes(db, {
     })));
   });
 
-  function loginPage(req, { username = '', error = null, next = '' } = {}) {
+  function loginPage(req, { username = '', error = null, next = '', remember = true } = {}) {
     return layout(req, {
       title: 'Prijava',
       body: html`
@@ -284,6 +286,10 @@ module.exports = function publicRoutes(db, {
           </label>
           <label>Lozinka
             <input name="password" type="password" required autocomplete="current-password">
+          </label>
+          <label class="check remember">
+            <input type="checkbox" name="remember" value="1"${remember ? ' checked' : ''}>
+            <span>Ostani prijavljen</span>
           </label>
           <button class="btn btn-primary" type="submit">Prijavi se</button>
         </form>
@@ -328,20 +334,23 @@ module.exports = function publicRoutes(db, {
     if (!valid) {
       loginLimiter.fail(key);
       res.status(401);
-      return res.send(String(loginPage(req, { username, next, error: 'Korisničko ime ili lozinka nisu ispravni.' })));
+      return res.send(String(loginPage(req, { username, next, remember: req.body.remember === '1', error: 'Korisničko ime ili lozinka nisu ispravni.' })));
     }
 
     loginLimiter.reset(key);
     const csrf = crypto.randomBytes(18).toString('base64url');
+    // „Ostani prijavljen“ (u obrascu unaprijed označeno): 90 dana; bez kvačice do zatvaranja preglednika.
+    const remember = req.body.remember === '1';
+    req.session = { csrf };
     if (user) {
-      req.session = { uid: user.id, csrf };
+      startSession(db, req, { kind: 'user', id: user.id, remember });
       // Prozor za unos e-maila: prikazuje se u ovoj prijavi (najviše kod prve tri prijave bez e-maila).
       if (needsEmailPrompt(user)) {
         db.prepare('UPDATE users SET email_prompt_logins = email_prompt_logins + 1 WHERE id = ?').run(user.id);
         req.session.emailPrompt = 1;
       }
-    } else if (trainer) req.session = { tid: trainer.id, csrf };
-    else req.session = { pid: parentAccount.id, csrf };
+    } else if (trainer) startSession(db, req, { kind: 'trainer', id: trainer.id, remember });
+    else startSession(db, req, { kind: 'parent', id: parentAccount.id, remember });
     res.saveSession();
     res.redirect(safeNext(next, user ? homeFor(user) : trainer ? '/trener' : '/roditelj'));
   });
@@ -468,6 +477,7 @@ module.exports = function publicRoutes(db, {
     db.exec('BEGIN');
     try {
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), account.user_id);
+      endSessionsFor(db, 'user', account.user_id); // sve postojeće prijave ovog računa prestaju
       db.prepare('UPDATE password_resets SET used_at = ? WHERE user_id = ? AND used_at IS NULL').run(Date.now(), account.user_id);
       db.exec('COMMIT');
     } catch (err) {
@@ -479,6 +489,7 @@ module.exports = function publicRoutes(db, {
   });
 
   router.post('/logout', (req, res) => {
+    endSession(db, req); // odmah nevažeće – i za kopirani kolačić
     req.session = { csrf: req.session.csrf };
     res.flash('success', 'Odjavljen/a si.');
     res.redirect('/login');

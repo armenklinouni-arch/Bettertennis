@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 const express = require('express');
-const { sessionMiddleware, loadUser, csrfProtection, createLoginLimiter } = require('./auth');
+const { sessionMiddleware, loadSession, loadUser, csrfProtection, createLoginLimiter } = require('./auth');
 const { sessionSecret } = require('./db');
 const { closeElapsedMonths } = require('./billing');
 const D = require('./dates');
@@ -56,6 +56,7 @@ function createApp(db, {
   app.use('/static', express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h' }));
   app.use(express.urlencoded({ extended: false, limit: '50kb' }));
   app.use(sessionMiddleware({ secret: sessionSecret(db, secret), secure: secureCookies }));
+  app.use(loadSession(db));
   app.use(loadUser(db));
   app.use(csrfProtection);
 
