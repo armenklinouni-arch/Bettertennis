@@ -1106,16 +1106,62 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
   });
 
   // ---------------------------------------------------------------- Iznosi
+  // „Označi: plaćeno“ vodi do polja „Datum uplate“; kod plaćenih mjeseci datum se može promijeniti.
   function paidToggle(req, member, st, back) {
+    const dateUrl = `/admin/abrechnung/${member.id}/placeno?month=${st.month}&back=${encodeURIComponent(back)}`;
+    if (!st.paid) return html`<a class="btn btn-sm btn-primary" href="${dateUrl}">Označi: plaćeno</a>`;
     return html`
       <form method="post" action="/admin/abrechnung/${member.id}/placeno" class="inline-form">
         ${csrfField(req)}
         <input type="hidden" name="month" value="${st.month}">
-        <input type="hidden" name="paid" value="${st.paid ? '0' : '1'}">
+        <input type="hidden" name="paid" value="0">
         <input type="hidden" name="back" value="${back}">
-        <button class="btn btn-sm ${st.paid ? 'btn-ghost' : 'btn-primary'}" type="submit">${st.paid ? 'Označi: nije plaćeno' : 'Označi: plaćeno'}</button>
-      </form>`;
+        <button class="btn btn-sm btn-ghost" type="submit">Označi: nije plaćeno</button>
+      </form>
+      <a class="btn btn-sm btn-ghost" href="${dateUrl}">Promijeni datum</a>`;
   }
+
+  const safeBack = (v) => (typeof v === 'string' && v.startsWith('/admin/abrechnung') ? v : '/admin/abrechnung');
+  const getPayment = db.prepare('SELECT * FROM payments WHERE user_id = ? AND month = ?');
+
+  function paidDatePage(req, member, month, { value, back, errors = [] }) {
+    const payment = getPayment.get(member.id, month);
+    const paid = !!(payment && payment.paid);
+    return layout(req, {
+      title: 'Datum uplate',
+      body: html`
+      <section class="card narrow">
+        <h1>${paid ? 'Promijeni datum uplate' : 'Označi kao plaćeno'}</h1>
+        <p class="muted">${member.name} · ${D.monthLabel(month)}</p>
+        ${errorList(errors)}
+        <form method="post" action="/admin/abrechnung/${member.id}/placeno" class="stack">
+          ${csrfField(req)}
+          <input type="hidden" name="month" value="${month}">
+          <input type="hidden" name="paid" value="1">
+          <input type="hidden" name="back" value="${back}">
+          <label>Datum uplate
+            <input name="paid_at" type="date" required value="${value}">
+          </label>
+          <p class="muted small">Interna informacija – članovi i roditelji vide samo „Plaćeno“.</p>
+          <div class="btn-row">
+            <button class="btn btn-primary" type="submit">Spremi</button>
+            <a class="btn btn-ghost" href="${back}">Odustani</a>
+          </div>
+        </form>
+      </section>`,
+    });
+  }
+
+  router.get('/abrechnung/:id/placeno', (req, res) => {
+    const member = getMember.get(toId(req.params.id));
+    if (!member) return notFound(res, 'član');
+    if (!D.isValidMonth(req.query.month)) return res.status(400).send('Neispravan mjesec.');
+    const payment = getPayment.get(member.id, req.query.month);
+    // Već plaćeno: sačuvani datum; inače današnji datum.
+    const stored = payment && payment.paid && payment.paid_at ? String(payment.paid_at).slice(0, 10) : null;
+    const value = stored && D.isValidDate(stored) ? stored : D.todayISO();
+    res.send(String(paidDatePage(req, member, req.query.month, { value, back: safeBack(req.query.back) })));
+  });
 
   function releaseToggle(req, member, st, back) {
     return html`
@@ -1299,7 +1345,17 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     if (!member) return notFound(res, 'član');
     if (!D.isValidMonth(req.body.month)) return res.status(400).send('Neispravan mjesec.');
     const paid = req.body.paid === '1';
-    setPaid(db, member.id, req.body.month, paid);
+    let paidAt = null;
+    if (paid && req.body.paid_at !== undefined) {
+      paidAt = typeof req.body.paid_at === 'string' ? req.body.paid_at.trim() : '';
+      if (!D.isValidDate(paidAt)) {
+        res.status(400);
+        return res.send(String(paidDatePage(req, member, req.body.month, {
+          value: '', back: safeBack(req.body.back), errors: ['Neispravan datum uplate.'],
+        })));
+      }
+    }
+    setPaid(db, member.id, req.body.month, paid, paidAt);
     res.flash('success', `${member.name}, ${D.monthLabel(req.body.month)}: ${paid ? 'plaćeno' : 'nije plaćeno'}.`);
     const back = typeof req.body.back === 'string' && req.body.back.startsWith('/admin/abrechnung') ? req.body.back : '/admin/abrechnung';
     res.redirect(back);

@@ -3322,3 +3322,71 @@ test('Plaćeno: Mitglieder und Elternkonten sehen kein Zahlungsdatum, der Admin 
   // Datenbank unverändert
   assert.deepEqual({ ...db.prepare('SELECT paid, paid_at FROM payments WHERE user_id = ? AND month = ?').get(id, month) }, { ...row });
 });
+
+// ---------------------------------------------------------------- Plaćeno: Datum uplate wählbar und änderbar
+test('Plaćeno: „Datum uplate“ (vorausgefüllt mit heute) wählbar, später änderbar; alte Daten bleiben', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const id = makeMember('Datum Uplate', 'datum.uplate', { fee: 5000 });
+  const month = '2026-10';
+  const back = `/admin/abrechnung?monat=${month}`;
+  const payment = () => db.prepare('SELECT paid, paid_at FROM payments WHERE user_id = ? AND month = ?').get(id, month);
+  await admin.post(`/admin/abrechnung/${id}/odobri`, { month, released: '1' }, back);
+
+  // „Označi: plaćeno“ führt zum Datumsfeld (vorausgefüllt mit heute); Anzeigen speichert nichts
+  const list = (await admin.request(back)).text;
+  const formUrl = `/admin/abrechnung/${id}/placeno?month=${month}`;
+  assert.match(list, new RegExp(`href="${formUrl.replace(/[?]/g, '\\?')}[^"]*">Označi: plaćeno<`));
+  const form = await admin.request(`${formUrl}&back=${encodeURIComponent(back)}`);
+  assert.equal(form.status, 200);
+  assert.match(form.text, /<label>Datum uplate\s*<input name="paid_at" type="date" required value="2026-10-09"/);
+  assert.match(form.text, /<button class="btn btn-primary" type="submit">Spremi<\/button>/);
+  assert.ok(!payment() || !payment().paid);
+
+  // Früheres Datum wählen und speichern
+  const saved = await admin.post(`/admin/abrechnung/${id}/placeno`, { month, paid: '1', paid_at: '2026-10-03', back }, `${formUrl}&back=${encodeURIComponent(back)}`);
+  assert.equal(saved.status, 302);
+  assert.equal(saved.location, back);
+  assert.deepEqual({ ...payment() }, { paid: 1, paid_at: '2026-10-03' });
+  let page = (await admin.request(back)).text;
+  assert.match(page, /tag-done">Plaćeno \(03\.10\.2026\.?\)/);
+  // Mitglied sieht weiterhin nur „Plaćeno“
+  const m = client();
+  await m.login('datum.uplate', 'memberpass1');
+  const mt = (await m.request(`/mitglied/abrechnung?monat=${month}`)).text;
+  assert.match(mt, /tag-done">Plaćeno<\/span>/);
+  assert.doesNotMatch(mt, /03\.10\.2026/);
+
+  // Später ändern: „Promijeni datum“ zeigt das gespeicherte Datum
+  assert.match(page, new RegExp(`href="${formUrl.replace(/[?]/g, '\\?')}[^"]*">Promijeni datum<`));
+  const edit = (await admin.request(formUrl)).text;
+  assert.match(edit, /name="paid_at" type="date" required value="2026-10-03"/);
+  await admin.post(`/admin/abrechnung/${id}/placeno`, { month, paid: '1', paid_at: '2026-10-05', back }, formUrl);
+  assert.deepEqual({ ...payment() }, { paid: 1, paid_at: '2026-10-05' });
+  // Auch im Detail sichtbar und änderbar
+  const detail = (await admin.request(`/admin/abrechnung/${id}?monat=${month}`)).text;
+  assert.match(detail, /Plaćeno \(05\.10\.2026\.?\)/);
+  assert.match(detail, />Promijeni datum</);
+
+  // Ungültiges Datum → abgelehnt, nichts geändert
+  assert.equal((await admin.post(`/admin/abrechnung/${id}/placeno`, { month, paid: '1', paid_at: '2026-02-30', back }, formUrl)).status, 400);
+  assert.equal(payment().paid_at, '2026-10-05');
+
+  // „Označi: nije plaćeno“ unverändert
+  await admin.post(`/admin/abrechnung/${id}/placeno`, { month, paid: '0', back }, back);
+  assert.equal(payment().paid, 0);
+  assert.match((await admin.request(back)).text, />Označi: plaćeno</);
+
+  // Bereits bezahlte Monate (alte Daten): gespeichertes Datum bleibt und erscheint im Formular
+  const old = makeMember('Stari Placeno', 'stari.placeno', { fee: 4000 });
+  db.prepare("INSERT INTO payments (user_id, month, paid, paid_at, released) VALUES (?, '2026-09', 1, '2026-09-15', 1)").run(old);
+  assert.match((await admin.request('/admin/abrechnung?monat=2026-09')).text, /Plaćeno \(15\.09\.2026\.?\)/);
+  assert.match((await admin.request(`/admin/abrechnung/${old}/placeno?month=2026-09`)).text, /value="2026-09-15"/);
+  assert.equal(db.prepare("SELECT paid_at FROM payments WHERE user_id = ? AND month = '2026-09'").get(old).paid_at, '2026-09-15');
+
+  // Ohne Datumsfeld (alte Formulare) → wie bisher heute
+  await admin.post(`/admin/abrechnung/${id}/placeno`, { month, paid: '1', back }, back);
+  assert.deepEqual({ ...payment() }, { paid: 1, paid_at: '2026-10-09' });
+  // Nur für Admin
+  assert.equal((await m.request(formUrl)).status, 403);
+});

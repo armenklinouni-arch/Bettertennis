@@ -175,11 +175,12 @@ function liveTotal(db, user, month) {
   return liveStatement(db, user, month, modeForMonth(db, user, month)).total;
 }
 
-function setPaid(db, userId, month, paid) {
+// paidAt: datum uplate (YYYY-MM-DD) koji admin izabere; bez njega – današnji datum (kao ranije).
+function setPaid(db, userId, month, paid, paidAt = null) {
   db.prepare(
     `INSERT INTO payments (user_id, month, paid, paid_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(user_id, month) DO UPDATE SET paid = excluded.paid, paid_at = excluded.paid_at`
-  ).run(userId, month, paid ? 1 : 0, paid ? todayISO() : null);
+  ).run(userId, month, paid ? 1 : 0, paid ? (paidAt || todayISO()) : null);
 }
 
 function setReleased(db, userId, month, released) {
