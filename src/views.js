@@ -326,11 +326,12 @@ function releaseBadge(statement) {
     : html`<span class="tag tag-pending">U pripremi</span>`;
 }
 
-// Plaćeno / nije plaćeno – samo informativno.
-function paymentBadge(statement) {
+// Plaćeno / nije plaćeno – samo informativno. Datum uplate je interna informacija: prikazuje se samo
+// adminu (showDate); članovi i roditeljski računi vide samo „Plaćeno“.
+function paymentBadge(statement, { showDate = false } = {}) {
   if (!statement.paid && statement.total === 0) return html`<span class="tag">Nema obaveze</span>`;
   return statement.paid
-    ? html`<span class="tag tag-done">Plaćeno${statement.paidAt ? ` (${D.formatDate(statement.paidAt)})` : ''}</span>`
+    ? html`<span class="tag tag-done">Plaćeno${showDate && statement.paidAt ? ` (${D.formatDate(statement.paidAt)})` : ''}</span>`
     : html`<span class="tag tag-cancelled">Nije plaćeno</span>`;
 }
 

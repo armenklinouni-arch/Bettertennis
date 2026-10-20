@@ -3278,3 +3278,47 @@ test('Gelöschtes Konto: seine Anmeldungen werden mitgelöscht (auch Kinder-Kont
   assert.equal(sessionRows('user', kidId).length, 0);
   assert.ok(await loggedIn(admin, '/admin'));
 });
+
+// ---------------------------------------------------------------- Plaćeno: Datum nur für den Admin
+test('Plaćeno: Mitglieder und Elternkonten sehen kein Zahlungsdatum, der Admin schon; gespeichertes Datum bleibt', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const id = makeMember('Placeno Clan', 'placeno.clan', { fee: 5000 });
+  const month = '2026-10';
+  await admin.post(`/admin/abrechnung/${id}/odobri`, { month, released: '1' }, `/admin/abrechnung?monat=${month}`);
+  await admin.post(`/admin/abrechnung/${id}/placeno`, { month, paid: '1' }, `/admin/abrechnung?monat=${month}`);
+  const row = db.prepare('SELECT paid, paid_at FROM payments WHERE user_id = ? AND month = ?').get(id, month);
+  assert.equal(row.paid, 1);
+  assert.ok(row.paid_at, 'Datum wird weiterhin gespeichert');
+
+  const withDate = /tag-done">Plaćeno \(09\.10\.2026\.?\)<\/span>/;
+  const noDate = /tag-done">Plaćeno<\/span>/;
+  // Mitglied: Startseite, Monatsbetrag, Übersicht der Monate
+  const m = client();
+  await m.login('placeno.clan', 'memberpass1');
+  for (const p of ['/mitglied', `/mitglied/abrechnung?monat=${month}`]) {
+    const t = (await m.request(p)).text;
+    assert.match(t, noDate, p);
+    assert.doesNotMatch(t, /Plaćeno \(/, p);
+  }
+  // Elternkonto: Tabelle und Einzelauszug
+  await createParentAccount(admin, { name: 'Placeno Roditelj', username: 'placeno.roditelj', password: 'roditelj-pass-1', players: [id] });
+  const p = client();
+  await p.login('placeno.roditelj', 'roditelj-pass-1');
+  const pt = (await p.request(`/roditelj/finansije?monat=${month}`)).text;
+  assert.match(pt, noDate);
+  assert.doesNotMatch(pt, /Plaćeno \(/);
+  // Kinder-Konto: weiterhin keine Finanzen
+  await m.post('/mitglied/djeca', { name: 'Placeno Dijete', username: 'placeno.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const k = client();
+  await k.login('placeno.kid', 'kid-pass-123');
+  assert.doesNotMatch((await k.request('/mitglied')).text, /Plaćeno|Nije plaćeno/);
+  assert.equal((await k.request(`/mitglied/abrechnung?monat=${month}`)).status, 403);
+  // Admin: Datum weiterhin sichtbar (Iznosi-Liste, Detail, Mitgliederliste)
+  for (const path of [`/admin/abrechnung?monat=${month}`, `/admin/abrechnung/${id}?monat=${month}`]) {
+    assert.match((await admin.request(path)).text, withDate, path);
+  }
+  assert.match((await admin.request('/admin/mitglieder')).text, /Placeno Clan[\s\S]*?tag-done">Plaćeno \(09\.10\.2026\.?\)/);
+  // Datenbank unverändert
+  assert.deepEqual({ ...db.prepare('SELECT paid, paid_at FROM payments WHERE user_id = ? AND month = ?').get(id, month) }, { ...row });
+});

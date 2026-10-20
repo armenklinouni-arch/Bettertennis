@@ -36,7 +36,8 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
    - **Beträge**: Monatsübersicht aller Mitglieder, Detailansicht pro Mitglied, Zusatzposten
      und Gutschriften (negative Beträge), **Freigabe pro Monat** („Odobri za člana“; vorher sieht das
      Mitglied nur „Obračun u pripremi“, Freigabe jederzeit rücknehmbar), Status **Plaćeno / Nije plaćeno** pro Monat
-     (Mitglieder sehen den aktuellen Monat und 3 Monate zurück)
+     (Mitglieder sehen den aktuellen Monat und 3 Monate zurück; das Zahlungsdatum sieht nur der Admin –
+     Mitglieder und Elternkonten sehen nur „Plaćeno“)
    - **Finansije** (Prihodi i rashodi): pro Monat Einnahmen (automatisch: bezahlte Mitgliederbeträge;
      manuell: Turniergewinn, Camps, Sponsoren, Platzvermietung, Verkauf, Sonstiges) und Ausgaben
      (automatisch: Trainerauszahlungen; manuell: Platzmiete, Bälle, Strom, Wasser, Requisiten, Benzin,

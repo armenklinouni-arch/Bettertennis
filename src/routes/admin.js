@@ -243,7 +243,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
               <td>${isPlaceholderEmail(m.email) ? html`<span class="muted">bez e-maila</span>` : m.email}${m.phone ? html`<br>${m.phone}` : ''}</td>
               <td class="num">${formatMoney(m.hourly_rate_cents)}</td>
               <td class="num">${formatMoney(m.monthly_fee_cents)}</td>
-              <td class="num">${formatMoney(st.total)}<br><span class="small muted">${st.manual ? BILLING_MODE_SHORT.manual : `Termini: ${st.lessonCount}`}</span> ${paymentBadge(st)}</td>
+              <td class="num">${formatMoney(st.total)}<br><span class="small muted">${st.manual ? BILLING_MODE_SHORT.manual : `Termini: ${st.lessonCount}`}</span> ${paymentBadge(st, { showDate: true })}</td>
               <td>${m.active ? 'aktivan' : 'neaktivan'}</td>
               <td class="actions">
                 <a class="btn btn-ghost btn-sm" href="/admin/mitglieder/${m.id}">Uredi</a>
@@ -1167,7 +1167,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
             <td class="num">${formatMoney(st.adjustmentsTotal)}</td>
             <td class="num"><strong>${formatMoney(st.total)}</strong></td>
             <td>${releaseBadge(st)}</td>
-            <td>${paymentBadge(st)}</td>
+            <td>${paymentBadge(st, { showDate: true })}</td>
             <td class="actions">${releaseToggle(req, m, st, back)}${paidToggle(req, m, st, back)}<a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}">Detalji</a></td>
           </tr>`)}</tbody>
         <tfoot>
@@ -1205,7 +1205,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       </div>
       ${monthNav(`/admin/abrechnung/${member.id}`, month)}
       <div class="summary-tile big">
-        <span class="label">Ukupno ${D.monthLabel(month)} · ${releaseBadge(st)} · ${paymentBadge(st)}</span>
+        <span class="label">Ukupno ${D.monthLabel(month)} · ${releaseBadge(st)} · ${paymentBadge(st, { showDate: true })}</span>
         <span class="value">${formatMoney(st.total)}</span>
         <span class="hint">${st.closed
           ? html`Zaključen obračun · članarina ${formatMoney(st.fee)} · ${BILLING_MODE_SHORT[st.mode]}`
