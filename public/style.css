@@ -424,6 +424,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .confirm-box { border: 1px solid var(--accent); background: var(--primary-soft); border-radius: 10px; padding: 12px 14px; }
 .confirm-box p { margin-top: 0; }
 
+/* Polje „Filter“ iznad lista (Iznosi, Članovi) */
+.list-filter { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; max-width: 460px; }
+.list-filter label { margin: 0; font-weight: 600; }
+.filter-box { position: relative; flex: 1; }
+.filter-box input { width: 100%; padding-right: 36px; }
+.filter-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--muted); text-decoration: none; font-size: 1.15rem; line-height: 1; }
+.filter-clear:hover { background: var(--border); color: var(--text); }
+.filter-clear[hidden] { display: none; }
+tr[data-filter] { scroll-margin-top: 140px; }
+tr.row-highlight td { animation: row-highlight 1600ms ease-out; }
+@keyframes row-highlight { from { background: var(--primary-soft); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { tr.row-highlight td { animation: none; } }
+
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
 

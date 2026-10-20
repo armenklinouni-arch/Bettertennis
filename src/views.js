@@ -326,6 +326,19 @@ function releaseBadge(statement) {
     : html`<span class="tag tag-pending">U pripremi</span>`;
 }
 
+// Polje „Filter“ iznad liste. Bez JavaScripta radi preko ?trazi=…; s JavaScriptom filtrira već pri kucanju.
+function listFilter({ key, action, value = '', clearHref, hidden = {} }) {
+  return html`
+    <form method="get" action="${action}" class="list-filter" role="search" data-list-filter="${key}">
+      ${Object.entries(hidden).map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}
+      <label for="filter-${key}">Filter</label>
+      <div class="filter-box">
+        <input id="filter-${key}" name="trazi" type="text" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="Ime ili korisničko ime" value="${value}">
+        <a class="filter-clear" href="${clearHref}" aria-label="Obriši filter"${value ? '' : html` hidden`}>×</a>
+      </div>
+    </form>`;
+}
+
 // Plaćeno / nije plaćeno – samo informativno. Datum uplate je interna informacija: prikazuje se samo
 // adminu (showDate); članovi i roditeljski računi vide samo „Plaćeno“.
 function paymentBadge(statement, { showDate = false } = {}) {
@@ -352,7 +365,7 @@ function monthNav(baseUrl, month, extraQuery = '', { min = null, max = null } = 
 }
 
 module.exports = {
-  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, lessonTimeRange, lessonTags,
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, lessonTimeRange, lessonTags,
   lessonKindLabel, lessonStatusLabel, activeStatusLabel, isLessonOver, LESSON_KINDS, LESSON_STATUSES, LESSON_PLANNED, SITE_NAME,
   ATTENDANCE, attendanceLabel, attendanceSummary, billingMark,
 };

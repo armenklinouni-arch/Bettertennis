@@ -13,10 +13,14 @@ const {
   setMonthMode, closeMonth, reopenMonth, isMonthClosed, liveTotal, modeForMonth,
 } = require('../billing');
 const {
-  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, LESSON_PLANNED,
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, LESSON_PLANNED,
   ATTENDANCE, attendanceSummary, billingMark,
 } = require('../views');
 const { requireAdmin, hashPassword, readablePassword, endSessionsFor } = require('../auth');
+const { searchText, matchesSearch } = require('../search');
+
+// Upit iz polja „Filter“ (?trazi=…).
+const filterQuery = (v) => (typeof v === 'string' ? v.trim().slice(0, 100) : '');
 const { EMAIL_RE, str } = require('./public');
 const { listGroupsWithMembers } = require('./groups');
 const { sendBackupMail, BACKUP_EMAIL_DEFAULT } = require('../backup');
@@ -220,6 +224,8 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     const month = D.monthOf(D.todayISO());
     const members = allMembers.all();
     const parents = parentNames();
+    const q = filterQuery(req.query.trazi);
+    const shown = members.filter((m) => !q || matchesSearch(searchText(m.name, m.username), q)).length;
     res.send(String(layout(req, {
       title: 'Članovi',
       wide: true,
@@ -233,11 +239,13 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       </div>
       ${members.length === 0
         ? html`<p class="card muted">Još nema kreiranih članova.</p>`
-        : html`<div class="table-wrap"><table>
+        : html`${listFilter({ key: 'clanovi', action: '/admin/mitglieder', value: q, clearHref: '/admin/mitglieder' })}
+          <div class="table-wrap"><table>
           <thead><tr><th>Ime</th><th>Korisničko ime</th><th>Kontakt</th><th class="num">Cijena / sat</th><th class="num">Članarina</th><th class="num">${D.monthLabel(month)}</th><th>Status</th><th></th></tr></thead>
-          <tbody>${members.map((m) => {
+          <tbody data-filter-list="clanovi">${members.map((m) => {
             const st = monthlyStatement(db, m, month);
-            return html`<tr class="${m.active ? '' : 'is-inactive'}">
+            const text = searchText(m.name, m.username);
+            return html`<tr id="clan-${m.id}" data-filter="${text}" class="${m.active ? '' : 'is-inactive'}"${q && !matchesSearch(text, q) ? html` hidden` : ''}>
               <td><strong>${m.name}</strong>${m.parent_id ? html`<br><span class="tag">dijete · roditelj: ${parents.get(m.id) || ''}</span>` : ''}</td>
               <td>${m.username || ''}</td>
               <td>${isPlaceholderEmail(m.email) ? html`<span class="muted">bez e-maila</span>` : m.email}${m.phone ? html`<br>${m.phone}` : ''}</td>
@@ -251,7 +259,8 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
                 <a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}">Iznos</a>
               </td>
             </tr>`;
-          })}</tbody></table></div>`}`,
+          })}
+          <tr class="filter-empty"${shown ? html` hidden` : ''}><td colspan="8" class="empty">Nema članova za ovaj filter.</td></tr></tbody></table></div>`}`,
     })));
   });
 
@@ -1180,14 +1189,20 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       .filter((r) => r.member.active || r.st.total !== 0);
     const sum = rows.reduce((s, r) => s + r.st.total, 0);
     const open = rows.filter((r) => !r.st.paid).reduce((s, r) => s + r.st.total, 0);
-    const back = `/admin/abrechnung?monat=${month}`;
+    const q = filterQuery(req.query.trazi);
+    const filterParam = q ? `&trazi=${encodeURIComponent(q)}` : '';
+    // Nakon klika kod člana: nazad na listu s istim filterom, tačno do tog člana.
+    const rowBack = (m) => `/admin/abrechnung?monat=${month}${filterParam}#clan-${m.id}`;
+    const texts = new Map(rows.map((r) => [r.member.id, searchText(r.member.name, r.member.username)]));
+    const shown = rows.filter((r) => !q || matchesSearch(texts.get(r.member.id), q)).length;
 
     res.send(String(layout(req, {
       title: 'Iznosi',
       wide: true,
       body: html`
       <div class="page-head"><h1>Mjesečni iznosi</h1></div>
-      ${monthNav('/admin/abrechnung', month)}
+      ${monthNav('/admin/abrechnung', month, filterParam)}
+      ${listFilter({ key: 'iznosi', action: '/admin/abrechnung', value: q, clearHref: `/admin/abrechnung?monat=${month}`, hidden: { monat: month } })}
       <div class="btn-row payment-row">
         <span class="muted">Odobreno za članove: ${rows.filter((r) => r.st.released).length} od ${rows.length}</span>
         <form method="post" action="/admin/abrechnung/odobri-sve" class="inline-form" data-confirm="Odobriti obračun za ${D.monthLabel(month)} svim članovima?">
@@ -1201,9 +1216,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       </div>
       <div class="table-wrap"><table>
         <thead><tr><th>Član</th><th class="num">Termini</th><th class="num">Sati</th><th class="num">Članarina</th><th class="num">Treninzi</th><th class="num">Stavke</th><th class="num">Ukupno</th><th>Za člana</th><th>Plaćanje</th><th></th></tr></thead>
-        <tbody>${rows.length === 0
+        <tbody data-filter-list="iznosi">${rows.length === 0
           ? html`<tr><td colspan="10" class="empty">Nema članova.</td></tr>`
-          : rows.map(({ member: m, st }) => html`<tr class="${m.active ? '' : 'is-inactive'}">
+          : html`${rows.map(({ member: m, st }) => html`<tr id="clan-${m.id}" data-filter="${texts.get(m.id)}" class="${m.active ? '' : 'is-inactive'}"${q && !matchesSearch(texts.get(m.id), q) ? html` hidden` : ''}>
             <td><strong>${m.name}</strong>${st.mode !== 'schedule' ? html` <span class="tag">${BILLING_MODE_SHORT[st.mode]}</span>` : ''}${
               st.closed ? html` <span class="tag">zaključen</span>` : st.reopened ? html` <span class="tag tag-pending">otključan</span>` : ''}</td>
             <td class="num">${st.manual ? '–' : st.lessonCount}</td>
@@ -1214,8 +1229,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
             <td class="num"><strong>${formatMoney(st.total)}</strong></td>
             <td>${releaseBadge(st)}</td>
             <td>${paymentBadge(st, { showDate: true })}</td>
-            <td class="actions">${releaseToggle(req, m, st, back)}${paidToggle(req, m, st, back)}<a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}">Detalji</a></td>
-          </tr>`)}</tbody>
+            <td class="actions">${releaseToggle(req, m, st, rowBack(m))}${paidToggle(req, m, st, rowBack(m))}<a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}">Detalji</a></td>
+          </tr>`)}
+          <tr class="filter-empty"${shown ? html` hidden` : ''}><td colspan="10" class="empty">Nema članova za ovaj filter.</td></tr>`}</tbody>
         <tfoot>
           <tr class="total"><td colspan="6">Ukupno ${D.monthLabel(month)}</td><td class="num">${formatMoney(sum)}</td><td colspan="3"></td></tr>
           <tr><td colspan="6">Od toga još nije plaćeno</td><td class="num">${formatMoney(open)}</td><td colspan="3"></td></tr>

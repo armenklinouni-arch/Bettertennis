@@ -132,6 +132,16 @@ Tests: `npm test`
   E-Mail-Link, durch Admin oder Elternteil) → alle Anmeldungen dieses Kontos enden; wer das eigene Passwort ändert,
   bleibt auf dem aktuellen Gerät angemeldet. Gelöschte Konten verlieren ihre Anmeldungen ebenfalls.
 
+## Filter in „Mjesečni iznosi“ und „Članovi“
+
+- Suchfeld **„Filter“** über der Liste: zeigt schon beim Tippen nur Spieler, deren Name oder Benutzername passt –
+  ohne Unterschied bei Groß-/Kleinschreibung und č, ć, š, ž, đ („hadzic“ findet „Hadžić“, „djuric“/„duric“ findet
+  „Đurić“). Mehrere Wörter müssen alle vorkommen. Das **×** im Feld löscht den Filter.
+- Der Filter steht in der Adresse (`?trazi=…`) und bleibt nach Klicks („Odobri za člana“, „Označi: plaćeno“ …) und
+  beim Monatswechsel aktiv; nach einem Klick springt die Seite zurück zum jeweiligen Spieler statt nach oben.
+  Im selben Browser-Tab merkt sich die Seite den letzten Filter und die Zeile (auch bei „Članovi“ nach „Uredi“).
+- Die Summen unter „Mjesečni iznosi“ gelten weiterhin für alle Mitglieder. Der Termini-Filter ist unverändert.
+
 ## Wochenfreigabe (Trainingsplan)
 
 - Jede Woche (Mo–So) ist entweder **versteckt** oder **freigegeben**. Mitglieder und Kinder-Konten sehen Termine

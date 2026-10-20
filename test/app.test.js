@@ -3390,3 +3390,96 @@ test('Plaćeno: „Datum uplate“ (vorausgefüllt mit heute) wählbar, später 
   // Nur für Admin
   assert.equal((await m.request(formUrl)).status, 403);
 });
+
+// ---------------------------------------------------------------- Filter in „Mjesečni iznosi“ und „Članovi“
+test('Filter (Iznosi): Name/Benutzername, ohne Groß-/Kleinschreibung und Akzente; bleibt nach Klick und Monatswechsel', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const h = makeMember('Amra Hadžić', 'filter.amra', { fee: 3000 });
+  const d = makeMember('Đorđe Đurić', 'filter.djuro', { fee: 3000 });
+  const x = makeMember('Zlatan Šehić', 'filter.zlatan', { fee: 3000 });
+  const month = '2026-10';
+  const rowOf = (text, id) => {
+    const m = new RegExp(`<tr id="clan-${id}"([^>]*)>`).exec(text);
+    assert.ok(m, `Zeile ${id} fehlt`);
+    return m[1];
+  };
+  const visible = (text, id) => !/\shidden\b/.test(rowOf(text, id));
+
+  // Ohne Filter: Feld „Filter“, alle sichtbar, X versteckt, Suchtext pro Zeile normalisiert
+  let page = (await admin.request(`/admin/abrechnung?monat=${month}`)).text;
+  assert.match(page, /<label for="filter-iznosi">Filter<\/label>/);
+  assert.match(page, /<input id="filter-iznosi" name="trazi" type="text"[^>]*value=""/);
+  assert.match(page, /<a class="filter-clear" href="\/admin\/abrechnung\?monat=2026-10" aria-label="Obriši filter" hidden>/);
+  assert.ok([h, d, x].every((id) => visible(page, id)));
+  assert.match(rowOf(page, h), /data-filter="[^"]*amra hadzic[^"]*filter\.amra/);
+
+  // „hadzic“ findet „Hadžić“ (auch groß geschrieben und mit Akzent); andere Zeilen ausgeblendet
+  for (const q of ['hadzic', 'HADŽIĆ', 'Hadžić', 'amra had', 'filter.amra']) {
+    page = (await admin.request(`/admin/abrechnung?monat=${month}&trazi=${encodeURIComponent(q)}`)).text;
+    assert.ok(visible(page, h), q);
+    assert.ok(!visible(page, d) && !visible(page, x), q);
+  }
+  // đ: „djuric“, „duric“ und „đurić“ finden „Đurić“
+  for (const q of ['djuric', 'duric', 'ĐURIĆ', 'dorde', 'djordje']) {
+    page = (await admin.request(`/admin/abrechnung?monat=${month}&trazi=${encodeURIComponent(q)}`)).text;
+    assert.ok(visible(page, d), q);
+    assert.ok(!visible(page, h), q);
+  }
+  // Kein Treffer → Hinweis
+  page = (await admin.request(`/admin/abrechnung?monat=${month}&trazi=nemaga`)).text;
+  assert.match(page, /<tr class="filter-empty"><td colspan="10" class="empty">Nema članova za ovaj filter\.<\/td><\/tr>/);
+
+  // Mit Filter: X sichtbar und führt zur ganzen Liste; Monatswechsel behält den Filter
+  page = (await admin.request(`/admin/abrechnung?monat=${month}&trazi=hadzic`)).text;
+  assert.match(page, /<a class="filter-clear" href="\/admin\/abrechnung\?monat=2026-10" aria-label="Obriši filter">/);
+  assert.match(page, /value="hadzic"/);
+  assert.match(page, /href="\/admin\/abrechnung\?monat=2026-09&amp;trazi=hadzic"/);
+  assert.match(page, /href="\/admin\/abrechnung\?monat=2026-11&amp;trazi=hadzic"/);
+  assert.match(page, /<input type="hidden" name="monat" value="2026-10">/);
+
+  // Klick bei einem Spieler: zurück zur Liste mit Filter und genau zu diesem Spieler (#clan-ID)
+  const back = `/admin/abrechnung?monat=2026-10&trazi=hadzic#clan-${h}`;
+  assert.ok(page.includes(`name="back" value="${back.replace(/&/g, '&amp;')}"`));
+  const rel = await admin.post(`/admin/abrechnung/${h}/odobri`, { month, released: '1', back }, `/admin/abrechnung?monat=${month}&trazi=hadzic`);
+  assert.equal(rel.location, back);
+  const dateLink = new RegExp(`href="/admin/abrechnung/${h}/placeno\\?month=2026-10&amp;back=${encodeURIComponent(back).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`);
+  assert.match((await admin.request(`/admin/abrechnung?monat=${month}&trazi=hadzic`)).text, dateLink);
+  const paid = await admin.post(`/admin/abrechnung/${h}/placeno`, { month, paid: '1', paid_at: '2026-10-08', back }, `/admin/abrechnung/${h}/placeno?month=${month}`);
+  assert.equal(paid.location, back);
+  const unpaid = await admin.post(`/admin/abrechnung/${h}/placeno`, { month, paid: '0', back }, `/admin/abrechnung?monat=${month}`);
+  assert.equal(unpaid.location, back);
+  // Ungültige Rücksprungadresse wird weiterhin nicht übernommen
+  assert.equal((await admin.post(`/admin/abrechnung/${h}/odobri`, { month, released: '1', back: 'https://evil.example/' }, `/admin/abrechnung?monat=${month}`)).location, '/admin/abrechnung');
+  // Summen bleiben unverändert (alle Mitglieder)
+  const all = (await admin.request(`/admin/abrechnung?monat=${month}`)).text;
+  const filtered = (await admin.request(`/admin/abrechnung?monat=${month}&trazi=hadzic`)).text;
+  const total = (t) => /<tr class="total"><td colspan="6">Ukupno[^<]*<\/td><td class="num">([^<]+)</.exec(t)[1];
+  assert.equal(total(filtered), total(all));
+  // Skript für das Filtern beim Tippen ist eingebunden
+  const js = (await client().request('/static/app.js')).text;
+  assert.match(js, /data-list-filter/);
+});
+
+test('Filter (Članovi): gleiches Suchfeld und gleiche Regeln; Termini-Filter unverändert', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const a = makeMember('Lejla Čaušević', 'clanovi.lejla');
+  const b = makeMember('Mirza Kovač', 'clanovi.mirza');
+  const rowAttrs = (text, id) => new RegExp(`<tr id="clan-${id}"([^>]*)>`).exec(text)[1];
+  let page = (await admin.request('/admin/mitglieder')).text;
+  assert.match(page, /<label for="filter-clanovi">Filter<\/label>/);
+  assert.match(page, /<a class="filter-clear" href="\/admin\/mitglieder" aria-label="Obriši filter" hidden>/);
+  assert.doesNotMatch(rowAttrs(page, a), /hidden/);
+  page = (await admin.request(`/admin/mitglieder?trazi=${encodeURIComponent('causevic')}`)).text;
+  assert.doesNotMatch(rowAttrs(page, a), /\shidden/);
+  assert.match(rowAttrs(page, b), /\shidden/);
+  assert.match(page, /<a class="filter-clear" href="\/admin\/mitglieder" aria-label="Obriši filter">/);
+  page = (await admin.request('/admin/mitglieder?trazi=KOVAC')).text;
+  assert.match(rowAttrs(page, a), /\shidden/);
+  assert.doesNotMatch(rowAttrs(page, b), /\shidden/);
+  page = (await admin.request('/admin/mitglieder?trazi=clanovi.mirza')).text;
+  assert.doesNotMatch(rowAttrs(page, b), /\shidden/);
+  // Termini: kein neues Filterfeld
+  assert.doesNotMatch((await admin.request('/admin/termine')).text, /filter-termini|data-list-filter/);
+});

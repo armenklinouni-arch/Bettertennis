@@ -109,3 +109,106 @@ document.addEventListener('change', (event) => {
     all.checked = boxes.length > 0 && boxes.every((b) => b.checked);
   }
 });
+
+// Polje „Filter“ u listama (Iznosi, Članovi): filtrira već pri kucanju (ime ili korisničko ime, bez razlike
+// velika/mala slova i č/ć/š/ž/đ). Filter ostaje aktivan (i pri promjeni mjeseca), a nakon klika kod člana
+// stranica se vraća tačno do tog člana. Ista pravila kao na serveru (src/search.js).
+(() => {
+  const normalize = (t) => String(t || '').toLowerCase().replace(/đ/g, 'd').normalize('NFD')
+    .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  const matches = (hay, q) => normalize(q).split(' ').filter(Boolean).every((t) => hay.includes(t));
+  const store = {
+    get(k) { try { return window.sessionStorage.getItem(k); } catch { return null; } },
+    set(k, v) {
+      try {
+        if (v === null || v === '') window.sessionStorage.removeItem(k);
+        else window.sessionStorage.setItem(k, v);
+      } catch { /* bez pohrane */ }
+    },
+  };
+  // Postavlja ?trazi=… na adresi liste (i u ugniježđenom parametru back=…).
+  function withFilter(url, q, listPath) {
+    const u = new URL(url, window.location.href);
+    if (u.pathname === listPath) {
+      if (q) u.searchParams.set('trazi', q);
+      else u.searchParams.delete('trazi');
+    }
+    const back = u.searchParams.get('back');
+    if (back) u.searchParams.set('back', withFilter(back, q, listPath));
+    return u.pathname + u.search + u.hash;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('form[data-list-filter]').forEach((form) => {
+      const key = form.getAttribute('data-list-filter');
+      const listPath = form.getAttribute('action');
+      const input = form.querySelector('input[name="trazi"]');
+      const clear = form.querySelector('.filter-clear');
+      const body = document.querySelector(`[data-filter-list="${key}"]`);
+      if (!input || !body) return;
+      const rows = Array.from(body.querySelectorAll('tr[data-filter]'));
+      const empty = body.querySelector('tr.filter-empty');
+      const encodedPath = encodeURIComponent(listPath);
+
+      function apply(q) {
+        const query = q.trim();
+        let shown = 0;
+        rows.forEach((row) => {
+          const ok = !query || matches(row.getAttribute('data-filter'), query);
+          row.hidden = !ok;
+          if (ok) shown += 1;
+        });
+        if (empty) empty.hidden = shown > 0 || rows.length === 0;
+        if (clear) clear.hidden = !query;
+        // Linkovi (mjeseci, „Označi: plaćeno“) i povratne adrese obrazaca nose filter dalje.
+        document.querySelectorAll('input[name="back"]').forEach((el) => {
+          if (el.value.startsWith(listPath)) el.value = withFilter(el.value, query, listPath);
+        });
+        document.querySelectorAll('a[href]').forEach((a) => {
+          if (a === clear) return;
+          const href = a.getAttribute('href');
+          if (href.startsWith(`${listPath}?`) || href.includes(`back=${encodedPath}`)) a.setAttribute('href', withFilter(href, query, listPath));
+        });
+        const here = window.location.pathname + window.location.search + window.location.hash;
+        window.history.replaceState(null, '', withFilter(here, query, listPath));
+        store.set(`bt-filter:${key}`, query);
+      }
+
+      // Filter iz adrese ima prednost; inače posljednji filter ove liste (npr. nakon promjene mjeseca).
+      const fromUrl = new URL(window.location.href).searchParams.has('trazi');
+      const remembered = store.get(`bt-filter:${key}`);
+      if (!fromUrl && remembered) input.value = remembered;
+      if (input.value) apply(input.value);
+
+      input.addEventListener('input', () => apply(input.value));
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        apply(input.value);
+      });
+      if (clear) {
+        clear.addEventListener('click', (event) => {
+          event.preventDefault();
+          input.value = '';
+          apply('');
+          input.focus();
+        });
+      }
+
+      // Klik kod člana: zapamti red, da se po povratku na listu stranica ne vrati na vrh.
+      body.addEventListener('click', (event) => {
+        const row = event.target.closest('tr[data-filter]');
+        if (row && event.target.closest('a, button')) store.set(`bt-row:${key}`, `${row.id}|${Date.now()}`);
+      });
+      const target = window.location.hash ? document.getElementById(window.location.hash.slice(1)) : null;
+      const [rowId, at] = String(store.get(`bt-row:${key}`) || '').split('|');
+      store.set(`bt-row:${key}`, null);
+      const row = target && body.contains(target) ? target
+        : rowId && Date.now() - Number(at) < 30 * 60 * 1000 ? document.getElementById(rowId) : null;
+      if (row && !row.hidden) {
+        row.scrollIntoView({ block: 'center' });
+        row.classList.add('row-highlight');
+        window.setTimeout(() => row.classList.remove('row-highlight'), 1600);
+      }
+    });
+  });
+})();
