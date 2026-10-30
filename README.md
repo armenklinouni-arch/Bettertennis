@@ -113,6 +113,19 @@ Tests: `npm test`
   Namen; bei Doppelungen mit Zahl, z. B. `amra2`). Der Admin sieht ihn in der Mitgliederliste bzw. beim
   Trainer und kann ihn jederzeit ändern. Sonst bleiben alle Daten unverändert.
 
+## „Raspored s prikazom, bez obračuna“: Beträge pro Termin
+
+- Wie bisher: Monatsbetrag unten als Stavka eintragen; die Termine werden nur angezeigt.
+- Zusätzlich in Iznosi → Detalji bei jedem Termin in der Spalte „Iznos“ **„✎ Uredi“**: Betrag (KM) und optionale
+  Notiz (z. B. „Samo dva igrača“) für **diesen Termin und diesen Spieler**, „Spremi“; „Obriši“ entfernt ihn wieder.
+  Andere Spieler im selben (Gruppen-)Termin bleiben unverändert.
+- Sobald ein Termin einen Betrag hat, gilt als „Treninzi“ die **Summe der Terminbeträge** (ohne Betrag = 0).
+  Unter „Iznos za treninge“ lässt sich diese Summe von Hand ersetzen (leer = wieder automatisch).
+  Članarina und Stavke kommen wie bei den anderen Arten hinzu.
+- Mitglieder und Elternkonten sehen Beträge, Notizen und Summe. Bearbeiten nur, solange der Monat nicht zaključen ist.
+- Beim Bearbeiten eines Termins unter „Termini“ bleiben Betrag und Notiz erhalten. Die anderen Abrechnungsarten
+  ignorieren diese Beträge (sie bleiben aber gespeichert, falls der Monat wieder auf diese Art umgestellt wird).
+
 ## Status-Anzeige der Termine
 
 - Nicht abgesagte Termine zeigen **„Planiran“**, solange ihre Endzeit (Ortszeit Sarajevo) noch nicht erreicht ist,

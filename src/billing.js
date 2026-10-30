@@ -54,7 +54,18 @@ function liveStatement(db, user, month, mode) {
   const realized = lessons.filter((l) => !l.cancelled);
   const billLessons = mode === 'schedule';
   // Ručno isključeni termini (billable = 0) se ne naplaćuju. Status prisustva ovdje namjerno ne igra ulogu.
-  const lessonsTotal = billLessons ? realized.filter((l) => l.billable !== 0).reduce((sum, l) => sum + l.price_cents, 0) : 0;
+  let lessonsTotal = billLessons ? realized.filter((l) => l.billable !== 0).reduce((sum, l) => sum + l.price_cents, 0) : 0;
+  // „Prikaz bez obračuna“: čim je bar jedan termin dobio iznos, treninzi = zbir iznosa po terminima
+  // (termini bez iznosa = 0). Admin taj zbir može ručno zamijeniti (billing_months.display_total_cents).
+  let display = null;
+  if (mode === 'display') {
+    const withAmount = lessons.filter((l) => l.display_amount_cents !== null && l.display_amount_cents !== undefined);
+    const rec = monthRecord(db, user.id, month);
+    const override = rec && rec.display_total_cents !== null && rec.display_total_cents !== undefined ? rec.display_total_cents : null;
+    const autoTotal = withAmount.reduce((sum, l) => sum + l.display_amount_cents, 0);
+    display = { amounts: withAmount.length, autoTotal, override };
+    lessonsTotal = override !== null ? override : autoTotal;
+  }
   const adjustmentsTotal = adjustments.reduce((sum, a) => sum + a.amount_cents, 0);
   const minutes = realized.reduce((sum, l) => sum + l.duration_min, 0);
   const fee = user.monthly_fee_cents || 0;
@@ -67,6 +78,7 @@ function liveStatement(db, user, month, mode) {
     hours: minutes / 60,
     lessonsTotal,
     adjustmentsTotal,
+    display,
     total: fee + lessonsTotal + adjustmentsTotal,
   };
 }
@@ -183,6 +195,14 @@ function setPaid(db, userId, month, paid, paidAt = null) {
   ).run(userId, month, paid ? 1 : 0, paid ? (paidAt || todayISO()) : null);
 }
 
+// „Prikaz bez obračuna“: ručni iznos za treninge u mjesecu (null = automatski zbir iznosa po terminima).
+function setDisplayTotal(db, user, month, cents) {
+  db.prepare(
+    `INSERT INTO billing_months (user_id, month, mode, display_total_cents) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, month) DO UPDATE SET display_total_cents = excluded.display_total_cents`
+  ).run(user.id, month, modeForMonth(db, user, month), cents);
+}
+
 function setReleased(db, userId, month, released) {
   db.prepare(
     `INSERT INTO payments (user_id, month, released) VALUES (?, ?, ?)
@@ -195,6 +215,7 @@ function formatHours(hours) {
 }
 
 module.exports = {
+  setDisplayTotal,
   monthlyStatement, setPaid, setReleased, formatHours, billingMode, memberMonthRange,
   setMonthMode, closeMonth, reopenMonth, closeElapsedMonths, isMonthClosed, liveTotal, modeForMonth,
   BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,

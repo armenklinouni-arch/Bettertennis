@@ -47,6 +47,9 @@ CREATE TABLE IF NOT EXISTS lessons (
   attendance      TEXT,
   attendance_note TEXT,
   billable        INTEGER NOT NULL DEFAULT 1,
+  -- „Prikaz bez obračuna“: iznos i napomena samo za ovaj termin i ovog igrača (prazno = nije unesen)
+  display_amount_cents INTEGER,
+  display_note    TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS lessons_user_date ON lessons (user_id, date);
@@ -128,6 +131,8 @@ CREATE TABLE IF NOT EXISTS billing_months (
   reopened  INTEGER NOT NULL DEFAULT 0,
   snapshot  TEXT,
   closed_at TEXT,
+  -- „Prikaz bez obračuna“: ručno određen iznos za treninge (prazno = zbir iznosa po terminima)
+  display_total_cents INTEGER,
   PRIMARY KEY (user_id, month)
 );
 
@@ -352,6 +357,10 @@ const NEW_COLUMNS = [
   ['lessons', 'billable', 'INTEGER NOT NULL DEFAULT 1'],
   // Koliko puta je članu bez e-maila nakon prijave prikazan prozor za unos e-maila (najviše 3 puta).
   ['users', 'email_prompt_logins', 'INTEGER NOT NULL DEFAULT 0'],
+  // „Prikaz bez obračuna“: iznos/napomena po terminu i ručni iznos za treninge u mjesecu (sve prazno = kao ranije).
+  ['lessons', 'display_amount_cents', 'INTEGER'],
+  ['lessons', 'display_note', 'TEXT'],
+  ['billing_months', 'display_total_cents', 'INTEGER'],
 ];
 
 function addMissingColumns(db) {

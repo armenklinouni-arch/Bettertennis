@@ -9,11 +9,11 @@ const { html } = require('../html');
 const D = require('../dates');
 const { formatMoney, centsToInput, parseMoney, lessonPrice, CURRENCY_SYMBOL } = require('../money');
 const {
-  monthlyStatement, setPaid, setReleased, formatHours, BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,
+  monthlyStatement, setPaid, setReleased, setDisplayTotal, formatHours, BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,
   setMonthMode, closeMonth, reopenMonth, isMonthClosed, liveTotal, modeForMonth,
 } = require('../billing');
 const {
-  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, lessonTimeRange, lessonTags, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, LESSON_PLANNED,
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, lessonTimeRange, lessonTags, lessonKindLabel, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, LESSON_PLANNED,
   ATTENDANCE, attendanceSummary, billingMark,
 } = require('../views');
 const { requireAdmin, hashPassword, readablePassword, endSessionsFor } = require('../auth');
@@ -986,10 +986,12 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       const fresh = v.kind === 'group' && lesson.group_id
         ? db.prepare('SELECT * FROM lessons WHERE group_id = ?').all(lesson.group_id)
         : db.prepare('SELECT * FROM lessons WHERE id = last_insert_rowid()').all();
-      const restore = db.prepare('UPDATE lessons SET attendance = ?, attendance_note = ?, billable = ? WHERE id = ?');
+      const restore = db.prepare(
+        'UPDATE lessons SET attendance = ?, attendance_note = ?, billable = ?, display_amount_cents = ?, display_note = ? WHERE id = ?'
+      );
       for (const row of fresh) {
         const old = kept.get(row.user_id);
-        if (old) restore.run(old.attendance, old.attendance_note, old.billable, row.id);
+        if (old) restore.run(old.attendance, old.attendance_note, old.billable, old.display_amount_cents ?? null, old.display_note ?? null, row.id);
       }
     });
     res.flash('success', 'Termin je sačuvan.');
@@ -1311,9 +1313,27 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       ${st.mode === 'manual' && !st.closed ? html`<p class="notice">Za ${D.monthLabel(month)} vrijedi <strong>ručni obračun</strong>: treninzi iz rasporeda se ne prikazuju i ne obračunavaju.
         Iznos za mjesec unesi ispod kao stavku.</p>` : ''}
       ${st.mode === 'display' && !st.closed ? html`<p class="notice">Za ${D.monthLabel(month)} vrijedi <strong>raspored s prikazom, bez obračuna</strong>: termini se prikazuju,
-        ali se ne naplaćuju. Iznos unesi ispod kao stavku.</p>` : ''}
+        ali se ne naplaćuju. Iznos unesi ispod kao stavku – ili kod pojedinog termina („✎ Uredi“ u koloni Iznos); tada se treninzi
+        računaju kao zbir iznosa po terminima.</p>` : ''}
       ${st.mode === 'manual' ? '' : html`<p class="muted small attendance-summary">Status u mjesecu: ${attendanceSummary(withLiveAttendance(st.lessons)) || 'još nije unesen'}</p>`}
-      ${statementTable({ ...st, lessons: withLiveAttendance(st.lessons) }, { adminDelete: !st.closed, req, attendance: true, billingMarks: true })}
+      ${statementTable({ ...st, lessons: withLiveAttendance(st.lessons) }, {
+        adminDelete: !st.closed, req, attendance: true, billingMarks: true,
+        lessonAmountUrl: st.mode === 'display' && !st.closed ? (l) => `/admin/abrechnung/${member.id}/termin/${l.id}?monat=${month}` : null,
+      })}
+      ${st.mode === 'display' && !st.closed ? html`<section class="card" id="iznos-treninga">
+        <h2>Iznos za treninge</h2>
+        <p class="muted small">Zbir iznosa po terminima: <strong>${formatMoney(st.display ? st.display.autoTotal : 0)}</strong>
+          (termini bez iznosa = 0). Ovdje ga možeš ručno zamijeniti drugim iznosom; prazno polje = automatski zbir.
+          Članarina i stavke se i dalje dodaju.</p>
+        <form method="post" action="/admin/abrechnung/${member.id}/iznos-treninga" class="form-grid">
+          ${csrfField(req)}
+          <input type="hidden" name="month" value="${month}">
+          <label>Ručni iznos za treninge (${CURRENCY_SYMBOL})
+            <input name="amount" inputmode="decimal" placeholder="prazno = automatski zbir" value="${st.display && st.display.override !== null ? centsToInput(st.display.override) : ''}">
+          </label>
+          <div class="span-2"><button class="btn btn-primary" type="submit">Spremi</button></div>
+        </form>
+      </section>` : ''}
       ${st.closed ? '' : html`<section class="card">
         <h2>Dodaj stavku</h2>
         <p class="muted small">Npr. mašina za loptice, najam terena, popust. Negativni iznosi su odobrenja.
@@ -1327,6 +1347,106 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
         </form>
       </section>`}`,
     })));
+  });
+
+  // ---------------------------------------------------------------- „Prikaz bez obračuna“: iznos po terminu
+  // Iznos i napomena vrijede samo za ovaj termin i ovog igrača (jedan red u tabeli lessons).
+  function displayLessonContext(req, res) {
+    const member = getMember.get(toId(req.params.id));
+    const lesson = member && getLesson.get(toId(req.params.lessonId));
+    if (!member || !lesson || lesson.user_id !== member.id) {
+      notFound(res, 'termin');
+      return null;
+    }
+    const month = D.monthOf(lesson.date);
+    const detailUrl = `/admin/abrechnung/${member.id}?monat=${month}`;
+    if (modeForMonth(db, member, month) !== 'display' || isMonthClosed(db, member, month)) {
+      res.status(400).send('Iznos po terminu se unosi samo kod načina „Raspored s prikazom, bez obračuna“ i dok mjesec nije zaključen.');
+      return null;
+    }
+    return { member, lesson, month, detailUrl };
+  }
+
+  function lessonAmountPage(req, { member, lesson, month, detailUrl }, { amount, note, errors = [] } = {}) {
+    const has = lesson.display_amount_cents !== null && lesson.display_amount_cents !== undefined;
+    return layout(req, {
+      title: 'Iznos za termin',
+      body: html`
+      <section class="card narrow">
+        <h1>Iznos za termin</h1>
+        <p class="muted">${member.name} · ${lessonKindLabel(lesson)} · ${D.formatDateLong(lesson.date)}, ${lessonTimeRange(lesson)} h</p>
+        ${errorList(errors)}
+        <form method="post" action="/admin/abrechnung/${member.id}/termin/${lesson.id}" class="stack">
+          ${csrfField(req)}
+          <input type="hidden" name="month" value="${month}">
+          <label>Iznos (${CURRENCY_SYMBOL})
+            <input name="amount" required inputmode="decimal" placeholder="npr. 25,00" value="${amount !== undefined ? amount : has ? centsToInput(lesson.display_amount_cents) : ''}">
+          </label>
+          <label>Napomena (nije obavezno)
+            <input name="note" maxlength="200" placeholder="npr. Samo dva igrača" value="${note !== undefined ? note : lesson.display_note || ''}">
+          </label>
+          <p class="muted small">Vrijedi samo za ovaj termin i ovog igrača. Član i roditelji vide iznos i napomenu.</p>
+          <div class="btn-row">
+            <button class="btn btn-primary" type="submit">Spremi</button>
+            <a class="btn btn-ghost" href="${detailUrl}#termin-${lesson.id}">Odustani</a>
+          </div>
+        </form>
+        ${has ? html`<form method="post" action="/admin/abrechnung/${member.id}/termin/${lesson.id}/obrisi" class="inline-form" data-confirm="Ukloniti iznos za ovaj termin?">
+          ${csrfField(req)}<input type="hidden" name="month" value="${month}">
+          <button class="btn btn-danger btn-sm" type="submit">Obriši</button>
+        </form>` : ''}
+      </section>`,
+    });
+  }
+
+  router.get('/abrechnung/:id/termin/:lessonId', (req, res) => {
+    const ctx = displayLessonContext(req, res);
+    if (ctx) res.send(String(lessonAmountPage(req, ctx)));
+  });
+
+  router.post('/abrechnung/:id/termin/:lessonId', (req, res) => {
+    const ctx = displayLessonContext(req, res);
+    if (!ctx) return;
+    const amount = str(req.body.amount, 20);
+    const note = str(req.body.note, 200);
+    const cents = parseMoney(amount);
+    if (cents === null || cents < 0) {
+      res.status(400);
+      return res.send(String(lessonAmountPage(req, ctx, { amount, note, errors: ['Neispravan iznos (npr. 25,00).'] })));
+    }
+    db.prepare('UPDATE lessons SET display_amount_cents = ?, display_note = ? WHERE id = ?').run(cents, note || null, ctx.lesson.id);
+    res.flash('success', `Iznos za termin ${D.formatDate(ctx.lesson.date)} je sačuvan: ${formatMoney(cents)}.`);
+    res.redirect(`${ctx.detailUrl}#termin-${ctx.lesson.id}`);
+  });
+
+  router.post('/abrechnung/:id/termin/:lessonId/obrisi', (req, res) => {
+    const ctx = displayLessonContext(req, res);
+    if (!ctx) return;
+    db.prepare('UPDATE lessons SET display_amount_cents = NULL, display_note = NULL WHERE id = ?').run(ctx.lesson.id);
+    res.flash('success', `Iznos za termin ${D.formatDate(ctx.lesson.date)} je uklonjen.`);
+    res.redirect(`${ctx.detailUrl}#termin-${ctx.lesson.id}`);
+  });
+
+  // Ručna zamjena automatskog zbira (prazno = ponovo automatski).
+  router.post('/abrechnung/:id/iznos-treninga', (req, res) => {
+    const member = getMember.get(toId(req.params.id));
+    if (!member) return notFound(res, 'član');
+    const month = req.body.month;
+    if (!D.isValidMonth(month)) return res.status(400).send('Neispravan mjesec.');
+    const detailUrl = `/admin/abrechnung/${member.id}?monat=${month}`;
+    if (modeForMonth(db, member, month) !== 'display' || isMonthClosed(db, member, month)) {
+      res.flash('error', 'Ručni iznos za treninge je moguć samo kod načina „Raspored s prikazom, bez obračuna“ i dok mjesec nije zaključen.');
+      return res.redirect(detailUrl);
+    }
+    const raw = str(req.body.amount, 20);
+    const cents = raw === '' ? null : parseMoney(raw);
+    if (raw !== '' && (cents === null || cents < 0)) {
+      res.flash('error', 'Neispravan iznos za treninge.');
+      return res.redirect(`${detailUrl}#iznos-treninga`);
+    }
+    setDisplayTotal(db, member, month, cents);
+    res.flash('success', cents === null ? 'Iznos za treninge se ponovo računa automatski.' : `Iznos za treninge je ručno postavljen: ${formatMoney(cents)}.`);
+    res.redirect(`${detailUrl}#iznos-treninga`);
   });
 
   router.post('/abrechnung/odobri-sve', (req, res) => {

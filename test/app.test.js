@@ -3483,3 +3483,141 @@ test('Filter (Članovi): gleiches Suchfeld und gleiche Regeln; Termini-Filter un
   // Termini: kein neues Filterfeld
   assert.doesNotMatch((await admin.request('/admin/termine')).text, /filter-termini|data-list-filter/);
 });
+
+function monthlyStatementFor(userId, month) {
+  const { monthlyStatement } = require('../src/billing');
+  return monthlyStatement(db, db.prepare('SELECT * FROM users WHERE id = ?').get(userId), month);
+}
+
+// ---------------------------------------------------------------- „Prikaz bez obračuna“: Beträge pro Termin
+test('Prikaz bez obračuna: Betrag + Notiz pro Termin, automatische Summe, Überschreiben, Löschen; andere Spieler/Arten unverändert', async () => {
+  const { releaseWeek } = require('../src/weeks');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const a = makeMember('Iznos Termin A', 'iznos.a', { rate: 4000 });
+  const b = makeMember('Iznos Termin B', 'iznos.b', { rate: 4000 });
+  const month = '2026-10';
+  const ins = (user, date, start, groupId = null, cancelled = 0) => db.prepare(
+    `INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents, kind, group_id, cancelled)
+     VALUES (?, ?, ?, 60, 4000, ?, ?, ?)`
+  ).run(user, date, start, groupId ? 'group' : 'individual', groupId, cancelled).lastInsertRowid;
+  const g = 'grp-iznos-test';
+  const l1 = ins(a, '2026-10-06', '14:05', g); // Gruppe mit B
+  const lb = ins(b, '2026-10-06', '14:05', g);
+  const l2 = ins(a, '2026-10-13', '14:05');
+  const l3 = ins(a, '2026-10-20', '14:05');
+  for (const mon of ['2026-10-05', '2026-10-12', '2026-10-19']) releaseWeek(db, mon);
+  const detailUrl = `/admin/abrechnung/${a}?monat=${month}`;
+  await admin.post(`/admin/abrechnung/${a}/nacin`, { month, billing_mode: 'display' }, detailUrl);
+  await admin.post(`/admin/abrechnung/${b}/nacin`, { month, billing_mode: 'display' }, `/admin/abrechnung/${b}?monat=${month}`);
+  const st = () => monthlyStatementFor(a, month);
+  const lessonRow = (id) => db.prepare('SELECT * FROM lessons WHERE id = ?').get(id);
+
+  // 1) Wie bisher: nur Monatsbetrag (Stavka) → Termine nur angezeigt
+  let page = (await admin.request(detailUrl)).text;
+  for (const id of [l1, l2, l3]) assert.match(page, new RegExp(`href="/admin/abrechnung/${a}/termin/${id}\\?monat=2026-10">✎ Uredi</a>`));
+  assert.match(page, /Realizovani treninzi<\/td><td>Termini: 3[^<]*samo prikaz, bez obračuna<\/td>(?:<td><\/td>)*<td class="num">–<\/td>/);
+  await admin.post(`/admin/abrechnung/${a}/posten`, { month, description: 'Mjesečni iznos', amount: '80,00' }, detailUrl);
+  assert.equal(st().total, 8000);
+  assert.equal(st().lessonsTotal, 0);
+
+  // 2) „✎ Uredi“: Formular mit Betrag und optionaler Notiz
+  const editUrl = (id) => `/admin/abrechnung/${a}/termin/${id}?monat=${month}`;
+  const form = (await admin.request(editUrl(l1))).text;
+  assert.match(form, /<label>Iznos \(KM\)\s*<input name="amount"[^>]*required/);
+  assert.match(form, /<label>Napomena \(nije obavezno\)\s*<input name="note"/);
+  assert.match(form, /<button class="btn btn-primary" type="submit">Spremi<\/button>/);
+  assert.doesNotMatch(form, />Obriši</);
+  const save = (id, amount, note = '') => admin.post(`/admin/abrechnung/${a}/termin/${id}`, { month, amount, note }, editUrl(id));
+  const r1 = await save(l1, '25,00', 'Samo dva igrača');
+  assert.equal(r1.status, 302);
+  assert.equal(r1.location, `${detailUrl}#termin-${l1}`);
+  assert.equal(lessonRow(l1).display_amount_cents, 2500);
+  assert.equal(lessonRow(l1).display_note, 'Samo dva igrača');
+  // Nur dieser Spieler: B im selben Gruppentermin unverändert, Preise unverändert
+  assert.equal(lessonRow(lb).display_amount_cents, null);
+  assert.equal(lessonRow(l1).price_cents, 4000);
+  // 3) Automatische Summe aus den Terminbeträgen (ohne Betrag = 0) + Stavka wie bisher
+  assert.equal(st().lessonsTotal, 2500);
+  assert.equal(st().total, 10500);
+  await save(l2, '30');
+  assert.equal(st().lessonsTotal, 5500);
+  assert.equal(st().total, 13500);
+  page = (await admin.request(detailUrl)).text;
+  assert.match(page, new RegExp(`id="termin-${l1}"[^>]*>[\\s\\S]*?Samo dva igrača[\\s\\S]*?25,00`));
+  assert.match(page, /Treninzi \(iznosi po terminima\)<\/td><td>Termini: 3[^<]*<\/td>(?:<td><\/td>)*<td class="num">55,00/);
+  assert.match((await admin.request(editUrl(l1))).text, /value="25,00"[\s\S]*value="Samo dva igrača"[\s\S]*>Obriši</);
+  // Ungültiger Betrag → abgelehnt
+  assert.equal((await save(l3, 'abc')).status, 400);
+  assert.equal(lessonRow(l3).display_amount_cents, null);
+  // Fremder Termin oder anderer Spieler über diese Adresse → nicht gefunden
+  assert.equal((await admin.request(`/admin/abrechnung/${a}/termin/${lb}?monat=${month}`)).status, 404);
+
+  // 4) Summe von Hand überschreiben und wieder automatisch
+  await admin.post(`/admin/abrechnung/${a}/iznos-treninga`, { month, amount: '50,00' }, detailUrl);
+  assert.equal(st().lessonsTotal, 5000);
+  assert.equal(st().total, 13000);
+  page = (await admin.request(detailUrl)).text;
+  assert.match(page, /Treninzi \(ručno određen iznos\)<\/td><td>[^<]*zbir po terminima: 55,00[^<]*<\/td>(?:<td><\/td>)*<td class="num">50,00/);
+  assert.match(page, /<input name="amount"[^>]*value="50,00"/);
+  await admin.post(`/admin/abrechnung/${a}/iznos-treninga`, { month, amount: '' }, detailUrl);
+  assert.equal(st().lessonsTotal, 5500);
+
+  // 5) „Obriši“ entfernt einen Terminbetrag
+  const del = await admin.post(`/admin/abrechnung/${a}/termin/${l1}/obrisi`, { month }, editUrl(l1));
+  assert.equal(del.location, `${detailUrl}#termin-${l1}`);
+  assert.equal(lessonRow(l1).display_amount_cents, null);
+  assert.equal(lessonRow(l1).display_note, null);
+  assert.equal(st().lessonsTotal, 3000);
+  await save(l1, '25,00', 'Samo dva igrača');
+
+  // Termin unter „Termini“ bearbeiten → Betrag und Notiz bleiben erhalten
+  await admin.post(`/admin/termine/${l2}`, {
+    user_id: String(a), date: '2026-10-13', start_time: '14:10', duration_min: '60', court: '', price: '40,00', status: 'done', kind: 'individual',
+  }, `/admin/termine/${l2}`);
+  const moved = db.prepare("SELECT * FROM lessons WHERE user_id = ? AND date = '2026-10-13'").get(a);
+  assert.equal(moved.start_time, '14:10');
+  assert.equal(moved.display_amount_cents, 3000);
+  assert.equal(st().lessonsTotal, 5500);
+
+  // 6) Mitglied und Elternkonto sehen Beträge, Notizen und Summe
+  await admin.post(`/admin/abrechnung/${a}/odobri`, { month, released: '1' }, detailUrl);
+  const m = client();
+  await m.login('iznos.a', 'memberpass1');
+  const mt = (await m.request(`/mitglied/abrechnung?monat=${month}`)).text;
+  assert.match(mt, /Samo dva igrača<\/span><\/td>[\s\S]*?<td class="num">25,00/);
+  assert.match(mt, /30,00/);
+  assert.match(mt, /Treninzi \(iznosi po terminima\)[\s\S]*?55,00/);
+  assert.match(mt, /135,00/);
+  assert.doesNotMatch(mt, /✎ Uredi|iznos-treninga/);
+  await createParentAccount(admin, { name: 'Iznos Roditelj', username: 'iznos.roditelj', password: 'roditelj-pass-1', players: [a] });
+  const p = client();
+  await p.login('iznos.roditelj', 'roditelj-pass-1');
+  const pt = (await p.request(`/roditelj/finansije?monat=${month}`)).text;
+  assert.match(pt, /Samo dva igrača/);
+  assert.match(pt, /data-total="13500"/);
+
+  // Andere Abrechnungsarten unverändert: „Prema rasporedu“ zählt die Terminpreise, Beträge werden ignoriert
+  await admin.post(`/admin/abrechnung/${a}/nacin`, { month, billing_mode: 'schedule' }, detailUrl);
+  assert.equal(st().lessonsTotal, 12000);
+  assert.equal(st().total, 20000);
+  assert.doesNotMatch((await admin.request(detailUrl)).text, /✎ Uredi/);
+  assert.equal((await admin.request(editUrl(l1))).status, 400);
+  await admin.post(`/admin/abrechnung/${a}/nacin`, { month, billing_mode: 'display' }, detailUrl);
+  assert.equal(st().total, 13500); // Beträge waren nur „geparkt“
+  // B (gleicher Gruppentermin) ohne eigene Beträge
+  assert.equal(monthlyStatementFor(b, month).lessonsTotal, 0);
+
+  // Abgeschlossener Monat: Beträge bleiben im gespeicherten Obračun, keine Bearbeitung mehr
+  await atTime('2026-11-02T10:00:00', async () => {
+    const closed = monthlyStatementFor(a, month);
+    assert.ok(closed.closed);
+    assert.equal(closed.total, 13500);
+    const t = (await admin.request(detailUrl)).text;
+    assert.doesNotMatch(t, /✎ Uredi/);
+    assert.match(t, /Samo dva igrača/);
+    assert.equal((await admin.request(editUrl(l3))).status, 400);
+    assert.equal((await admin.post(`/admin/abrechnung/${a}/termin/${l3}`, { month, amount: '10' }, detailUrl)).status, 400);
+    assert.equal(lessonRow(l3).display_amount_cents, null);
+  });
+});

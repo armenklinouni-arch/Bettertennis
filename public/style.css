@@ -437,6 +437,12 @@ tr.row-highlight td { animation: row-highlight 1600ms ease-out; }
 @keyframes row-highlight { from { background: var(--primary-soft); } to { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { tr.row-highlight td { animation: none; } }
 
+/* „Prikaz bez obračuna“: iznos po terminu */
+.edit-amount { display: inline-block; margin-left: 6px; font-size: 0.8rem; font-weight: 500; white-space: nowrap; color: var(--muted); text-decoration: none; border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; }
+.edit-amount:hover { color: var(--text); border-color: var(--muted); }
+.lesson-note { display: inline-block; margin-top: 2px; font-size: 0.85rem; color: var(--muted); }
+tr[id^="termin-"], #iznos-treninga { scroll-margin-top: 140px; }
+
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
 

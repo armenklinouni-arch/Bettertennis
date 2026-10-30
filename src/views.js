@@ -257,7 +257,10 @@ function billingMark(l) {
 // Mjesečni obračun kao tabela (samo informativno).
 // adjustmentDates: uz stavke prikaži datum unosa (koristi roditeljski račun; članski i admin prikaz ostaju isti).
 // attendance / billingMarks: dodatne kolone samo za admina (status prisustva; kvačica za obračun kod „Prema rasporedu“).
-function statementTable(statement, { adminDelete, req, adjustmentDates = false, attendance = false, billingMarks = false } = {}) {
+// lessonAmountUrl (samo admin, „Prikaz bez obračuna“): adresa za unos iznosa pojedinog termina.
+function statementTable(statement, {
+  adminDelete, req, adjustmentDates = false, attendance = false, billingMarks = false, lessonAmountUrl = null,
+} = {}) {
   const showStatus = attendance && statement.mode !== 'manual';
   const showMarks = billingMarks && statement.mode === 'schedule';
   const extra = () => html`${showStatus ? html`<td></td>` : ''}${showMarks ? html`<td></td>` : ''}`;
@@ -267,15 +270,21 @@ function statementTable(statement, { adminDelete, req, adjustmentDates = false, 
   if (statement.fee) {
     rows.push(html`<tr><td>Mjesečna osnovna članarina</td><td></td>${extra()}<td class="num">${formatMoney(statement.fee)}</td>${del()}</tr>`);
   }
+  const isDisplay = statement.mode === 'display';
+  const hasAmount = (l) => l.display_amount_cents !== null && l.display_amount_cents !== undefined;
   for (const l of statement.lessons) {
-    const amount = !statement.billLessons ? '–' : l.cancelled || l.billable === 0 ? formatMoney(0) : formatMoney(l.price_cents);
+    const amount = isDisplay
+      ? (hasAmount(l) ? formatMoney(l.display_amount_cents) : '–')
+      : !statement.billLessons ? '–' : l.cancelled || l.billable === 0 ? formatMoney(0) : formatMoney(l.price_cents);
+    const note = isDisplay && l.display_note ? l.display_note : '';
     rows.push(html`
-      <tr class="${l.cancelled ? 'is-cancelled' : ''}${showMarks && l.billable === 0 ? ' is-unbilled' : ''}">
-        <td>${lessonKindLabel(l)} ${D.formatDateLong(l.date)}, ${lessonTimeRange(l)} h${l.court ? ` · Teren ${l.court}` : ''}</td>
+      <tr${isDisplay ? html` id="termin-${l.id}"` : ''} class="${l.cancelled ? 'is-cancelled' : ''}${showMarks && l.billable === 0 ? ' is-unbilled' : ''}">
+        <td>${lessonKindLabel(l)} ${D.formatDateLong(l.date)}, ${lessonTimeRange(l)} h${l.court ? ` · Teren ${l.court}` : ''}${
+          note ? html`<br><span class="lesson-note">📝 ${note}</span>` : ''}</td>
         <td>${lessonStatusLabel(l)} · ${l.duration_min} min</td>
         ${showStatus ? html`<td class="attendance">${attendanceLabel(l)}</td>` : ''}
         ${showMarks ? html`<td class="billing">${billingMark(l)}</td>` : ''}
-        <td class="num">${amount}</td>
+        <td class="num">${amount}${isDisplay && lessonAmountUrl ? html` <a class="edit-amount" href="${lessonAmountUrl(l)}">✎ Uredi</a>` : ''}</td>
         ${del()}
       </tr>`);
   }
@@ -310,6 +319,10 @@ function statementTable(statement, { adminDelete, req, adjustmentDates = false, 
       <tfoot>
         ${statement.mode === 'manual'
           ? html`<tr><td>Treninzi</td><td>Ručni obračun – vidi stavke</td>${extra()}<td class="num"></td>${del()}</tr>`
+          : statement.mode === 'display' && statement.display && statement.display.override !== null
+            ? html`<tr><td>Treninzi (ručno određen iznos)</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)} · zbir po terminima: ${formatMoney(statement.display.autoTotal)}</td>${extra()}<td class="num">${formatMoney(statement.lessonsTotal)}</td>${del()}</tr>`
+          : statement.mode === 'display' && statement.display && statement.display.amounts > 0
+            ? html`<tr><td>Treninzi (iznosi po terminima)</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}</td>${extra()}<td class="num">${formatMoney(statement.lessonsTotal)}</td>${del()}</tr>`
           : statement.mode === 'display'
             ? html`<tr><td>Realizovani treninzi</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)} · samo prikaz, bez obračuna</td>${extra()}<td class="num">–</td>${del()}</tr>`
             : html`<tr><td>Realizovani treninzi</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}</td>${extra()}<td class="num">${formatMoney(statement.lessonsTotal)}</td>${del()}</tr>`}
