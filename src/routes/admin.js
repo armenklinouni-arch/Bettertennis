@@ -727,7 +727,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     const today = D.todayISO();
     const monday = D.mondayOf(D.isValidDate(req.query.woche) ? req.query.woche : today);
     const memberFilter = toId(req.query.mitglied);
-    const filterMember = memberFilter ? getMember.get(memberFilter) : null;
+    let filterMember = memberFilter ? getMember.get(memberFilter) : null;
+    // Dječiji račun nije zaseban izbor u filteru: prikazuju se termini njegovog računa člana.
+    if (filterMember && filterMember.parent_id) filterMember = getMember.get(filterMember.parent_id) || null;
     const params = [monday, D.addDays(monday, 6)];
     let sql = `SELECT l.*, u.name AS member_name, t.name AS trainer_name FROM lessons l
                JOIN users u ON u.id = l.user_id LEFT JOIN trainers t ON t.id = l.trainer_id
@@ -771,7 +773,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
           <input type="hidden" name="woche" value="${monday}">
           <select name="mitglied" aria-label="Filtriraj po članu">
             <option value="">Svi članovi</option>
-            ${allMembers.all().map((m) => html`<option value="${m.id}"${filterMember && filterMember.id === m.id ? ' selected' : ''}>${m.name}</option>`)}
+            ${allMembers.all().filter((m) => !m.parent_id).map((m) => html`<option value="${m.id}"${filterMember && filterMember.id === m.id ? ' selected' : ''}>${m.name}</option>`)}
           </select>
           <button class="btn btn-ghost btn-sm" type="submit">Filtriraj</button>
         </form>

@@ -270,6 +270,8 @@ Versand über Resend (`RESEND_API_KEY`), Texte auf Bosnisch, jede Person bekommt
   Abrechnung, Aktuelnosti und Einstellungen sind für Kinder gesperrt.
 - Termine werden immer beim **Mitgliedskonto** eingetragen (dort werden sie auch abgerechnet): In Termini sind
   Kinder-Konten weder im Feld „Član“ noch bei den Gruppen-Kästchen auswählbar und werden auch abgelehnt.
+  Auch der Filter oben unter Termini listet nur Mitgliedskonten; ein Link mit einem Kinder-Konto zeigt die
+  Termine des zugehörigen Mitgliedskontos.
   Früher bei Kinder-Konten eingetragene Termine listet **Termini → „Termini s dječijim računima“** (Hinweis oben
   auf der Termini-Seite) – zum Korrigieren per „Uredi“; nichts wird automatisch geändert.
 - Unter Članovi tragen Kinder-Konten den Hinweis **„Dječiji račun“** mit dem Namen des Mitgliedskontos.

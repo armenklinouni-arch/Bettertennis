@@ -3710,3 +3710,24 @@ test('Kinder-Konten: Liste früherer Termine mit Kinder-Konto (nichts wird autom
   // Daten des Kinder-Kontos unverändert
   assert.equal(db.prepare('SELECT parent_id FROM users WHERE id = ?').get(kidId).parent_id, parentId);
 });
+
+test('Termini-Filter oben: nur Mitgliedskonten; Link mit Kinder-Konto zeigt das Mitgliedskonto', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const parentId = makeMember('Filter Roditelj', 'filter.roditelj');
+  const m = client();
+  await m.login('filter.roditelj', 'memberpass1');
+  await m.post('/mitglied/djeca', { name: 'Filter Dijete', username: 'filter.dijete', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const kidId = db.prepare("SELECT id FROM users WHERE username = 'filter.dijete'").get().id;
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-08', '12:05', 60, 4000)").run(parentId);
+  const filterSelect = (t) => /<select name="mitglied"[^>]*>([\s\S]*?)<\/select>/.exec(t)[1];
+
+  const page = (await admin.request('/admin/termine?woche=2026-10-05')).text;
+  assert.match(filterSelect(page), new RegExp(`<option value="${parentId}">Filter Roditelj</option>`));
+  assert.doesNotMatch(filterSelect(page), new RegExp(`value="${kidId}"`));
+  // Alter Link (z. B. „Termini“ beim Kinder-Konto unter Članovi) → Termine des Mitgliedskontos
+  const viaKid = (await admin.request(`/admin/termine?woche=2026-10-05&mitglied=${kidId}`)).text;
+  assert.match(filterSelect(viaKid), new RegExp(`<option value="${parentId}" selected>Filter Roditelj</option>`));
+  assert.match(viaKid, /<h1>Termini – Filter Roditelj<\/h1>/);
+  assert.match(viaKid, /12:05–13:05/);
+});
