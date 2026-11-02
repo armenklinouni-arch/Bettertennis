@@ -877,13 +877,13 @@ test('Kinder-Konten: Elternteil legt an, setzt Passwort zurück, löscht; Kind m
   db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '15:00', 60, 3000)").run(kid.id);
   db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-07', '19:00', 60, 4000)").run(parentId);
 
-  // Kind meldet sich an und sieht nur seinen Wochenplan
+  // Kind meldet sich an und sieht seinen Wochenplan – inkl. der Termine des Mitgliedskontos (Elternteil)
   const child = client();
   assert.equal((await child.login('dijete.jedan', 'dijete-pass1')).location, '/mitglied');
   const plan = await child.request('/mitglied?woche=2026-10-05');
   assert.equal(plan.status, 200);
   assert.match(plan.text, /15:00–16:00/);
-  assert.doesNotMatch(plan.text, /19:00–20:00/); // nicht der Plan des Elternteils
+  assert.match(plan.text, /19:00–20:00/); // Termine des Mitgliedskontos werden automatisch angezeigt
   assert.match(plan.text, /href="\/mitglied\?woche=2026-09-28"/); // Wochen-Navigation
 
   // Passwort zurücksetzen
@@ -980,16 +980,18 @@ test('Ein Mitglied sieht niemals Daten oder Kinder-Konten eines anderen Mitglied
   assert.equal((await client().login('bojan.kid', 'gehackt-123')).status, 401);
   assert.equal((await client().login('bojan.drugi', 'gehackt-123')).status, 401);
 
-  // Kind von B sieht nur sich, nicht B
+  // Kind von B sieht die Termine von B (sein Mitgliedskonto), aber nie die von A
   const kid = client();
   await kid.login('bojan.kid', 'bojan-kid-1');
-  assert.doesNotMatch((await kid.request('/mitglied?woche=2026-10-05')).text, /13:00–14:30|11:00–12:00/);
+  const kidWeekB = (await kid.request('/mitglied?woche=2026-10-05')).text;
+  assert.match(kidWeekB, /13:00–14:30/);
+  assert.doesNotMatch(kidWeekB, /11:00–12:00/);
 
   // Admin sieht weiterhin alle Mitglieder inkl. Kind, mit Hinweis auf Elternteil
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
   const list = await admin.request('/admin/mitglieder');
-  assert.match(list.text, /Bojanovo Dijete[\s\S]*dijete · roditelj: Bojan Drugi/);
+  assert.match(list.text, /Bojanovo Dijete[\s\S]*Dječiji račun[\s\S]*račun člana: <a[^>]*>Bojan Drugi/);
 });
 
 test('Kinder-Konten: genau ein Kind-Konto pro Mitglied, fest für alle (auch nicht durch den Admin erweiterbar)', async () => {
@@ -1112,7 +1114,7 @@ test('Wochenfreigabe: kommende Woche ist versteckt und wird am Sonntag um 17 Uhr
     await k.login('sedmica.kid', 'kid-pass-123');
     const kidWeek = await k.request('/mitglied?woche=2026-10-19');
     assert.match(kidWeek.text, /09:30–10:30/);
-    assert.doesNotMatch(kidWeek.text, /08:15/);
+    assert.match(kidWeek.text, /08:15–09:15/); // Termine des Mitgliedskontos
     const a = client();
     await a.login('admin@test.de', 'adminpass123');
     assert.match((await a.request('/admin/termine?woche=2026-10-19')).text, /Objavljena/);
@@ -3620,4 +3622,91 @@ test('Prikaz bez obračuna: Betrag + Notiz pro Termin, automatische Summe, Über
     assert.equal((await admin.post(`/admin/abrechnung/${a}/termin/${l3}`, { month, amount: '10' }, detailUrl)).status, 400);
     assert.equal(lessonRow(l3).display_amount_cents, null);
   });
+});
+
+// ---------------------------------------------------------------- Kinder-Konten in Termini und Članovi
+test('Kinder-Konten: in Termini nicht auswählbar; Kinder-Konto zeigt die Termine des Mitgliedskontos; Abrechnung beim Mitglied', async () => {
+  const { releaseWeek } = require('../src/weeks');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const parentId = makeMember('Roditelj Racun', 'rod.racun', { rate: 4000 });
+  const otherId = makeMember('Drugi Igrac', 'drugi.igrac', { rate: 4000 });
+  const m = client();
+  await m.login('rod.racun', 'memberpass1');
+  await m.post('/mitglied/djeca', { name: 'Dijete Racun', username: 'dijete.racun', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const kidId = db.prepare("SELECT id FROM users WHERE username = 'dijete.racun'").get().id;
+
+  // Auswahl in Termini: Kinder-Konto weder im Feld „Član“ noch bei den Gruppen-Kästchen
+  const form = (await admin.request('/admin/termine?woche=2026-11-09')).text;
+  const playerSelect = /<select name="user_id">([\s\S]*?)<\/select>/.exec(form)[1];
+  assert.match(playerSelect, new RegExp(`<option value="${parentId}"`));
+  assert.doesNotMatch(playerSelect, new RegExp(`<option value="${kidId}"`));
+  assert.doesNotMatch(form, new RegExp(`name="member_ids" value="${kidId}"`));
+  // Auch direkt abgeschickt wird es abgelehnt (mit Hinweis auf das Mitgliedskonto), nichts gespeichert
+  const count = () => db.prepare('SELECT COUNT(*) AS n FROM lessons WHERE user_id = ?').get(kidId).n;
+  const base = { kind: 'individual', date: '2026-11-10', start_time: '16:05', duration_min: '60', court: '', price: '', repeat: '1' };
+  // (Fehler beim Anlegen erscheinen wie bisher als Meldung auf der Termini-Seite)
+  const bad = await admin.post('/admin/termine', { ...base, user_id: String(kidId) }, '/admin/termine');
+  assert.equal(bad.location, '/admin/termine?woche=2026-11-09');
+  assert.match((await admin.request(bad.location)).text, /Dijete Racun je dječiji račun – odaberi račun člana „Roditelj Racun“\./);
+  const badGroup = await admin.post('/admin/termine', { ...base, kind: 'group', user_id: '', member_ids: [String(otherId), String(kidId)] }, '/admin/termine');
+  assert.match((await admin.request(badGroup.location)).text, /Dijete Racun je dječiji račun/);
+  assert.equal(count(), 0);
+
+  // Termin beim Mitgliedskonto → Kinder-Konto zeigt ihn automatisch
+  assert.equal((await admin.post('/admin/termine', { ...base, user_id: String(parentId) }, '/admin/termine')).status, 302);
+  releaseWeek(db, '2026-11-09');
+  const kid = client();
+  await kid.login('dijete.racun', 'kid-pass-123');
+  const kidWeek = (await kid.request('/mitglied?woche=2026-11-09')).text;
+  assert.match(kidWeek, /16:05–17:05/);
+  assert.match((await m.request('/mitglied?woche=2026-11-09')).text, /16:05–17:05/);
+  // Fremde Termine sieht das Kinder-Konto nicht
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-11-11', '18:05', 60, 4000)").run(otherId);
+  assert.doesNotMatch((await kid.request('/mitglied?woche=2026-11-09')).text, /18:05–19:05/);
+  // Abgerechnet wird beim Mitgliedskonto; Kinder-Konto weiterhin ohne Finanzen
+  assert.equal(monthlyStatementFor(parentId, '2026-11').lessonCount, 1);
+  assert.equal(monthlyStatementFor(kidId, '2026-11').lessonCount, 0);
+  assert.equal((await kid.request('/mitglied/abrechnung')).status, 403);
+});
+
+test('Kinder-Konten: Liste früherer Termine mit Kinder-Konto (nichts wird automatisch geändert); Članovi zeigt „Dječiji račun“', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const parentId = makeMember('Stari Roditelj', 'stari.roditelj');
+  const m = client();
+  await m.login('stari.roditelj', 'memberpass1');
+  await m.post('/mitglied/djeca', { name: 'Staro Dijete', username: 'staro.dijete', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const kidId = db.prepare("SELECT id FROM users WHERE username = 'staro.dijete'").get().id;
+  // Früher eingetragen (alte Daten)
+  const legacy = db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-09-15', '15:35', 60, 0)").run(kidId).lastInsertRowid;
+  const before = { ...db.prepare('SELECT * FROM lessons WHERE id = ?').get(legacy) };
+
+  const termini = (await admin.request('/admin/termine')).text;
+  assert.match(termini, /href="\/admin\/termine\/djecji-racuni">[^<]*dječijim računima/);
+  const list = await admin.request('/admin/termine/djecji-racuni');
+  assert.equal(list.status, 200);
+  assert.match(list.text, /<h1>Termini s dječijim računima<\/h1>/);
+  assert.match(list.text, new RegExp(`Utorak, 15\\.09\\.2026\\.[\\s\\S]*?15:35–16:35[\\s\\S]*?Staro Dijete[\\s\\S]*?Stari Roditelj[\\s\\S]*?href="/admin/termine/${legacy}"`));
+  // Bearbeiten-Seite weist auf das Kinder-Konto hin
+  assert.match((await admin.request(`/admin/termine/${legacy}`)).text, /dječiji račun[\s\S]*Staro Dijete[\s\S]*Stari Roditelj/);
+  // Nichts automatisch geändert
+  assert.deepEqual({ ...db.prepare('SELECT * FROM lessons WHERE id = ?').get(legacy) }, before);
+  // Ohne solche Termine: kein Hinweis, leere Liste
+  db.prepare('UPDATE lessons SET user_id = ? WHERE id = ?').run(parentId, legacy);
+  const others = db.prepare('SELECT COUNT(*) AS n FROM lessons l JOIN users u ON u.id = l.user_id WHERE u.parent_id IS NOT NULL').get().n;
+  if (others === 0) {
+    assert.doesNotMatch((await admin.request('/admin/termine')).text, /djecji-racuni/);
+    assert.match((await admin.request('/admin/termine/djecji-racuni')).text, /Nema termina s dječijim računima\./);
+  }
+  db.prepare('UPDATE lessons SET user_id = ? WHERE id = ?').run(kidId, legacy);
+
+  // Članovi: deutlicher Hinweis beim Kinder-Konto mit Namen des Mitgliedskontos
+  const clanovi = (await admin.request('/admin/mitglieder')).text;
+  const kidRow = new RegExp(`<tr id="clan-${kidId}"[^>]*>([\\s\\S]*?)</tr>`).exec(clanovi)[1];
+  assert.match(kidRow, new RegExp(`<span class="tag tag-child">Dječiji račun</span>[\\s\\S]*?račun člana: <a href="/admin/mitglieder/${parentId}">Stari Roditelj</a>`));
+  const parentRow = new RegExp(`<tr id="clan-${parentId}"[^>]*>([\\s\\S]*?)</tr>`).exec(clanovi)[1];
+  assert.doesNotMatch(parentRow, /Dječiji račun/);
+  // Daten des Kinder-Kontos unverändert
+  assert.equal(db.prepare('SELECT parent_id FROM users WHERE id = ?').get(kidId).parent_id, parentId);
 });

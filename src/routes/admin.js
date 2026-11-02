@@ -13,7 +13,7 @@ const {
   setMonthMode, closeMonth, reopenMonth, isMonthClosed, liveTotal, modeForMonth,
 } = require('../billing');
 const {
-  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, lessonTimeRange, lessonTags, lessonKindLabel, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, LESSON_PLANNED,
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, lessonTimeRange, lessonTags, lessonKindLabel, lessonStatusLabel, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, LESSON_PLANNED,
   ATTENDANCE, attendanceSummary, billingMark,
 } = require('../views');
 const { requireAdmin, hashPassword, readablePassword, endSessionsFor } = require('../auth');
@@ -57,6 +57,15 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     "SELECT c.id, p.name FROM users c JOIN users p ON p.id = c.parent_id WHERE c.parent_id IS NOT NULL"
   ).all().map((r) => [r.id, r.name]));
   const activeMembers = db.prepare("SELECT * FROM users WHERE role = 'member' AND active = 1 ORDER BY name COLLATE NOCASE");
+  // Za termine se biraju samo računi članova – dječiji računi automatski prikazuju termine svog člana.
+  const lessonMembers = () => activeMembers.all().filter((m) => !m.parent_id);
+  // Termini u kojima je (ranije) upisan dječiji račun – samo za pregled i ručnu ispravku.
+  const childLessons = db.prepare(
+    `SELECT l.*, c.name AS child_name, p.id AS parent_user_id, p.name AS parent_name
+       FROM lessons l JOIN users c ON c.id = l.user_id LEFT JOIN users p ON p.id = c.parent_id
+      WHERE c.parent_id IS NOT NULL
+      ORDER BY l.date DESC, l.start_time, c.name COLLATE NOCASE`
+  );
   const activeTrainers = db.prepare('SELECT * FROM trainers WHERE active = 1 ORDER BY name COLLATE NOCASE');
   const getTrainer = db.prepare('SELECT * FROM trainers WHERE id = ?');
 
@@ -246,7 +255,8 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
             const st = monthlyStatement(db, m, month);
             const text = searchText(m.name, m.username);
             return html`<tr id="clan-${m.id}" data-filter="${text}" class="${m.active ? '' : 'is-inactive'}"${q && !matchesSearch(text, q) ? html` hidden` : ''}>
-              <td><strong>${m.name}</strong>${m.parent_id ? html`<br><span class="tag">dijete · roditelj: ${parents.get(m.id) || ''}</span>` : ''}</td>
+              <td><strong>${m.name}</strong>${m.parent_id ? html`<br><span class="tag tag-child">Dječiji račun</span>
+                <span class="small">račun člana: <a href="/admin/mitglieder/${m.parent_id}">${parents.get(m.id) || '–'}</a></span>` : ''}</td>
               <td>${m.username || ''}</td>
               <td>${isPlaceholderEmail(m.email) ? html`<span class="muted">bez e-maila</span>` : m.email}${m.phone ? html`<br>${m.phone}` : ''}</td>
               <td class="num">${formatMoney(m.hourly_rate_cents)}</td>
@@ -588,6 +598,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
   // Izbor stalne grupe: JavaScript (public/app.js) označi njene članove u formularu.
   function groupPicker() {
     const groups = listGroupsWithMembers(db, { activeOnly: true }).filter((g) => g.members.length > 0);
+    const kidIds = new Set(db.prepare('SELECT id FROM users WHERE parent_id IS NOT NULL').all().map((r) => r.id));
     if (groups.length === 0) {
       return html`<p class="muted small span-2">Savjet: stalne grupe igrača možeš unaprijed kreirati pod <a href="/admin/grupe">Grupe</a>.</p>`;
     }
@@ -595,7 +606,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       <label class="span-2">Stalna grupa (automatski označi članove)
         <select name="preset_group" class="group-preset">
           <option value="">– bez stalne grupe –</option>
-          ${groups.map((g) => html`<option value="${g.id}" data-members="${g.members.map((m) => m.id).join(',')}">${g.name}: ${g.members.map((m) => m.name).join(', ')}</option>`)}
+          ${groups.map((g) => html`<option value="${g.id}" data-members="${g.members.filter((m) => !kidIds.has(m.id)).map((m) => m.id).join(',')}">${g.name}: ${g.members.map((m) => m.name).join(', ')}</option>`)}
         </select>
       </label>`;
   }
@@ -645,6 +656,11 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       <label>Napomena (vidljiva članu)<input name="note" maxlength="300" value="${v.note || ''}"></label>`;
   }
 
+  function childAccountError(child) {
+    const parent = getMember.get(child.parent_id);
+    return `${child.name} je dječiji račun – odaberi račun člana „${parent ? parent.name : '?'}“.`;
+  }
+
   function readLessonForm(body) {
     const v = {
       kind: body.kind === 'group' ? 'group' : 'individual',
@@ -668,13 +684,15 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       const ids = [...new Set([...(v.user_id ? [v.user_id] : []), ...v.member_ids])];
       for (const id of ids) {
         const m = getMember.get(id);
-        if (m) members.push(m);
+        if (m && m.parent_id) errors.push(childAccountError(m));
+        else if (m) members.push(m);
       }
       if (members.length < GROUP_MIN) errors.push(`Za grupni trening označi najmanje ${GROUP_MIN} igrača.`);
       if (members.length > GROUP_MAX) errors.push(`Grupni trening može imati najviše ${GROUP_MAX} igrača.`);
     } else {
       const first = v.user_id ? getMember.get(v.user_id) : null;
       if (!first) errors.push('Za individualni trening odaberi člana.');
+      else if (first.parent_id) errors.push(childAccountError(first));
       else members.push(first);
     }
     if (v.trainer_id && !getTrainer.get(v.trainer_id)) errors.push('Odabrani trener ne postoji.');
@@ -720,7 +738,8 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       params.push(filterMember.id, filterMember.id);
     }
     const lessons = mergeGroups(db.prepare(`${sql} ORDER BY l.date, l.start_time, l.id`).all(...params));
-    const members = activeMembers.all();
+    const members = lessonMembers();
+    const childLessonCount = childLessons.all().length;
     const extraQuery = filterMember ? `&mitglied=${filterMember.id}` : '';
     const back = `/admin/termine?woche=${monday}${extraQuery}`;
     const defaults = {
@@ -757,6 +776,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
           <button class="btn btn-ghost btn-sm" type="submit">Filtriraj</button>
         </form>
       </div>
+      ${childLessonCount ? html`<p class="notice"><a href="/admin/termine/djecji-racuni">⚠️ ${childLessonCount} ${childLessonCount === 1 ? 'termin je upisan' : 'termina je upisano'} s dječijim računima – pogledaj listu i ispravi</a></p>` : ''}
       ${weekReleasePanel(req, monday, back)}
       ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, actions, showPrice: true, extraQuery })}
       <section class="card">
@@ -865,6 +885,34 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     };
   }
 
+  // Pregled: termini u kojima je upisan dječiji račun (ništa se ne mijenja automatski).
+  router.get('/termine/djecji-racuni', (req, res) => {
+    const rows = childLessons.all();
+    res.send(String(layout(req, {
+      title: 'Termini s dječijim računima',
+      wide: true,
+      body: html`
+      <div class="page-head"><h1>Termini s dječijim računima</h1>
+        <a class="btn btn-ghost" href="/admin/termine">← Termini</a></div>
+      <p class="muted">Ove termine si ranije upisao/la na dječiji račun. Takav termin vidi samo dječiji račun, a ne račun člana,
+        i ne pojavljuje se u obračunu člana. Otvori termin („Uredi“), odaberi račun člana i sačuvaj. Ništa se ne mijenja automatski.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Datum</th><th>Vrijeme</th><th>Vrsta</th><th>Dječiji račun</th><th>Račun člana</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows.length === 0
+          ? html`<tr><td colspan="7" class="empty">Nema termina s dječijim računima.</td></tr>`
+          : rows.map((l) => html`<tr>
+            <td>${D.formatDateLong(l.date)}</td>
+            <td>${lessonTimeRange(l)}</td>
+            <td>${lessonKindLabel(l)}</td>
+            <td><span class="tag tag-child">Dječiji račun</span> ${l.child_name}</td>
+            <td>${l.parent_name ? html`<a href="/admin/mitglieder/${l.parent_user_id}">${l.parent_name}</a>` : '–'}</td>
+            <td>${lessonStatusLabel(l)}</td>
+            <td class="actions"><a class="btn btn-ghost btn-sm" href="/admin/termine/${l.id}">Uredi</a></td>
+          </tr>`)}</tbody>
+      </table></div>`,
+    })));
+  });
+
   router.get('/termine/:id', (req, res) => {
     const lesson = getLesson.get(toId(req.params.id));
     if (!lesson) return notFound(res, 'termin');
@@ -939,12 +987,14 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
   });
 
   function lessonEditPage(req, lesson, values, errors = []) {
-    const members = activeMembers.all();
-    // Neaktivni članovi koji su već u terminu moraju ostati izborni.
+    const members = lessonMembers();
+    const kidsInLesson = [];
+    // Neaktivni članovi koji su već u terminu moraju ostati izborni (dječiji računi ne – samo upozorenje).
     for (const row of lessonSet(lesson)) {
       if (!members.some((m) => m.id === row.user_id)) {
         const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
-        if (owner) members.unshift(owner);
+        if (owner && owner.parent_id) kidsInLesson.push({ child: owner, parent: getMember.get(owner.parent_id) });
+        else if (owner) members.unshift(owner);
       }
     }
     return layout(req, {
@@ -952,6 +1002,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       body: html`
       <div class="page-head"><h1>Uredi termin</h1>
         <a class="btn btn-ghost" href="/admin/termine?woche=${D.mondayOf(lesson.date)}">← Nazad na sedmicu</a></div>
+      ${kidsInLesson.map(({ child, parent }) => html`<p class="notice">⚠️ U ovom terminu je upisan dječiji račun <strong>${child.name}</strong>.
+        Dječiji računi se više ne biraju – odaberi račun člana <strong>${parent ? parent.name : '?'}</strong> i sačuvaj.
+        Dok ne sačuvaš, ništa se ne mijenja.</p>`)}
       <section class="card">
         ${errorList(errors)}
         <form method="post" action="/admin/termine/${lesson.id}" class="form-grid">

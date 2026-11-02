@@ -43,13 +43,16 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
     // Namjerno bez imena trenera: članovi ne smiju vidjeti koji trener radi s njima.
     `SELECT l.*, u.name AS member_name FROM lessons l
        JOIN users u ON u.id = l.user_id
-      WHERE l.user_id = ? AND l.date BETWEEN ? AND ?
+      WHERE l.user_id IN (?, ?) AND l.date BETWEEN ? AND ?
       ORDER BY l.date, l.start_time`
   );
   const upcomingLessons = db.prepare(
-    `SELECT * FROM lessons WHERE user_id = ? AND date >= ? AND cancelled = 0
+    `SELECT * FROM lessons WHERE user_id IN (?, ?) AND date >= ? AND cancelled = 0
       ORDER BY date, start_time LIMIT 200`
   );
+  // Dječiji račun prikazuje termine svog člana (roditeljskog računa) – i eventualne starije termine
+  // koji su direktno upisani na dječiji račun. Član vidi samo svoje termine.
+  const scheduleIds = (user) => (user.parent_id ? [user.id, user.parent_id] : [user.id, user.id]);
   // Članovi i djeca vide samo termine iz objavljenih sedmica.
   const visibleOnly = (lessons) => {
     const cache = new Map();
@@ -66,11 +69,11 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
     const requested = D.isValidDate(req.query.woche) ? req.query.woche : today;
     const monday = D.mondayOf(requested);
     const weekReleased = isWeekReleased(db, monday);
-    const lessons = weekReleased ? weekLessons.all(req.user.id, monday, D.addDays(monday, 6)) : [];
+    const lessons = weekReleased ? weekLessons.all(...scheduleIds(req.user), monday, D.addDays(monday, 6)) : [];
     const month = D.monthOf(today);
     const isChild = !!req.user.parent_id;
     const statement = isChild ? null : monthlyStatement(db, req.user, month);
-    const upcoming = visibleOnly(upcomingLessons.all(req.user.id, today)).slice(0, 5);
+    const upcoming = visibleOnly(upcomingLessons.all(...scheduleIds(req.user), today)).slice(0, 5);
     const emailPrompt = takeEmailPrompt(req, res);
     const weekMinutes = lessons.filter((l) => !l.cancelled).reduce((s, l) => s + l.duration_min, 0);
 

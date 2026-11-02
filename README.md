@@ -265,10 +265,15 @@ Versand über Resend (`RESEND_API_KEY`), Texte auf Bosnisch, jede Person bekommt
   Passwort), kann das Passwort neu setzen und das Konto löschen. Es sieht und verwaltet nur seine eigenen Kinder.
   Pro Mitglied ist **genau ein Kinder-Konto** möglich – fest für alle, auch der Admin kann das nicht erhöhen.
   Ist bereits ein Kinder-Konto vorhanden, erscheint statt des Formulars ein Hinweis.
-- Ein Kind meldet sich mit seinem Benutzernamen an und sieht **nur seinen eigenen Wochenplan** (Wochen, Termine,
-  Trainings). Beträge, Zahlungen, Abrechnung, Aktuelnosti und Einstellungen sind für Kinder gesperrt.
-- Im Admin-Bereich erscheinen Kinder wie normale Mitglieder (Hinweis „dijete · roditelj: …“), damit man ihnen
-  Termine und Gruppen zuordnen kann. Wird das Elternkonto gelöscht, werden auch seine Kinder-Konten gelöscht.
+- Ein Kind meldet sich mit seinem Benutzernamen an und sieht den **Wochenplan seines Mitgliedskontos** (dessen
+  Termine automatisch, dazu ältere Termine, die noch direkt beim Kinder-Konto stehen). Beträge, Zahlungen,
+  Abrechnung, Aktuelnosti und Einstellungen sind für Kinder gesperrt.
+- Termine werden immer beim **Mitgliedskonto** eingetragen (dort werden sie auch abgerechnet): In Termini sind
+  Kinder-Konten weder im Feld „Član“ noch bei den Gruppen-Kästchen auswählbar und werden auch abgelehnt.
+  Früher bei Kinder-Konten eingetragene Termine listet **Termini → „Termini s dječijim računima“** (Hinweis oben
+  auf der Termini-Seite) – zum Korrigieren per „Uredi“; nichts wird automatisch geändert.
+- Unter Članovi tragen Kinder-Konten den Hinweis **„Dječiji račun“** mit dem Namen des Mitgliedskontos.
+  Wird das Mitgliedskonto gelöscht, werden auch seine Kinder-Konten gelöscht.
 
 ## Daten dauerhaft speichern (Railway)
 

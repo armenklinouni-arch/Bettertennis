@@ -197,6 +197,7 @@ tr.is-inactive td { color: var(--muted); }
 .tag-kind.is-group { background: color-mix(in srgb, var(--accent) 45%, var(--surface)); }
 .tag-done { background: var(--success-soft); color: var(--primary); }
 .tag-planned { background: #e6eef7; color: var(--primary); }
+.tag-child { background: #fde7c8; color: #8a4b00; font-weight: 600; }
 .tag-cancelled { background: var(--danger-soft); color: var(--danger); }
 .positive, .summary-tile .value.positive { color: var(--positive); }
 .negative, .summary-tile .value.negative { color: var(--danger); }
