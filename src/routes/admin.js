@@ -77,6 +77,8 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
   const activeMembers = db.prepare("SELECT * FROM users WHERE role = 'member' AND active = 1 ORDER BY name COLLATE NOCASE");
   // Za termine se biraju samo računi članova – dječiji računi automatski prikazuju termine svog člana.
   const lessonMembers = () => activeMembers.all().filter((m) => !m.parent_id);
+  // Iznosi i finansije: dječiji računi nemaju finansije (njihove termine i iznose vodi račun člana).
+  const billingMembers = () => allMembers.all().filter((m) => !m.parent_id);
   // Termini u kojima je (ranije) upisan dječiji račun – samo za pregled i ručnu ispravku.
   const childLessons = db.prepare(
     `SELECT l.*, c.name AS child_name, p.id AS parent_user_id, p.name AS parent_name
@@ -102,7 +104,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     const weekCount = db
       .prepare("SELECT COUNT(DISTINCT COALESCE(group_id, 'L' || id)) AS n FROM lessons WHERE cancelled = 0 AND date BETWEEN ? AND ?")
       .get(monday, D.addDays(monday, 6)).n;
-    const monthTotal = activeMembers.all().reduce((sum, m) => sum + monthlyStatement(db, m, month).total, 0);
+    const monthTotal = activeMembers.all().filter((m) => !m.parent_id).reduce((sum, m) => sum + monthlyStatement(db, m, month).total, 0);
     const todays = mergeGroups(db
       .prepare(
         `SELECT l.*, u.name AS member_name, t.name AS trainer_name FROM lessons l
@@ -1325,8 +1327,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
 
   router.get('/abrechnung', (req, res) => {
     const month = D.isValidMonth(req.query.monat) ? req.query.monat : D.monthOf(D.todayISO());
-    const rows = allMembers.all().map((m) => ({ member: m, st: monthlyStatement(db, m, month) }))
+    const rows = billingMembers().map((m) => ({ member: m, st: monthlyStatement(db, m, month) }))
       .filter((r) => r.member.active || r.st.total !== 0);
+    const kidCases = childFinanceCases().length;
     const sum = rows.reduce((s, r) => s + r.st.total, 0);
     const open = rows.filter((r) => !r.st.paid).reduce((s, r) => s + r.st.total, 0);
     const q = filterQuery(req.query.trazi);
@@ -1341,6 +1344,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       wide: true,
       body: html`
       <div class="page-head"><h1>Mjesečni iznosi</h1></div>
+      ${kidCases ? html`<p class="notice"><a href="/admin/abrechnung/djecji-racuni">⚠️ ${kidCases} ${kidCases === 1 ? 'dječiji račun ima' : 'dječijih računa ima'} sačuvane iznose ili plaćanja – pogledaj listu</a></p>` : ''}
       <div class="sticky-bar" data-sticky-bar>
         ${monthNav('/admin/abrechnung', month, filterParam)}
         ${listFilter({ key: 'iznosi', action: '/admin/abrechnung', value: q, clearHref: `/admin/abrechnung?monat=${month}`, hidden: { monat: month } })}
@@ -1392,6 +1396,78 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     const byId = new Map(rows.map((r) => [r.id, r]));
     return lessons.map((l) => ({ ...l, attendance: byId.get(l.id)?.attendance ?? null, attendance_note: byId.get(l.id)?.attendance_note ?? null }));
   }
+
+  // Dječiji računi sa sačuvanim iznosima ili plaćanjima (ranije unesenim). Samo čitanje direktno iz tabela –
+  // bez obračuna, da se ništa ne promijeni (ni zaključavanje mjeseca).
+  function childFinanceCases() {
+    const kids = db.prepare(
+      `SELECT c.*, p.name AS parent_name FROM users c LEFT JOIN users p ON p.id = c.parent_id
+        WHERE c.role = 'member' AND c.parent_id IS NOT NULL ORDER BY c.name COLLATE NOCASE`
+    ).all();
+    const out = [];
+    for (const kid of kids) {
+      const items = [];
+      if (kid.hourly_rate_cents) items.push({ month: null, what: 'Cijena po satu', detail: '', amount: kid.hourly_rate_cents });
+      if (kid.monthly_fee_cents) items.push({ month: null, what: 'Mjesečna članarina', detail: '', amount: kid.monthly_fee_cents });
+      for (const a of db.prepare('SELECT * FROM adjustments WHERE user_id = ? ORDER BY month, id').all(kid.id)) {
+        items.push({ month: a.month, what: 'Stavka', detail: a.description, amount: a.amount_cents });
+      }
+      for (const p of db.prepare('SELECT * FROM payments WHERE user_id = ? AND (paid = 1 OR released = 1) ORDER BY month').all(kid.id)) {
+        const day = p.paid && p.paid_at ? D.formatDate(String(p.paid_at).slice(0, 10)) : '';
+        items.push({ month: p.month, what: 'Plaćanje', detail: [p.paid ? `Plaćeno${day ? ` (${day})` : ''}` : '', p.released ? 'odobreno za člana' : ''].filter(Boolean).join(' · '), amount: null });
+      }
+      for (const l of db.prepare('SELECT * FROM lessons WHERE user_id = ? AND (price_cents > 0 OR display_amount_cents IS NOT NULL) ORDER BY date, start_time').all(kid.id)) {
+        items.push({
+          month: D.monthOf(l.date), what: 'Termin', lessonId: l.id,
+          detail: `${D.formatDateLong(l.date)} ${lessonTimeRange(l)}${l.cancelled ? ' (otkazan)' : ''}`,
+          amount: l.display_amount_cents ?? l.price_cents,
+        });
+      }
+      for (const b of db.prepare('SELECT * FROM billing_months WHERE user_id = ? ORDER BY month').all(kid.id)) {
+        let snapTotal = 0;
+        try { snapTotal = b.snapshot ? JSON.parse(b.snapshot).total || 0 : 0; } catch { snapTotal = 0; }
+        if (snapTotal) items.push({ month: b.month, what: 'Zaključen obračun', detail: BILLING_MODE_SHORT[b.mode] || '', amount: snapTotal });
+        if (b.display_total_cents !== null && b.display_total_cents !== undefined) {
+          items.push({ month: b.month, what: 'Ručni iznos za treninge', detail: '', amount: b.display_total_cents });
+        }
+      }
+      if (items.length) out.push({ kid, items });
+    }
+    return out;
+  }
+
+  router.get('/abrechnung/djecji-racuni', (req, res) => {
+    const cases = childFinanceCases();
+    res.send(String(layout(req, {
+      title: 'Iznosi kod dječijih računa',
+      wide: true,
+      body: html`
+      <div class="page-head"><h1>Iznosi kod dječijih računa</h1>
+        <a class="btn btn-ghost" href="/admin/abrechnung">← Nazad na iznose</a></div>
+      <p class="muted">Dječiji računi nemaju finansije i više se ne prikazuju pod Iznosi i Finansije. Ovdje su iznosi i plaćanja
+        koji su ranije sačuvani kod dječijeg računa. Ništa se ne briše niti premješta automatski – ako treba, unesi iznos kod
+        računa člana i ispravi/obriši stavku kod dječijeg računa (link „Otvori“).</p>
+      ${cases.length === 0
+        ? html`<p class="card muted">Nema sačuvanih iznosa ni plaćanja kod dječijih računa.</p>`
+        : cases.map(({ kid, items }) => html`<section class="card">
+          <h2><span class="tag tag-child">Dječiji račun</span> ${kid.name}</h2>
+          <p class="muted small">Račun člana: ${kid.parent_id ? html`<a href="/admin/mitglieder/${kid.parent_id}">${kid.parent_name || '?'}</a>` : '–'}</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Mjesec</th><th>Šta</th><th>Detalji</th><th class="num">Iznos</th><th></th></tr></thead>
+            <tbody>${items.map((it) => html`<tr>
+              <td>${it.month ? D.monthLabel(it.month) : '–'}</td>
+              <td>${it.what}</td>
+              <td>${it.detail}</td>
+              <td class="num">${it.amount === null ? '' : formatMoney(it.amount)}</td>
+              <td class="actions">${it.lessonId
+                ? html`<a class="btn btn-ghost btn-sm" href="/admin/termine/${it.lessonId}">Otvori termin</a>`
+                : it.month ? html`<a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${kid.id}?monat=${it.month}">Otvori</a>`
+                  : html`<a class="btn btn-ghost btn-sm" href="/admin/mitglieder/${kid.id}">Otvori</a>`}</td>
+            </tr>`)}</tbody>
+          </table></div>
+        </section>`)}`,
+    })));
+  });
 
   router.get('/abrechnung/:id', (req, res) => {
     const member = getMember.get(toId(req.params.id));
@@ -1601,7 +1677,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
   router.post('/abrechnung/odobri-sve', (req, res) => {
     if (!D.isValidMonth(req.body.month)) return res.status(400).send('Neispravan mjesec.');
     const released = req.body.released === '1';
-    const members = allMembers.all();
+    const members = billingMembers(); // bez dječijih računa
     db.exec('BEGIN');
     try {
       for (const m of members) setReleased(db, m.id, req.body.month, released);

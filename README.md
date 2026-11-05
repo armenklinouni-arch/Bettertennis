@@ -292,6 +292,11 @@ Versand über Resend (`RESEND_API_KEY`), Texte auf Bosnisch, jede Person bekommt
   Früher bei Kinder-Konten eingetragene Termine listet **Termini → „Termini s dječijim računima“** (Hinweis oben
   auf der Termini-Seite) – zum Korrigieren per „Uredi“; nichts wird automatisch geändert.
 - Unter Članovi tragen Kinder-Konten den Hinweis **„Dječiji račun“** mit dem Namen des Mitgliedskontos.
+- Kinder-Konten haben keine Finanzen: Sie erscheinen nicht unter **Iznosi** (Liste, Filter, Summen, „Odobri sve“),
+  nicht in **Finansije** (Einnahmen der Mitglieder) und nicht in der Summe auf „Pregled“. Früher bei Kinder-Konten
+  gespeicherte Beträge oder Zahlungen (Stavke, Plaćanja, Termine mit Preis, zaključene obračune, Cijena/Članarina)
+  listet **Iznosi → „Iznosi kod dječijih računa“** (Hinweis oben auf Iznosi) – nur zum Ansehen, nichts wird
+  automatisch gelöscht oder verschoben.
   Wird das Mitgliedskonto gelöscht, werden auch seine Kinder-Konten gelöscht.
 
 ## Daten dauerhaft speichern (Railway)

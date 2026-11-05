@@ -3948,3 +3948,62 @@ test('Dnevnik aktivnosti: Einträge älter als 12 Monate werden automatisch gel�
   assert.ok(!texts.includes('stari zapis 13 mjeseci'));
   assert.ok(texts.includes('zapis 11 mjeseci'));
 });
+
+// ---------------------------------------------------------------- Kinder-Konten unter Iznosi und Finansije
+test('Kinder-Konten: nicht unter Iznosi/Finansije (Liste, Filter, Summen); Mitgliedskonto bleibt; Liste gespeicherter Beträge ohne Änderung', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const parentId = makeMember('Iznos Roditelj Clan', 'iznos.rod.clan', { fee: 3000 });
+  const m = client();
+  await m.login('iznos.rod.clan', 'memberpass1');
+  await m.post('/mitglied/djeca', { name: 'Iznos Dijete', username: 'iznos.dijete', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const kidId = db.prepare("SELECT id FROM users WHERE username = 'iznos.dijete'").get().id;
+  const month = '2026-10';
+  // Alte Daten beim Kinder-Konto: Stavka, Zahlung, Termin mit Preis
+  db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, ?, 'Stara stavka djeteta', 2500)").run(kidId, month);
+  db.prepare("INSERT INTO payments (user_id, month, paid, paid_at, released) VALUES (?, ?, 1, '2026-10-05', 1)").run(kidId, month);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-14', '16:20', 60, 1500)").run(kidId);
+  const counts = () => ['adjustments', 'payments', 'lessons', 'billing_months'].map((t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE user_id = ?`).get(kidId).n);
+  const before = counts();
+
+  // Iznosi: Kinder-Konto weder in der Liste noch im Filter; Mitgliedskonto normal
+  const list = (await admin.request(`/admin/abrechnung?monat=${month}`)).text;
+  assert.doesNotMatch(list, new RegExp(`id="clan-${kidId}"`));
+  assert.match(list, new RegExp(`<tr id="clan-${parentId}"`));
+  assert.doesNotMatch((await admin.request(`/admin/abrechnung?monat=${month}&trazi=iznos`)).text, /Iznos Dijete<\/strong>/);
+  // Summen ohne Kinder-Konto
+  const { monthlyStatement } = require('../src/billing');
+  const kidTotal = monthlyStatement(db, db.prepare('SELECT * FROM users WHERE id = ?').get(kidId), month).total;
+  assert.ok(kidTotal > 0);
+  const total = (t) => /<tr class="total"><td colspan="6">Ukupno[^<]*<\/td><td class="num">([^<]+)</.exec(t)[1];
+  const expected = db.prepare("SELECT * FROM users WHERE role = 'member' ORDER BY id").all()
+    .filter((u) => !u.parent_id).map((u) => ({ u, st: monthlyStatement(db, u, month) }))
+    .filter((r) => r.u.active || r.st.total !== 0).reduce((s, r) => s + r.st.total, 0);
+  assert.equal(total(list), formatMoney(expected));
+  // Finansije: Einnahmen der Mitglieder ohne Kinder-Konto
+  const { financeMonth } = require('../src/routes/finance');
+  const f = financeMonth(db, month);
+  const paidWithoutKids = db.prepare("SELECT * FROM users WHERE role = 'member' AND parent_id IS NULL").all()
+    .map((u) => monthlyStatement(db, u, month)).filter((s) => s.paid).reduce((s, x) => s + x.total, 0);
+  assert.equal(f.memberPaid, paidWithoutKids);
+  assert.doesNotMatch((await admin.request(`/admin/finansije?monat=${month}`)).text, /Iznos Dijete/);
+  // „Odobri sve“ legt für Kinder-Konten nichts an
+  await admin.post('/admin/abrechnung/odobri-sve', { month: '2026-12', released: '1' }, '/admin/abrechnung?monat=2026-12');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM payments WHERE user_id = ? AND month = '2026-12'").get(kidId).n, 0);
+  assert.equal(db.prepare("SELECT released FROM payments WHERE user_id = ? AND month = '2026-12'").get(parentId).released, 1);
+
+  // Liste der Fälle (nur ansehen)
+  assert.match(list, /href="\/admin\/abrechnung\/djecji-racuni">[^<]*dječij/);
+  const cases = await admin.request('/admin/abrechnung/djecji-racuni');
+  assert.equal(cases.status, 200);
+  assert.match(cases.text, /<h1>Iznosi kod dječijih računa<\/h1>/);
+  assert.match(cases.text, new RegExp(`Iznos Dijete[\\s\\S]*?Iznos Roditelj Clan[\\s\\S]*?Oktobar 2026[\\s\\S]*?Stara stavka djeteta[\\s\\S]*?${formatMoney(2500)}`));
+  assert.match(cases.text, /Plaćeno[^<]*05\.10\.2026/);
+  assert.match(cases.text, new RegExp(`Srijeda, 14\\.10\\.2026\\.[^<]*16:20–17:20[\\s\\S]*?${formatMoney(1500)}`));
+  assert.match(cases.text, new RegExp(`href="/admin/abrechnung/${kidId}\\?monat=2026-10"`));
+  // Nichts gelöscht oder verschoben
+  assert.deepEqual(counts(), before);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM adjustments WHERE user_id = ?').get(parentId).n, 0);
+  // Mitgliedskonto-Details normal
+  assert.equal((await admin.request(`/admin/abrechnung/${parentId}?monat=${month}`)).status, 200);
+});

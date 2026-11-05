@@ -45,7 +45,8 @@ function toId(v) {
 
 // Kompletna finansijska kalkulacija za jedan mjesec.
 function financeMonth(db, month) {
-  const members = db.prepare("SELECT * FROM users WHERE role = 'member'").all();
+  // Dječiji računi nemaju finansije – računaju se samo računi članova.
+  const members = db.prepare("SELECT * FROM users WHERE role = 'member' AND parent_id IS NULL").all();
   let memberPaid = 0;
   let memberExpected = 0;
   let paidCount = 0;
