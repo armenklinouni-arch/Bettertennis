@@ -133,6 +133,8 @@ CREATE TABLE IF NOT EXISTS billing_months (
   closed_at TEXT,
   -- „Prikaz bez obračuna“: ručno određen iznos za treninge (prazno = zbir iznosa po terminima)
   display_total_cents INTEGER,
+  -- „Bez treninga u ovom mjesecu“: mjesec je 0 KM i smatra se završenim (samo za ovaj mjesec)
+  no_training INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, month)
 );
 
@@ -373,6 +375,8 @@ const NEW_COLUMNS = [
   ['lessons', 'display_amount_cents', 'INTEGER'],
   ['lessons', 'display_note', 'TEXT'],
   ['billing_months', 'display_total_cents', 'INTEGER'],
+  // „Bez treninga u ovom mjesecu“ (standardno isključeno = kao ranije)
+  ['billing_months', 'no_training', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 
 function addMissingColumns(db) {

@@ -269,13 +269,14 @@ function statementTable(statement, {
   const del = () => (adminDelete ? html`<td></td>` : '');
   const cols = 3 + (showStatus ? 1 : 0) + (showMarks ? 1 : 0) + (adminDelete ? 1 : 0);
   const rows = [];
+  const off = statement.noTraining ? ' is-unbilled' : '';
   if (statement.fee) {
-    rows.push(html`<tr><td>Mjesečna osnovna članarina</td><td></td>${extra()}<td class="num">${formatMoney(statement.fee)}</td>${del()}</tr>`);
+    rows.push(html`<tr class="${off}"><td>Mjesečna osnovna članarina</td><td></td>${extra()}<td class="num">${formatMoney(statement.fee)}</td>${del()}</tr>`);
   }
   const isDisplay = statement.mode === 'display';
   const hasAmount = (l) => l.display_amount_cents !== null && l.display_amount_cents !== undefined;
   for (const l of statement.lessons) {
-    const amount = isDisplay
+    const amount = statement.noTraining ? '–' : isDisplay
       ? (hasAmount(l) ? formatMoney(l.display_amount_cents) : '–')
       : !statement.billLessons ? '–' : l.cancelled || l.billable === 0 ? formatMoney(0) : formatMoney(l.price_cents);
     const note = isDisplay && l.display_note ? l.display_note : '';
@@ -292,7 +293,7 @@ function statementTable(statement, {
   }
   for (const a of statement.adjustments) {
     rows.push(html`
-      <tr>
+      <tr class="${off}">
         <td>${a.description}</td>
         <td>${a.amount_cents < 0 ? 'Odobrenje' : 'Dodatna stavka'}${adjustmentDates && a.created_at ? ` · ${D.formatDate(a.created_at.slice(0, 10))}` : ''}</td>
         ${extra()}
@@ -319,7 +320,9 @@ function statementTable(statement, {
       <thead><tr><th>Stavka</th><th>Detalji</th>${showStatus ? html`<th>Status</th>` : ''}${showMarks ? html`<th>Obračun</th>` : ''}<th class="num">Iznos</th>${adminDelete ? html`<th></th>` : ''}</tr></thead>
       <tbody>${rows}</tbody>
       <tfoot>
-        ${statement.mode === 'manual'
+        ${statement.noTraining
+          ? html`<tr class="no-training"><td>Bez treninga u ovom mjesecu</td><td>Iznos za mjesec: 0 KM</td>${extra()}<td class="num">${formatMoney(0)}</td>${del()}</tr>`
+          : statement.mode === 'manual'
           ? html`<tr><td>Treninzi</td><td>Ručni obračun – vidi stavke</td>${extra()}<td class="num"></td>${del()}</tr>`
           : statement.mode === 'display' && statement.display && statement.display.override !== null
             ? html`<tr><td>Treninzi (ručno određen iznos)</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)} · zbir po terminima: ${formatMoney(statement.display.autoTotal)}</td>${extra()}<td class="num">${formatMoney(statement.lessonsTotal)}</td>${del()}</tr>`
@@ -374,6 +377,7 @@ function listFilter({ key, action, value = '', clearHref, hidden = {} }) {
 // Plaćeno / nije plaćeno – samo informativno. Datum uplate je interna informacija: prikazuje se samo
 // adminu (showDate); članovi i roditeljski računi vide samo „Plaćeno“.
 function paymentBadge(statement, { showDate = false } = {}) {
+  if (statement.noTraining) return html`<span class="tag tag-none">Bez treninga u ovom mjesecu – 0 KM</span>`;
   if (!statement.paid && statement.total === 0) return html`<span class="tag">Nema obaveze</span>`;
   return statement.paid
     ? html`<span class="tag tag-done">Plaćeno${showDate && statement.paidAt ? ` (${D.formatDate(statement.paidAt)})` : ''}</span>`

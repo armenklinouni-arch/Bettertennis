@@ -9,11 +9,11 @@ const { html } = require('../html');
 const D = require('../dates');
 const { formatMoney, centsToInput, parseMoney, lessonPrice, CURRENCY_SYMBOL } = require('../money');
 const {
-  monthlyStatement, setPaid, setReleased, setDisplayTotal, formatHours, BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,
+  monthlyStatement, setPaid, setReleased, setDisplayTotal, setNoTraining, formatHours, BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,
   setMonthMode, closeMonth, reopenMonth, isMonthClosed, liveTotal, modeForMonth,
 } = require('../billing');
 const {
-  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, checklistTools, lessonTimeRange, lessonTags, lessonKindLabel, lessonStatusLabel, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, LESSON_PLANNED,
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, checklistTools, lessonTimeRange, lessonTags, lessonKindLabel, lessonStatusLabel, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, isLessonOver, LESSON_PLANNED,
   ATTENDANCE, attendanceSummary, billingMark,
 } = require('../views');
 const { requireAdmin, hashPassword, readablePassword, endSessionsFor } = require('../auth');
@@ -1315,6 +1315,61 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     res.send(String(paidDatePage(req, member, req.query.month, { value, back: safeBack(req.query.back) })));
   });
 
+  // „Bez treninga u ovom mjesecu“ (samo ovaj mjesec): 0 KM, smatra se završenim; „Poništi“ vraća normalan obračun.
+  const NO_TRAINING_WARNING = 'Ovaj igrač ima treninga u ovom mjesecu. Da li ste sigurni?';
+  const realizedCount = (st) => st.lessons.filter((l) => !l.cancelled && isLessonOver(l)).length;
+  function noTrainingToggle(req, member, st, back) {
+    if (st.closed) return '';
+    const hidden = html`${csrfField(req)}<input type="hidden" name="month" value="${st.month}"><input type="hidden" name="back" value="${back}">`;
+    if (st.noTraining) {
+      return html`<form method="post" action="/admin/abrechnung/${member.id}/bez-treninga" class="inline-form">
+        ${hidden}<input type="hidden" name="on" value="0"><button class="btn btn-ghost btn-sm" type="submit">Poništi</button></form>`;
+    }
+    const warn = realizedCount(st) > 0;
+    return html`<form method="post" action="/admin/abrechnung/${member.id}/bez-treninga" class="inline-form"${warn ? html` data-confirm="${NO_TRAINING_WARNING}" data-confirm-field="potvrdjeno"` : ''}>
+      ${hidden}<input type="hidden" name="on" value="1"><button class="btn btn-ghost btn-sm" type="submit">Bez treninga u ovom mjesecu</button></form>`;
+  }
+
+  router.post('/abrechnung/:id/bez-treninga', (req, res) => {
+    const member = getMember.get(toId(req.params.id));
+    if (!member) return notFound(res, 'član');
+    const month = req.body.month;
+    if (!D.isValidMonth(month)) return res.status(400).send('Neispravan mjesec.');
+    const back = safeBack(req.body.back);
+    const on = req.body.on === '1';
+    if (isMonthClosed(db, member, month)) {
+      res.flash('error', `${D.monthLabel(month)} je zaključen. Za izmjenu ga prvo retroaktivno otvori.`);
+      return res.redirect(back);
+    }
+    const st = monthlyStatement(db, member, month);
+    if (on && realizedCount(st) > 0 && req.body.potvrdjeno !== '1') {
+      // Bez JavaScripta: potvrda na posebnoj stranici.
+      return res.send(String(layout(req, {
+        title: 'Bez treninga u ovom mjesecu',
+        body: html`
+        <section class="card narrow">
+          <h1>Bez treninga u ovom mjesecu</h1>
+          <p class="muted">${member.name} · ${D.monthLabel(month)}</p>
+          <p class="notice">${NO_TRAINING_WARNING}</p>
+          <form method="post" action="/admin/abrechnung/${member.id}/bez-treninga" class="btn-row">
+            ${csrfField(req)}<input type="hidden" name="month" value="${month}"><input type="hidden" name="on" value="1">
+            <input type="hidden" name="potvrdjeno" value="1"><input type="hidden" name="back" value="${back}">
+            <button class="btn btn-primary" type="submit">Da, bez treninga</button>
+            <a class="btn btn-ghost" href="${back}">Odustani</a>
+          </form>
+        </section>`,
+      })));
+    }
+    if (on !== st.noTraining) {
+      setNoTraining(db, member, month, on);
+      log(req, 'Iznosi', on
+        ? `${member.name}, ${D.monthLabel(month)} – bez treninga u ovom mjesecu (0 KM, prije ${money(st.total)})`
+        : `${member.name}, ${D.monthLabel(month)} – „bez treninga“ poništeno (iznos ${money(monthlyStatement(db, member, month).total)})`);
+    }
+    res.flash('success', `${member.name}, ${D.monthLabel(month)}: ${on ? 'bez treninga u ovom mjesecu (0 KM)' : '„bez treninga“ je poništeno'}.`);
+    res.redirect(back);
+  });
+
   function releaseToggle(req, member, st, back) {
     return html`
       <form method="post" action="/admin/abrechnung/${member.id}/odobri" class="inline-form">
@@ -1365,7 +1420,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
         <thead><tr><th>Član</th><th class="num">Termini</th><th class="num">Sati</th><th class="num">Članarina</th><th class="num">Treninzi</th><th class="num">Stavke</th><th class="num">Ukupno</th><th>Za člana</th><th>Plaćanje</th><th></th></tr></thead>
         <tbody data-filter-list="iznosi">${rows.length === 0
           ? html`<tr><td colspan="10" class="empty">Nema članova.</td></tr>`
-          : html`${rows.map(({ member: m, st }) => html`<tr id="clan-${m.id}" data-filter="${texts.get(m.id)}" class="${m.active ? '' : 'is-inactive'}"${q && !matchesSearch(texts.get(m.id), q) ? html` hidden` : ''}>
+          : html`${rows.map(({ member: m, st }) => html`<tr id="clan-${m.id}" data-filter="${texts.get(m.id)}" class="${m.active ? '' : 'is-inactive'}${st.noTraining ? ' is-no-training' : ''}"${q && !matchesSearch(texts.get(m.id), q) ? html` hidden` : ''}>
             <td><strong>${m.name}</strong>${st.mode !== 'schedule' ? html` <span class="tag">${BILLING_MODE_SHORT[st.mode]}</span>` : ''}${
               st.closed ? html` <span class="tag">zaključen</span>` : st.reopened ? html` <span class="tag tag-pending">otključan</span>` : ''}</td>
             <td class="num">${st.manual ? '–' : st.lessonCount}</td>
@@ -1376,7 +1431,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
             <td class="num"><strong>${formatMoney(st.total)}</strong></td>
             <td>${releaseBadge(st)}</td>
             <td>${paymentBadge(st, { showDate: true })}</td>
-            <td class="actions">${releaseToggle(req, m, st, rowBack(m))}${paidToggle(req, m, st, rowBack(m))}<a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}&back=${encodeURIComponent(rowBack(m))}">Detalji</a></td>
+            <td class="actions">${st.noTraining ? '' : html`${releaseToggle(req, m, st, rowBack(m))}${paidToggle(req, m, st, rowBack(m))}`}${noTrainingToggle(req, m, st, rowBack(m))}<a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}&back=${encodeURIComponent(rowBack(m))}">Detalji</a></td>
           </tr>`)}
           <tr class="filter-empty"${shown ? html` hidden` : ''}><td colspan="10" class="empty">Nema članova za ovaj filter.</td></tr>`}</tbody>
         <tfoot>
@@ -1528,7 +1583,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
           <button class="btn btn-primary btn-sm" type="submit">Zaključaj mjesec ponovo</button>
         </form>` : ''}
       </section>`}
-      <div class="btn-row payment-row">${releaseToggle(req, member, st, back)}${paidToggle(req, member, st, back)}</div>
+      <div class="btn-row payment-row">${st.noTraining ? '' : html`${releaseToggle(req, member, st, back)}${paidToggle(req, member, st, back)}`}${noTrainingToggle(req, member, st, back)}</div>
       ${st.released ? '' : html`<p class="notice">Ovaj obračun je <strong>u pripremi</strong> – član umjesto iznosa vidi „Obračun u pripremi“.</p>`}
       ${st.mode === 'manual' && !st.closed ? html`<p class="notice">Za ${D.monthLabel(month)} vrijedi <strong>ručni obračun</strong>: treninzi iz rasporeda se ne prikazuju i ne obračunavaju.
         Iznos za mjesec unesi ispod kao stavku.</p>` : ''}

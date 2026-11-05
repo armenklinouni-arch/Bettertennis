@@ -2,7 +2,19 @@
 document.addEventListener('submit', (event) => {
   const form = event.target;
   const message = form.getAttribute && form.getAttribute('data-confirm');
-  if (message && !window.confirm(message)) event.preventDefault();
+  if (message && !window.confirm(message)) {
+    event.preventDefault();
+    return;
+  }
+  // data-confirm-field: potvrđeno upozorenje se šalje serveru (bez JavaScripta server sam pita).
+  const field = message && form.getAttribute('data-confirm-field');
+  if (field && !form.querySelector(`input[name="${field}"]`)) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = field;
+    input.value = '1';
+    form.appendChild(input);
+  }
 });
 
 // Ako se fotografija ne može učitati (npr. bez interneta), prikazuje se nacrtani teren.

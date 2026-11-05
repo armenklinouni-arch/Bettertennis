@@ -58,9 +58,9 @@ function liveStatement(db, user, month, mode) {
   // „Prikaz bez obračuna“: čim je bar jedan termin dobio iznos, treninzi = zbir iznosa po terminima
   // (termini bez iznosa = 0). Admin taj zbir može ručno zamijeniti (billing_months.display_total_cents).
   let display = null;
+  const rec = monthRecord(db, user.id, month);
   if (mode === 'display') {
     const withAmount = lessons.filter((l) => l.display_amount_cents !== null && l.display_amount_cents !== undefined);
-    const rec = monthRecord(db, user.id, month);
     const override = rec && rec.display_total_cents !== null && rec.display_total_cents !== undefined ? rec.display_total_cents : null;
     const autoTotal = withAmount.reduce((sum, l) => sum + l.display_amount_cents, 0);
     display = { amounts: withAmount.length, autoTotal, override };
@@ -79,7 +79,9 @@ function liveStatement(db, user, month, mode) {
     lessonsTotal,
     adjustmentsTotal,
     display,
-    total: fee + lessonsTotal + adjustmentsTotal,
+    // „Bez treninga u ovom mjesecu“: termini i stavke ostaju vidljivi, ali mjesec iznosi 0 KM.
+    noTraining: !!(rec && rec.no_training),
+    total: rec && rec.no_training ? 0 : fee + lessonsTotal + adjustmentsTotal,
   };
 }
 
@@ -177,7 +179,9 @@ function monthlyStatement(db, user, month) {
     past: month < current,
     paid: !!(payment && payment.paid),
     // Član vidi obračun tek kad ga admin odobri; do tada piše „Obračun u pripremi“.
-    released: !!(payment && payment.released),
+    // „Bez treninga u ovom mjesecu“ se smatra završenim i član ga odmah vidi.
+    released: !!(payment && payment.released) || !!data.noTraining,
+    noTraining: !!data.noTraining,
     paidAt: payment && payment.paid ? payment.paid_at : null,
   };
 }
@@ -203,6 +207,14 @@ function setDisplayTotal(db, user, month, cents) {
   ).run(user.id, month, modeForMonth(db, user, month), cents);
 }
 
+// „Bez treninga u ovom mjesecu“ uključi/isključi samo za ovaj mjesec.
+function setNoTraining(db, user, month, on) {
+  db.prepare(
+    `INSERT INTO billing_months (user_id, month, mode, no_training) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, month) DO UPDATE SET no_training = excluded.no_training`
+  ).run(user.id, month, modeForMonth(db, user, month), on ? 1 : 0);
+}
+
 function setReleased(db, userId, month, released) {
   db.prepare(
     `INSERT INTO payments (user_id, month, released) VALUES (?, ?, ?)
@@ -215,7 +227,7 @@ function formatHours(hours) {
 }
 
 module.exports = {
-  setDisplayTotal,
+  setDisplayTotal, setNoTraining,
   monthlyStatement, setPaid, setReleased, formatHours, billingMode, memberMonthRange,
   setMonthMode, closeMonth, reopenMonth, closeElapsedMonths, isMonthClosed, liveTotal, modeForMonth,
   BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,

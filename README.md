@@ -165,6 +165,11 @@ Tests: `npm test`
 - Unter „Mjesečni iznosi“ bleibt die **Leiste mit Monat und Filter** beim Scrollen oben sichtbar (direkt unter der
   Kopfzeile; auf dem Handy kompakt: die Kopfzeile scrollt weg, die Monatsknöpfe zeigen nur ‹ / ›). Beim Monatswechsel
   bleibt die Seite an derselben Stelle – gleiche Spieler, gleicher Filter, Beträge des neuen Monats.
+- **„Bez treninga u ovom mjesecu“** (Iznosi-Liste und Detalji): der Spieler steht für diesen Monat auf 0 KM, gilt
+  als erledigt (nicht in „Od toga još nije plaćeno“), die Zeile ist grau markiert; **„Poništi“** macht es rückgängig.
+  Gilt nur für diesen Monat. Mitglieder und Elternkonten sehen „Bez treninga u ovom mjesecu – 0 KM“. Hat der Spieler
+  realisierte Termine, fragt die Seite vorher „Ovaj igrač ima treninga u ovom mjesecu. Da li ste sigurni?“.
+  Abgeschlossene Monate erst nach „Retroaktivno izmijeni“. Spalte `billing_months.no_training` (Standard 0).
 - **Zurück aus den Details:** „Detalji“ (Iznosi) bzw. „Uredi“ (Članovi) merken sich die Liste. Oben in den Details
   bringt **„← Nazad na iznose“** bzw. **„← Nazad na članove“** zurück – mit demselben Filter, Monat und an die Zeile
   des Spielers, auch nachdem dort etwas gespeichert wurde. Der Zurück-Pfeil des Browsers behält den Filter ebenfalls.

@@ -4085,3 +4085,86 @@ test('Kästchen-Liste: eigener Filter, „Odabrano: N“ mit Namen, × löscht; 
   assert.match(js, /data-checklist-filter/);
   assert.match(js, /Odabrano/);
 });
+
+// ---------------------------------------------------------------- Iznosi: „Bez treninga u ovom mjesecu“
+test('Bez treninga u ovom mjesecu: 0 KM, erledigt, grau markiert, Poništi, nur dieser Monat, sichtbar für Mitglied/Elternkonto', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const id = makeMember('Bez Treninga Clan', 'bez.treninga', { fee: 3000 });
+  const month = '2026-10';
+  const listUrl = `/admin/abrechnung?monat=${month}`;
+  const row = (t) => new RegExp(`<tr id="clan-${id}"[^>]*>([\\s\\S]*?)</tr>`).exec(t)[1];
+  const st = () => monthlyStatementFor(id, month);
+  assert.equal(st().total, 3000);
+  let list = (await admin.request(listUrl)).text;
+  assert.match(row(list), /<button class="btn btn-ghost btn-sm" type="submit">Bez treninga u ovom mjesecu<\/button>/);
+  assert.match(row(list), /Odobri za člana/);
+  const open = (t) => /<tr><td colspan="6">Od toga još nije plaćeno<\/td><td class="num">([^<]+)</.exec(t)[1];
+  const openBefore = open(list);
+
+  // Markieren (keine realisierten Termine → ohne Rückfrage)
+  const r = await admin.post(`/admin/abrechnung/${id}/bez-treninga`, { month, on: '1', back: `${listUrl}#clan-${id}` }, listUrl);
+  assert.equal(r.status, 302);
+  assert.equal(r.location, `${listUrl}#clan-${id}`);
+  assert.equal(st().total, 0);
+  assert.ok(st().noTraining);
+  list = (await admin.request(listUrl)).text;
+  assert.match(list, new RegExp(`<tr id="clan-${id}"[^>]*class="[^"]*is-no-training`));
+  assert.match(row(list), /<span class="tag tag-none">Bez treninga u ovom mjesecu – 0 KM<\/span>/);
+  assert.match(row(list), /<button class="btn btn-ghost btn-sm" type="submit">Poništi<\/button>/);
+  assert.doesNotMatch(row(list), /Označi: plaćeno|Odobri za člana/);
+  // „Od toga još nije plaćeno“ ohne diesen Spieler
+  const toCents = (s) => Number(s.replace(/[^\d,-]/g, '').replace(',', '.')) * 100;
+  assert.equal(toCents(open(list)), toCents(openBefore) - 3000);
+  // Mitglied und Elternkonto sehen „Bez treninga u ovom mjesecu – 0 KM“
+  const m = client();
+  await m.login('bez.treninga', 'memberpass1');
+  assert.match((await m.request(`/mitglied/abrechnung?monat=${month}`)).text, /Bez treninga u ovom mjesecu – 0 KM/);
+  assert.match((await m.request('/mitglied')).text, /Bez treninga u ovom mjesecu – 0 KM/);
+  await createParentAccount(admin, { name: 'Bez Treninga Roditelj', username: 'bez.treninga.rod', password: 'roditelj-pass-1', players: [id] });
+  const p = client();
+  await p.login('bez.treninga.rod', 'roditelj-pass-1');
+  assert.match((await p.request(`/roditelj/finansije?monat=${month}`)).text, /Bez treninga u ovom mjesecu – 0 KM/);
+  // Nur dieser Monat
+  assert.equal(monthlyStatementFor(id, '2026-11').total, 3000);
+  assert.ok(!monthlyStatementFor(id, '2026-11').noTraining);
+  // Poništi
+  await admin.post(`/admin/abrechnung/${id}/bez-treninga`, { month, on: '0', back: listUrl }, listUrl);
+  assert.equal(st().total, 3000);
+  assert.ok(!st().noTraining);
+  assert.match(row((await admin.request(listUrl)).text), /Označi: plaćeno/);
+  // Dnevnik
+  const texts = db.prepare("SELECT text FROM activity_log WHERE area = 'Iznosi' AND text LIKE 'Bez Treninga Clan%'").all().map((x) => x.text);
+  assert.ok(texts.some((t) => /Oktobar 2026 – bez treninga u ovom mjesecu \(0 KM, prije 30,00\sKM\)/.test(t)), texts.join('\n'));
+  assert.ok(texts.some((t) => /Oktobar 2026 – „bez treninga“ poništeno/.test(t)), texts.join('\n'));
+});
+
+test('Bez treninga: Warnung bei realisierten Terminen; abgeschlossener Monat gesperrt', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const id = makeMember('Ima Treninga', 'ima.treninga', { fee: 1000 });
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '09:05', 60, 4000)").run(id);
+  const month = '2026-10';
+  const listUrl = `/admin/abrechnung?monat=${month}`;
+  const warn = 'Ovaj igrač ima treninga u ovom mjesecu. Da li ste sigurni?';
+  const list = (await admin.request(listUrl)).text;
+  const row = new RegExp(`<tr id="clan-${id}"[^>]*>([\\s\\S]*?)</tr>`).exec(list)[1];
+  assert.match(row, new RegExp(`<form method="post" action="/admin/abrechnung/${id}/bez-treninga" class="inline-form" data-confirm="${warn.replace('?', '\\?')}" data-confirm-field="potvrdjeno">`));
+  // Ohne Bestätigung → Rückfrage, nichts geändert
+  const ask = await admin.post(`/admin/abrechnung/${id}/bez-treninga`, { month, on: '1', back: listUrl }, listUrl);
+  assert.equal(ask.status, 200);
+  assert.match(ask.text, new RegExp(warn.replace('?', '\\?')));
+  assert.match(ask.text, /<input type="hidden" name="potvrdjeno" value="1">/);
+  assert.ok(!monthlyStatementFor(id, month).noTraining);
+  // Mit Bestätigung → markiert
+  await admin.post(`/admin/abrechnung/${id}/bez-treninga`, { month, on: '1', potvrdjeno: '1', back: listUrl }, listUrl);
+  assert.ok(monthlyStatementFor(id, month).noTraining);
+  assert.equal(monthlyStatementFor(id, month).total, 0);
+  // Abgeschlossener Monat (September) → abgelehnt, unverändert
+  const sep = monthlyStatementFor(id, '2026-09');
+  assert.ok(sep.closed);
+  await admin.post(`/admin/abrechnung/${id}/bez-treninga`, { month: '2026-09', on: '1', potvrdjeno: '1', back: '/admin/abrechnung?monat=2026-09' }, '/admin/abrechnung?monat=2026-09');
+  assert.ok(!monthlyStatementFor(id, '2026-09').noTraining);
+  // Skript: bestätigte Rückfrage setzt das Feld
+  assert.match((await client().request('/static/app.js')).text, /data-confirm-field/);
+});

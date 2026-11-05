@@ -199,6 +199,9 @@ tr.is-inactive td { color: var(--muted); }
 .tag-planned { background: #e6eef7; color: var(--primary); }
 .tag-child { background: #fde7c8; color: #8a4b00; font-weight: 600; }
 .tag-cancelled { background: var(--danger-soft); color: var(--danger); }
+.tag-none { background: #e7e9ec; color: #4b5563; font-weight: 600; }
+tr.is-no-training td { color: var(--muted); background: #f3f4f6; }
+tr.is-no-training td strong { color: var(--muted); }
 .positive, .summary-tile .value.positive { color: var(--positive); }
 .negative, .summary-tile .value.negative { color: var(--danger); }
 tr.auto-row td { background: color-mix(in srgb, var(--primary-soft) 60%, transparent); }

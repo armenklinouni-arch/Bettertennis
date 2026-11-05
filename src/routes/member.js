@@ -216,7 +216,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
       ${monthNav('/mitglied/abrechnung', month, '', { min, max })}
       ${statement.released
         ? html`<div class="summary-tile big">
-            <span class="label">${statement.paid ? 'Iznos za mjesec' : 'Za platiti na kraju mjeseca'} · ${paymentBadge(statement)}</span>
+            <span class="label">${statement.paid || statement.noTraining ? 'Iznos za mjesec' : 'Za platiti na kraju mjeseca'} · ${paymentBadge(statement)}</span>
             <span class="value">${formatMoney(statement.total)}</span>
             <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}`}${
               req.user.hourly_rate_cents ? ` · ${formatMoney(req.user.hourly_rate_cents)} po satu` : ''}</span>
