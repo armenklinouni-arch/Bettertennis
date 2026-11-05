@@ -1381,6 +1381,13 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       </form>`;
   }
 
+  // Boja reda u listi Iznosi (samo za admina): bez treninga > plaćeno > odobreno > otvoreno.
+  const rowStatus = (st) => (st.noTraining ? 'none' : st.paid ? 'paid' : st.released ? 'released' : 'open');
+  const STATUS_LEGEND = [
+    ['paid', 'Plaćeno'], ['released', 'Odobreno, još nije plaćeno'],
+    ['open', 'Otvoreno – još nije obrađeno'], ['none', 'Bez treninga u ovom mjesecu'],
+  ];
+
   router.get('/abrechnung', (req, res) => {
     const month = D.isValidMonth(req.query.monat) ? req.query.monat : D.monthOf(D.todayISO());
     const rows = billingMembers().map((m) => ({ member: m, st: monthlyStatement(db, m, month) }))
@@ -1416,11 +1423,14 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
           <button class="btn btn-ghost btn-sm" type="submit">Sve vrati u pripremu</button>
         </form>
       </div>
+      <ul class="status-legend" aria-label="Značenje boja">
+        ${STATUS_LEGEND.map(([k, label]) => html`<li><span class="swatch status-${k}"></span>${label}</li>`)}
+      </ul>
       <div class="table-wrap"><table>
         <thead><tr><th>Član</th><th class="num">Termini</th><th class="num">Sati</th><th class="num">Članarina</th><th class="num">Treninzi</th><th class="num">Stavke</th><th class="num">Ukupno</th><th>Za člana</th><th>Plaćanje</th><th></th></tr></thead>
         <tbody data-filter-list="iznosi">${rows.length === 0
           ? html`<tr><td colspan="10" class="empty">Nema članova.</td></tr>`
-          : html`${rows.map(({ member: m, st }) => html`<tr id="clan-${m.id}" data-filter="${texts.get(m.id)}" class="${m.active ? '' : 'is-inactive'}${st.noTraining ? ' is-no-training' : ''}"${q && !matchesSearch(texts.get(m.id), q) ? html` hidden` : ''}>
+          : html`${rows.map(({ member: m, st }) => html`<tr id="clan-${m.id}" data-filter="${texts.get(m.id)}" class="${m.active ? '' : 'is-inactive'}${st.noTraining ? ' is-no-training' : ''} status-${rowStatus(st)}"${q && !matchesSearch(texts.get(m.id), q) ? html` hidden` : ''}>
             <td><strong>${m.name}</strong>${st.mode !== 'schedule' ? html` <span class="tag">${BILLING_MODE_SHORT[st.mode]}</span>` : ''}${
               st.closed ? html` <span class="tag">zaključen</span>` : st.reopened ? html` <span class="tag tag-pending">otključan</span>` : ''}</td>
             <td class="num">${st.manual ? '–' : st.lessonCount}</td>

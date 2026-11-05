@@ -4168,3 +4168,46 @@ test('Bez treninga: Warnung bei realisierten Terminen; abgeschlossener Monat ges
   // Skript: bestätigte Rückfrage setzt das Feld
   assert.match((await client().request('/static/app.js')).text, /data-confirm-field/);
 });
+
+// ---------------------------------------------------------------- Iznosi: Zeilenfarbe nach Status + Legende
+test('Iznosi: Zeilen nach Status eingefärbt (plaćeno/odobreno/otvoreno/bez treninga) mit Legende – nur Admin', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const month = '2026-10';
+  const listUrl = `/admin/abrechnung?monat=${month}`;
+  const paid = makeMember('Boja Placeno', 'boja.placeno', { fee: 1000 });
+  const released = makeMember('Boja Odobreno', 'boja.odobreno', { fee: 1000 });
+  const open = makeMember('Boja Otvoreno', 'boja.otvoreno', { fee: 1000 });
+  const none = makeMember('Boja Bez', 'boja.bez', { fee: 1000 });
+  await admin.post(`/admin/abrechnung/${paid}/odobri`, { month, released: '1' }, listUrl);
+  await admin.post(`/admin/abrechnung/${paid}/placeno`, { month, paid: '1', paid_at: '2026-10-05' }, listUrl);
+  await admin.post(`/admin/abrechnung/${released}/odobri`, { month, released: '1' }, listUrl);
+  await admin.post(`/admin/abrechnung/${none}/bez-treninga`, { month, on: '1' }, listUrl);
+  // Bezahlt ohne Freigabe zählt ebenfalls als bezahlt
+  const paidOnly = makeMember('Boja Samo Placeno', 'boja.samo', { fee: 1000 });
+  await admin.post(`/admin/abrechnung/${paidOnly}/placeno`, { month, paid: '1', paid_at: '2026-10-06' }, listUrl);
+
+  const list = (await admin.request(listUrl)).text;
+  const cls = (id) => new RegExp(`<tr id="clan-${id}"[^>]*class="([^"]*)"`).exec(list)[1].split(/\s+/);
+  assert.ok(cls(paid).includes('status-paid'));
+  assert.ok(cls(paidOnly).includes('status-paid'));
+  assert.ok(cls(released).includes('status-released'));
+  assert.ok(cls(open).includes('status-open'));
+  assert.ok(cls(none).includes('status-none'));
+  for (const id of [paid, released, open, none]) assert.equal(cls(id).filter((c) => c.startsWith('status-')).length, 1);
+  // Legende über der Liste (bosnisch)
+  const legend = /<ul class="status-legend"[^>]*>([\s\S]*?)<\/ul>/.exec(list);
+  assert.ok(legend, 'Legende fehlt');
+  for (const [k, text] of [['paid', 'Plaćeno'], ['released', 'Odobreno, još nije plaćeno'], ['open', 'Otvoreno – još nije obrađeno'], ['none', 'Bez treninga u ovom mjesecu']]) {
+    assert.match(legend[1], new RegExp(`<li><span class="swatch status-${k}"></span>${text}</li>`));
+  }
+  assert.ok(list.indexOf('class="status-legend"') < list.indexOf('<tbody data-filter-list="iznosi">'));
+  // Helle Farben im Stil
+  const css = (await client().request('/static/style.css')).text;
+  for (const k of ['paid', 'released', 'open', 'none']) assert.match(css, new RegExp(`tr\\.status-${k} td, \\.swatch\\.status-${k} \\{ background: #[0-9a-f]{6}; \\}`));
+  // Nur für den Admin: Mitglied sieht weder Farben noch Legende
+  const m = client();
+  await m.login('boja.odobreno', 'memberpass1');
+  const mt = (await m.request(`/mitglied/abrechnung?monat=${month}`)).text;
+  assert.doesNotMatch(mt, /status-legend|status-released|status-paid/);
+});

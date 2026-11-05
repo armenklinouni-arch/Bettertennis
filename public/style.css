@@ -200,7 +200,7 @@ tr.is-inactive td { color: var(--muted); }
 .tag-child { background: #fde7c8; color: #8a4b00; font-weight: 600; }
 .tag-cancelled { background: var(--danger-soft); color: var(--danger); }
 .tag-none { background: #e7e9ec; color: #4b5563; font-weight: 600; }
-tr.is-no-training td { color: var(--muted); background: #f3f4f6; }
+tr.is-no-training td { color: var(--muted); }
 tr.is-no-training td strong { color: var(--muted); }
 .positive, .summary-tile .value.positive { color: var(--positive); }
 .negative, .summary-tile .value.negative { color: var(--danger); }
@@ -481,6 +481,15 @@ button.filter-clear { border: 0; background: transparent; padding: 0; cursor: po
 button.filter-clear:hover { background: var(--border); }
 .checklist-selected strong { color: var(--text); }
 .recipient-list > label[hidden] { display: none; }
+
+/* Iznosi (admin): boja reda prema statusu + legenda */
+tr.status-paid td, .swatch.status-paid { background: #dcf1d3; }
+tr.status-released td, .swatch.status-released { background: #fcf0c2; }
+tr.status-open td, .swatch.status-open { background: #fbe0d3; }
+tr.status-none td, .swatch.status-none { background: #e7eaee; }
+.status-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; margin: 0 0 10px; padding: 0; font-size: 0.85rem; color: var(--muted); }
+.status-legend li { display: flex; align-items: center; gap: 6px; }
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(17, 48, 76, 0.18); }
 
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
