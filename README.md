@@ -126,6 +126,12 @@ Tests: `npm test`
 - Beim Bearbeiten eines Termins unter „Termini“ bleiben Betrag und Notiz erhalten. Die anderen Abrechnungsarten
   ignorieren diese Beträge (sie bleiben aber gespeichert, falls der Monat wieder auf diese Art umgestellt wird).
 
+## Spielerauswahl mit Kästchen
+
+- Überall, wo Spieler mit Kästchen ausgewählt werden (Termini „Igrači u grupi“, Grupe, Aktuelnosti, Roditelji),
+  stehen die Namen alphabetisch nach bosnischem Alphabet (C, Č, Ć, D, Dž, Đ …) und **spaltenweise von oben nach
+  unten**; die Spalten sind etwa gleich lang, auf dem Handy entsprechend weniger Spalten.
+
 ## Status-Anzeige der Termine
 
 - Nicht abgesagte Termine zeigen **„Planiran“**, solange ihre Endzeit (Ortszeit Sarajevo) noch nicht erreicht ist,

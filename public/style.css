@@ -231,7 +231,9 @@ tr.is-selected td { background: var(--primary-soft); }
 .news-row form { margin: 0; flex-shrink: 0; }
 .recipients { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; display: grid; gap: 8px; }
 .recipients legend { font-weight: 500; padding: 0 4px; }
-.recipient-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 14px; padding-left: 26px; }
+/* Spieler mit Kästchen: spaltenweise von oben nach unten, Spalten gleich lang; auf schmalen Bildschirmen weniger Spalten */
+.recipient-list { columns: 200px auto; column-gap: 14px; column-fill: balance; padding-left: 26px; }
+.recipient-list > * { break-inside: avoid; margin-bottom: 6px; }
 .lesson.is-cancelled { border-left-color: var(--muted); opacity: 0.75; }
 .lesson.is-cancelled .lesson-time { text-decoration: line-through; }
 .lesson-edit { font-size: 0.8rem; }

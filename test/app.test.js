@@ -4007,3 +4007,30 @@ test('Kinder-Konten: nicht unter Iznosi/Finansije (Liste, Filter, Summen); Mitgl
   // Mitgliedskonto-Details normal
   assert.equal((await admin.request(`/admin/abrechnung/${parentId}?monat=${month}`)).status, 200);
 });
+
+// ---------------------------------------------------------------- Kästchen-Listen spaltenweise (oben → unten), alphabetisch
+test('Spielerauswahl mit Kästchen: alphabetisch (bosnisch) und spaltenweise von oben nach unten – Termini, Grupe, Aktuelnosti, Roditelji', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const names = ['Zana Kolona', 'Đuro Kolona', 'Alma Ramović', 'Čedo Kolona', 'Ali Sakin', 'Dino Kolona', 'Ćamil Kolona', 'Alex Carver', 'Cvijeta Kolona', 'emina Kolona'];
+  names.forEach((n, i) => makeMember(n, `kolona.${i}`));
+  const expected = ['Alex Carver', 'Ali Sakin', 'Alma Ramović', 'Cvijeta Kolona', 'Čedo Kolona', 'Ćamil Kolona', 'Dino Kolona', 'Đuro Kolona', 'emina Kolona', 'Zana Kolona'];
+  const order = (block) => [...block.matchAll(/<input type="checkbox" name="(?:member_ids|player_ids)" value="\d+"[^>]*>\s*<span>([^<]+?)(?: \(neaktivan\))?(?:<|$)/g)]
+    .map((m) => m[1].trim()).filter((n) => names.includes(n));
+  const listOf = (text) => {
+    const m = /<div class="recipient-list">([\s\S]*?)<\/div>/.exec(text);
+    assert.ok(m, 'Liste fehlt');
+    return m[1];
+  };
+  for (const path of ['/admin/termine?woche=2026-10-05', '/admin/grupe', '/admin/aktuelnosti', '/admin/roditelji/novi']) {
+    const text = (await admin.request(path)).text;
+    assert.deepEqual(order(listOf(text)), expected, path);
+  }
+  // Spaltenweise statt zeilenweise: CSS-Spalten (gleich lang, auf dem Handy weniger Spalten), kein Raster
+  const css = (await client().request('/static/style.css')).text;
+  const rule = /\.recipient-list \{([^}]*)\}/.exec(css)[1];
+  assert.match(rule, /columns: 200px auto;/);
+  assert.match(rule, /column-fill: balance;/);
+  assert.doesNotMatch(rule, /display: grid/);
+  assert.match(css, /\.recipient-list > \* \{[^}]*break-inside: avoid;/);
+});

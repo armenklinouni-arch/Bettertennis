@@ -6,6 +6,7 @@ const { layout, csrfField, errorList } = require('../views');
 const { requireAdmin } = require('../auth');
 const { str } = require('./public');
 const { logActivity, changes } = require('../activity');
+const { sortByName } = require('../search');
 
 // Stalne grupe (npr. „Grupa 1“) s članovima koji često treniraju zajedno.
 // Služe kao predložak: kod kreiranja termina izborom grupe automatski se označe njeni članovi.
@@ -65,7 +66,7 @@ function groupRoutes(db) {
           <div class="recipient-list">
             ${members.length === 0
               ? html`<p class="muted">Još nema aktivnih članova.</p>`
-              : members.map((m) => html`<label class="check"><input type="checkbox" name="member_ids" value="${m.id}"${selected.has(String(m.id)) ? ' checked' : ''}><span>${m.name}${m.active ? '' : ' (neaktivan)'}</span></label>`)}
+              : sortByName(members).map((m) => html`<label class="check"><input type="checkbox" name="member_ids" value="${m.id}"${selected.has(String(m.id)) ? ' checked' : ''}><span>${m.name}${m.active ? '' : ' (neaktivan)'}</span></label>`)}
           </div>
         </fieldset>
         <label>Napomena<input name="notes" maxlength="300" value="${values.notes || ''}" placeholder="npr. srijedom 18 h, napredni"></label>

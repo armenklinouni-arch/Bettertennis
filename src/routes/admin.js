@@ -17,7 +17,7 @@ const {
   ATTENDANCE, attendanceSummary, billingMark,
 } = require('../views');
 const { requireAdmin, hashPassword, readablePassword, endSessionsFor } = require('../auth');
-const { searchText, matchesSearch } = require('../search');
+const { searchText, matchesSearch, sortByName } = require('../search');
 const { logActivity, changes, money } = require('../activity');
 
 // Upit iz polja „Filter“ (?trazi=…).
@@ -698,7 +698,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       <fieldset class="span-2 recipients group-members">
         <legend>Igrači u grupi (za grupni trening označi ${GROUP_MIN}–${GROUP_MAX} igrača)</legend>
         <div class="recipient-list">
-          ${members.map((m) => html`<label class="check"><input type="checkbox" name="member_ids" value="${m.id}"${(v.member_ids || []).map(String).includes(String(m.id)) ? ' checked' : ''}><span>${m.name}</span></label>`)}
+          ${sortByName(members).map((m) => html`<label class="check"><input type="checkbox" name="member_ids" value="${m.id}"${(v.member_ids || []).map(String).includes(String(m.id)) ? ' checked' : ''}><span>${m.name}</span></label>`)}
         </div>
       </fieldset>
       <label>Datum *<input name="date" type="date" required value="${v.date || ''}"></label>
@@ -1847,7 +1847,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
             <label class="check"><input type="radio" name="audience" value="some"${values.audience === 'some' ? ' checked' : ''}>
               <span>Samo odabrani članovi:</span></label>
             <div class="recipient-list">
-              ${members.map((m) => html`<label class="check"><input type="checkbox" name="member_ids" value="${m.id}"${selected.has(String(m.id)) ? ' checked' : ''}><span>${m.name}</span></label>`)}
+              ${sortByName(members).map((m) => html`<label class="check"><input type="checkbox" name="member_ids" value="${m.id}"${selected.has(String(m.id)) ? ' checked' : ''}><span>${m.name}</span></label>`)}
             </div>
           </fieldset>
           <div><button class="btn btn-primary" type="submit">Pošalji aktuelnost</button></div>

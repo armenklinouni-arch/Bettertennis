@@ -26,4 +26,10 @@ function matchesSearch(haystack, query) {
   return terms.every((t) => haystack.includes(t));
 }
 
-module.exports = { normalizeSearch, searchText, matchesSearch };
+// Abecedno po bosanskom pravilu (C, Č, Ć, D, Dž, Đ …), bez razlike velikih i malih slova.
+const collator = new Intl.Collator('bs', { sensitivity: 'base', numeric: true });
+function sortByName(list) {
+  return [...list].sort((a, b) => collator.compare(a.name || '', b.name || '') || a.id - b.id);
+}
+
+module.exports = { normalizeSearch, searchText, matchesSearch, sortByName };

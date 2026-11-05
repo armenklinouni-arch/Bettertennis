@@ -8,6 +8,7 @@ const { requireAdmin, hashPassword, readablePassword, endSessionsFor } = require
 const { USERNAME_RE, normalizeUsername, usernameTaken } = require('../db');
 const { str } = require('./public');
 const { logActivity, changes } = require('../activity');
+const { sortByName } = require('../search');
 
 function toId(v) {
   const n = Number(v);
@@ -98,8 +99,8 @@ module.exports = function parentAccountRoutes(db) {
             <legend>Igrači (najmanje jedan) *</legend>
             ${members.length === 0
               ? html`<p class="muted">Još nema članova.</p>`
-              : members.map((m) => html`<label class="check"><input type="checkbox" name="player_ids" value="${m.id}"${selected.has(m.id) ? ' checked' : ''}>
-                  <span>${m.name}${m.username ? html` <span class="muted small">(${m.username})</span>` : ''}${m.active ? '' : html` <span class="tag">neaktivan</span>`}</span></label>`)}
+              : html`<div class="recipient-list">${sortByName(members).map((m) => html`<label class="check"><input type="checkbox" name="player_ids" value="${m.id}"${selected.has(m.id) ? ' checked' : ''}>
+                  <span>${m.name}${m.username ? html` <span class="muted small">(${m.username})</span>` : ''}${m.active ? '' : html` <span class="tag">neaktivan</span>`}</span></label>`)}</div>`}
           </fieldset>
           <label class="check span-2"><input type="checkbox" name="active" value="1"${values.active ? ' checked' : ''}><span>Aktivan (smije se prijaviti)</span></label>
           <div class="span-2 btn-row"><button class="btn btn-primary" type="submit">Sačuvaj</button>
