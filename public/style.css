@@ -444,6 +444,24 @@ tr.row-highlight td { animation: row-highlight 1600ms ease-out; }
 .lesson-note { display: inline-block; margin-top: 2px; font-size: 0.85rem; color: var(--muted); }
 tr[id^="termin-"], #iznos-treninga { scroll-margin-top: 140px; }
 
+/* Iznosi: Monat und Filter bleiben beim Scrollen oben (unter der Kopfzeile; Höhe setzt /static/app.js) */
+.sticky-bar { position: sticky; top: var(--sticky-top, 0px); z-index: 40; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: 0 0 14px; padding: 8px 0; background: var(--bg); border-bottom: 1px solid var(--border); }
+.sticky-bar .month-nav { flex: 1 1 480px; margin: 0; flex-wrap: nowrap; }
+.sticky-bar .list-filter { flex: 0 1 380px; margin: 0; }
+.sticky-bar.is-stuck { box-shadow: 0 6px 12px -10px rgba(17, 48, 76, 0.35); }
+body:has(.sticky-bar) tr[data-filter] { scroll-margin-top: 220px; }
+@media (max-width: 700px) {
+  body:has(.sticky-bar) .site-header { position: static; }
+  .sticky-bar { --sticky-top: 0px; top: 0; padding: 6px 0; gap: 6px; }
+  .sticky-bar .month-nav { flex-basis: 100%; }
+  .sticky-bar .month-nav-label { display: none; }
+  .sticky-bar .month-nav .btn { min-width: 44px; justify-content: center; }
+  .sticky-bar .list-filter { flex-basis: 100%; max-width: none; }
+  .sticky-bar .list-filter label { font-size: 0.85rem; }
+  .sticky-bar .filter-box input { padding-top: 6px; padding-bottom: 6px; }
+  body:has(.sticky-bar) tr[data-filter] { scroll-margin-top: 120px; }
+}
+
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
 

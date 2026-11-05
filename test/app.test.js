@@ -3793,3 +3793,35 @@ test('Članovi → Uredi → „← Nazad na članove“: gleicher Filter und Ze
   assert.equal(backLink((await admin.request(`/admin/mitglieder/${other}`)).text), `/admin/mitglieder#clan-${other}`);
   assert.equal(backLink((await admin.request(`/admin/mitglieder/${other}?back=${encodeURIComponent('https://evil.example/')}`)).text), `/admin/mitglieder#clan-${other}`);
 });
+
+// ---------------------------------------------------------------- Iznosi: Monat und Filter bleiben beim Scrollen sichtbar
+test('Iznosi: Leiste mit Monat und Filter bleibt oben (auch Handy); Monatswechsel behält Filter und Stelle', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const id = makeMember('Leiste Clan', 'leiste.clan', { fee: 1000 });
+  const page = (await admin.request('/admin/abrechnung?monat=2026-10&trazi=leiste')).text;
+  // Monatsleiste und Filter in einer gemeinsamen, klebenden Leiste
+  const bar = /<div class="sticky-bar" data-sticky-bar>([\s\S]*?)<\/form>\s*<\/div>/.exec(page);
+  assert.ok(bar, 'Leiste fehlt');
+  assert.match(bar[1], /<div class="month-nav">[\s\S]*<strong>Oktobar 2026<\/strong>/);
+  assert.match(bar[1], /<label for="filter-iznosi">Filter<\/label>/);
+  // Monatsauswahl wie bisher (mit Filter), kurze Beschriftung fürs Handy, vollständiger Name für Screenreader
+  assert.match(bar[1], /<a class="btn btn-ghost btn-sm" href="\/admin\/abrechnung\?monat=2026-09&amp;trazi=leiste" aria-label="Septembar 2026">‹ <span class="month-nav-label">Septembar 2026<\/span><\/a>/);
+  assert.match(bar[1], /<a class="btn btn-ghost btn-sm" href="\/admin\/abrechnung\?monat=2026-11&amp;trazi=leiste" aria-label="Novembar 2026"><span class="month-nav-label">Novembar 2026<\/span> ›<\/a>/);
+  assert.match(page, new RegExp(`<tr id="clan-${id}"`));
+  // Neuer Monat: derselbe Filter, dieselben Spieler
+  const nov = (await admin.request('/admin/abrechnung?monat=2026-11&trazi=leiste')).text;
+  assert.match(nov, /<strong>Novembar 2026<\/strong>/);
+  assert.match(nov, /value="leiste"/);
+  assert.doesNotMatch(new RegExp(`<tr id="clan-${id}"([^>]*)>`).exec(nov)[1], /hidden/);
+  // Andere Seiten mit Monatsauswahl bleiben ohne klebende Leiste
+  assert.doesNotMatch((await admin.request(`/admin/abrechnung/${id}?monat=2026-10`)).text, /sticky-bar/);
+  // Stil: klebt unter der Kopfzeile; auf dem Handy kompakt (Kopfzeile scrollt weg, kurze Monatsknöpfe)
+  const css = (await client().request('/static/style.css')).text;
+  assert.match(css, /\.sticky-bar \{[^}]*position: sticky;[^}]*top: var\(--sticky-top, 0px\)/);
+  assert.match(css, /@media \(max-width: 700px\) \{[^@]*body:has\(\.sticky-bar\) \.site-header \{ position: static; \}[^@]*\.sticky-bar \.month-nav-label \{ display: none; \}/);
+  // Skript: Position beim Monatswechsel merken
+  const js = (await client().request('/static/app.js')).text;
+  assert.match(js, /bt-month-pos/);
+  assert.match(js, /--sticky-top/);
+});

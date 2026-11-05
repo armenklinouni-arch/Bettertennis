@@ -212,3 +212,48 @@ document.addEventListener('change', (event) => {
     });
   });
 })();
+
+// Iznosi: traka s mjesecom i filterom ostaje gore (odmah ispod zaglavlja). Pri promjeni mjeseca
+// stranica ostaje na istom mjestu u listi: pamti se član koji je bio na vrhu liste i njegov položaj.
+(() => {
+  const KEY = 'bt-month-pos';
+  document.addEventListener('DOMContentLoaded', () => {
+    const bar = document.querySelector('[data-sticky-bar]');
+    if (!bar) return;
+    const header = document.querySelector('.site-header');
+    const setTop = () => {
+      const sticky = header && window.getComputedStyle(header).position === 'sticky';
+      document.documentElement.style.setProperty('--sticky-top', `${sticky ? header.offsetHeight : 0}px`);
+    };
+    const markStuck = () => {
+      const top = parseFloat(window.getComputedStyle(bar).top) || 0;
+      bar.classList.toggle('is-stuck', window.scrollY > 0 && bar.getBoundingClientRect().top <= top + 1);
+    };
+    setTop();
+    markStuck();
+    window.addEventListener('resize', () => { setTop(); markStuck(); });
+    window.addEventListener('scroll', markStuck, { passive: true });
+
+    const visibleRows = () => Array.from(document.querySelectorAll('tbody[data-filter-list] tr[data-filter]')).filter((r) => !r.hidden);
+    bar.querySelectorAll('.month-nav a').forEach((link) => {
+      link.addEventListener('click', () => {
+        if (window.scrollY <= 0) return;
+        const barBottom = bar.getBoundingClientRect().bottom;
+        const row = visibleRows().find((r) => r.getBoundingClientRect().bottom > barBottom + 4);
+        const data = { y: window.scrollY, row: row ? row.id : null, offset: row ? row.getBoundingClientRect().top : 0, at: Date.now() };
+        try { window.sessionStorage.setItem(KEY, JSON.stringify(data)); } catch { /* bez pohrane */ }
+      });
+    });
+
+    let saved = null;
+    try {
+      saved = JSON.parse(window.sessionStorage.getItem(KEY) || 'null');
+      window.sessionStorage.removeItem(KEY);
+    } catch { saved = null; }
+    if (!saved || Date.now() - saved.at > 30000) return;
+    const row = saved.row ? document.getElementById(saved.row) : null;
+    const y = row && !row.hidden ? row.getBoundingClientRect().top + window.scrollY - saved.offset : saved.y;
+    window.scrollTo(0, Math.max(0, y));
+    markStuck();
+  });
+})();

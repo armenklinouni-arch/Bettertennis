@@ -1277,8 +1277,10 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       wide: true,
       body: html`
       <div class="page-head"><h1>Mjesečni iznosi</h1></div>
-      ${monthNav('/admin/abrechnung', month, filterParam)}
-      ${listFilter({ key: 'iznosi', action: '/admin/abrechnung', value: q, clearHref: `/admin/abrechnung?monat=${month}`, hidden: { monat: month } })}
+      <div class="sticky-bar" data-sticky-bar>
+        ${monthNav('/admin/abrechnung', month, filterParam)}
+        ${listFilter({ key: 'iznosi', action: '/admin/abrechnung', value: q, clearHref: `/admin/abrechnung?monat=${month}`, hidden: { monat: month } })}
+      </div>
       <div class="btn-row payment-row">
         <span class="muted">Odobreno za članove: ${rows.filter((r) => r.st.released).length} od ${rows.length}</span>
         <form method="post" action="/admin/abrechnung/odobri-sve" class="inline-form" data-confirm="Odobriti obračun za ${D.monthLabel(month)} svim članovima?">

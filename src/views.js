@@ -369,11 +369,11 @@ function monthNav(baseUrl, month, extraQuery = '', { min = null, max = null } = 
   <div class="month-nav">
     ${min && prev < min
       ? html`<span></span>`
-      : html`<a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${prev}${extraQuery}">‹ ${D.monthLabel(prev)}</a>`}
+      : html`<a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${prev}${extraQuery}" aria-label="${D.monthLabel(prev)}">‹ <span class="month-nav-label">${D.monthLabel(prev)}</span></a>`}
     <strong>${D.monthLabel(month)}</strong>
     ${max && next > max
       ? html`<span></span>`
-      : html`<a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${next}${extraQuery}">${D.monthLabel(next)} ›</a>`}
+      : html`<a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${next}${extraQuery}" aria-label="${D.monthLabel(next)}"><span class="month-nav-label">${D.monthLabel(next)}</span> ›</a>`}
   </div>`;
 }
 
