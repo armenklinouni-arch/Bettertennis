@@ -4034,3 +4034,54 @@ test('Spielerauswahl mit Kästchen: alphabetisch (bosnisch) und spaltenweise von
   assert.doesNotMatch(rule, /display: grid/);
   assert.match(css, /\.recipient-list > \* \{[^}]*break-inside: avoid;/);
 });
+
+// ---------------------------------------------------------------- Filter in der Kästchen-Liste (Termini „Igrači u grupi“, Grupe)
+test('Kästchen-Liste: eigener Filter, „Odabrano: N“ mit Namen, × löscht; ausgewählte bleiben beim Speichern erhalten', async () => {
+  const { releaseWeek } = require('../src/weeks');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const h = makeMember('Lejla Hadžić', 'ck.lejla');
+  const a = makeMember('Adnan Alić', 'ck.adnan');
+  makeMember('Zoran Zukić', 'ck.zoran');
+  const toolsOf = (text) => {
+    const m = /<div class="checklist-tools" data-checklist-filter>([\s\S]*?)<\/p>\s*<\/div>/.exec(text);
+    assert.ok(m, 'Filter fehlt');
+    return m[1];
+  };
+  const labelAttrs = (text, id) => (new RegExp(`<label class="check"([^>]*)><input type="checkbox" name="member_ids" value="${id}"`).exec(text) || [])[1];
+
+  // Termini: neues Training – Filter (für dieses Feld), X, „Odabrano: 0“
+  const termini = (await admin.request('/admin/termine?woche=2026-10-05')).text;
+  let tools = toolsOf(termini);
+  assert.match(tools, /<label for="filter-igraci">Filter<\/label>/);
+  assert.match(tools, /<input id="filter-igraci" type="text"[^>]*data-checklist-input/);
+  assert.doesNotMatch(tools, /<input id="filter-igraci"[^>]*name=/); // wird nie mitgeschickt
+  assert.match(tools, /<button type="button" class="filter-clear" aria-label="Obriši filter" hidden>×<\/button>/);
+  assert.match(tools, /<p class="checklist-selected" aria-live="polite">Odabrano: <strong data-count>0<\/strong><span data-names><\/span>/);
+  // Suchtext pro Spieler (ohne Akzente/Groß-Klein): „hadzic“ passt
+  assert.match(labelAttrs(termini, h), /data-filter="[^"]*lejla hadzic/);
+
+  // Gruppentraining anlegen und bearbeiten: „Odabrano: 2“ mit Namen (alphabetisch)
+  await admin.post('/admin/termine', { kind: 'group', user_id: '', member_ids: [String(h), String(a)], date: '2026-10-21', start_time: '19:05', duration_min: '60', court: '', price: '', repeat: '1' }, '/admin/termine');
+  const lesson = db.prepare("SELECT * FROM lessons WHERE user_id = ? AND date = '2026-10-21' AND start_time = '19:05'").get(h);
+  assert.ok(lesson);
+  const edit = (await admin.request(`/admin/termine/${lesson.id}`)).text;
+  tools = toolsOf(edit);
+  assert.match(tools, /Odabrano: <strong data-count>2<\/strong><span data-names>: Adnan Alić, Lejla Hadžić<\/span>/);
+  assert.match(edit, new RegExp(`name="member_ids" value="${h}" checked`));
+
+  // Grupe: dasselbe
+  const grupe = (await admin.request('/admin/grupe')).text;
+  tools = toolsOf(grupe);
+  assert.match(tools, /<label for="filter-clanovi-grupe">Filter<\/label>/);
+  assert.match(tools, /Odabrano: <strong data-count>0<\/strong>/);
+  assert.match(labelAttrs(grupe, h), /data-filter="[^"]*lejla hadzic/);
+  await admin.post('/admin/grupe', { name: 'Filter grupa', member_ids: [String(a), String(h)] }, '/admin/grupe');
+  const gid = db.prepare("SELECT id FROM training_groups WHERE name = 'Filter grupa'").get().id;
+  assert.match(toolsOf((await admin.request(`/admin/grupe/${gid}`)).text), /Odabrano: <strong data-count>2<\/strong><span data-names>: Adnan Alić, Lejla Hadžić<\/span>/);
+
+  // Skript für Filtern beim Tippen und Zählen ist eingebunden (Enter im Filterfeld schickt nichts ab)
+  const js = (await client().request('/static/app.js')).text;
+  assert.match(js, /data-checklist-filter/);
+  assert.match(js, /Odabrano/);
+});

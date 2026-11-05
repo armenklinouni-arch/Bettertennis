@@ -257,3 +257,68 @@ document.addEventListener('change', (event) => {
     markStuck();
   });
 })();
+
+// Lista igrača s kvačicama (Termini „Igrači u grupi“, Grupe): vlastiti filter i „Odabrano: N“ s imenima.
+// Skriveni igrači ostaju označeni i šalju se s obrascem; filter se ne šalje.
+(() => {
+  const normalize = (t) => String(t || '').toLowerCase().replace(/đ/g, 'd').normalize('NFD')
+    .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  const collator = new Intl.Collator('bs', { sensitivity: 'base', numeric: true });
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-checklist-filter]').forEach((tools) => {
+      const box = tools.closest('fieldset') || tools.parentElement;
+      const list = box && box.querySelector('.recipient-list');
+      if (!list) return;
+      const filterWrap = tools.querySelector('.checklist-filter');
+      const input = tools.querySelector('[data-checklist-input]');
+      const clear = tools.querySelector('.filter-clear');
+      const count = tools.querySelector('[data-count]');
+      const names = tools.querySelector('[data-names]');
+      const items = Array.from(list.querySelectorAll('label[data-filter]'));
+      let empty = list.querySelector('.checklist-empty');
+      if (!empty) {
+        empty = document.createElement('p');
+        empty.className = 'muted small checklist-empty';
+        empty.textContent = 'Nema igrača za ovaj filter.';
+        empty.hidden = true;
+        list.appendChild(empty);
+      }
+      if (filterWrap) filterWrap.hidden = false;
+
+      const updateCount = () => {
+        const chosen = items.filter((l) => l.querySelector('input[type="checkbox"]').checked)
+          .map((l) => l.querySelector('span').textContent.replace(/\s*\(neaktivan\)\s*$/, '').trim())
+          .sort((a, b) => collator.compare(a, b));
+        count.textContent = String(chosen.length);
+        names.textContent = chosen.length ? `: ${chosen.join(', ')}` : '';
+      };
+      const apply = () => {
+        const terms = normalize(input.value).split(' ').filter(Boolean);
+        let shown = 0;
+        items.forEach((l) => {
+          const ok = terms.every((t) => l.getAttribute('data-filter').includes(t));
+          l.hidden = !ok;
+          if (ok) shown += 1;
+        });
+        empty.hidden = shown > 0;
+        if (clear) clear.hidden = !input.value;
+      };
+      input.addEventListener('input', apply);
+      // Enter u filteru ne šalje obrazac (npr. novi termin).
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') event.preventDefault();
+      });
+      if (clear) {
+        clear.addEventListener('click', () => {
+          input.value = '';
+          apply();
+          input.focus();
+        });
+      }
+      // Kvačice (i automatsko označavanje kroz „stalnu grupu“) odmah ažuriraju „Odabrano“.
+      const form = box.closest('form') || box;
+      form.addEventListener('change', () => window.setTimeout(updateCount, 0));
+      updateCount();
+    });
+  });
+})();

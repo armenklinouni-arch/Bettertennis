@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { html } = require('./html');
 const D = require('./dates');
+const { sortByName } = require('./search');
 const { formatMoney } = require('./money');
 const { formatHours } = require('./billing');
 const { zonedTimeToUtc } = require('./weeks');
@@ -340,6 +341,23 @@ function releaseBadge(statement) {
     : html`<span class="tag tag-pending">U pripremi</span>`;
 }
 
+// Filter i „Odabrano: N“ iznad liste igrača s kvačicama (Termini „Igrači u grupi“, Grupe).
+// Polje filtera nema name (ne šalje se) i prikazuje ga tek JavaScript, da Enter ne pošalje obrazac.
+function checklistTools({ key, members, selected }) {
+  const chosen = sortByName(members.filter((m) => selected.has(String(m.id))));
+  return html`
+    <div class="checklist-tools" data-checklist-filter>
+      <div class="list-filter checklist-filter" hidden>
+        <label for="filter-${key}">Filter</label>
+        <div class="filter-box">
+          <input id="filter-${key}" type="text" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Ime igrača" data-checklist-input>
+          <button type="button" class="filter-clear" aria-label="Obriši filter" hidden>×</button>
+        </div>
+      </div>
+      <p class="checklist-selected" aria-live="polite">Odabrano: <strong data-count>${chosen.length}</strong><span data-names>${chosen.length ? `: ${chosen.map((m) => m.name).join(', ')}` : ''}</span></p>
+    </div>`;
+}
+
 // Polje „Filter“ iznad liste. Bez JavaScripta radi preko ?trazi=…; s JavaScriptom filtrira već pri kucanju.
 function listFilter({ key, action, value = '', clearHref, hidden = {} }) {
   return html`
@@ -379,7 +397,7 @@ function monthNav(baseUrl, month, extraQuery = '', { min = null, max = null } = 
 }
 
 module.exports = {
-  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, lessonTimeRange, lessonTags,
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, checklistTools, lessonTimeRange, lessonTags,
   lessonKindLabel, lessonStatusLabel, activeStatusLabel, isLessonOver, LESSON_KINDS, LESSON_STATUSES, LESSON_PLANNED, SITE_NAME,
   ATTENDANCE, attendanceLabel, attendanceSummary, billingMark,
 };

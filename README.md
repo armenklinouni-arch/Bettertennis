@@ -131,6 +131,9 @@ Tests: `npm test`
 - Überall, wo Spieler mit Kästchen ausgewählt werden (Termini „Igrači u grupi“, Grupe, Aktuelnosti, Roditelji),
   stehen die Namen alphabetisch nach bosnischem Alphabet (C, Č, Ć, D, Dž, Đ …) und **spaltenweise von oben nach
   unten**; die Spalten sind etwa gleich lang, auf dem Handy entsprechend weniger Spalten.
+- In Termini („Igrači u grupi“) und Grupe gibt es direkt darüber ein eigenes **„Filter“**-Feld (filtert beim Tippen,
+  ohne Groß-/Kleinschreibung und č/ć/š/ž/đ; **×** löscht es) und die Zeile **„Odabrano: N“** mit den Namen der
+  angehakten Spieler. Angehakte Spieler bleiben angehakt und werden mitgespeichert, auch wenn der Filter sie ausblendet.
 
 ## Status-Anzeige der Termine
 

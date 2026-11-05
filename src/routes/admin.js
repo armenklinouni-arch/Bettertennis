@@ -13,7 +13,7 @@ const {
   setMonthMode, closeMonth, reopenMonth, isMonthClosed, liveTotal, modeForMonth,
 } = require('../billing');
 const {
-  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, lessonTimeRange, lessonTags, lessonKindLabel, lessonStatusLabel, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, LESSON_PLANNED,
+  layout, csrfField, errorList, weekView, statementTable, monthNav, paymentBadge, releaseBadge, listFilter, checklistTools, lessonTimeRange, lessonTags, lessonKindLabel, lessonStatusLabel, LESSON_KINDS, LESSON_STATUSES, activeStatusLabel, LESSON_PLANNED,
   ATTENDANCE, attendanceSummary, billingMark,
 } = require('../views');
 const { requireAdmin, hashPassword, readablePassword, endSessionsFor } = require('../auth');
@@ -697,8 +697,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       </label>
       <fieldset class="span-2 recipients group-members">
         <legend>Igrači u grupi (za grupni trening označi ${GROUP_MIN}–${GROUP_MAX} igrača)</legend>
+        ${checklistTools({ key: 'igraci', members, selected: new Set((v.member_ids || []).map(String)) })}
         <div class="recipient-list">
-          ${sortByName(members).map((m) => html`<label class="check"><input type="checkbox" name="member_ids" value="${m.id}"${(v.member_ids || []).map(String).includes(String(m.id)) ? ' checked' : ''}><span>${m.name}</span></label>`)}
+          ${sortByName(members).map((m) => html`<label class="check" data-filter="${searchText(m.name, m.username)}"><input type="checkbox" name="member_ids" value="${m.id}"${(v.member_ids || []).map(String).includes(String(m.id)) ? ' checked' : ''}><span>${m.name}</span></label>`)}
         </div>
       </fieldset>
       <label>Datum *<input name="date" type="date" required value="${v.date || ''}"></label>

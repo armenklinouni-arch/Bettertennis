@@ -469,6 +469,16 @@ body:has(.sticky-bar) tr[data-filter] { scroll-margin-top: 220px; }
 .log-filter label { min-width: 200px; }
 .activity-log td.when { white-space: nowrap; }
 
+/* Filter i „Odabrano“ iznad liste igrača s kvačicama */
+.checklist-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding-left: 26px; }
+.checklist-tools .list-filter { margin: 0; flex: 0 1 320px; }
+.checklist-tools .list-filter[hidden] { display: none; }
+.checklist-selected { margin: 0; font-size: 0.9rem; color: var(--muted); }
+button.filter-clear { border: 0; background: transparent; padding: 0; cursor: pointer; font: inherit; font-size: 1.15rem; }
+button.filter-clear:hover { background: var(--border); }
+.checklist-selected strong { color: var(--text); }
+.recipient-list > label[hidden] { display: none; }
+
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
 

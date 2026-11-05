@@ -2,11 +2,11 @@
 
 const express = require('express');
 const { html } = require('../html');
-const { layout, csrfField, errorList } = require('../views');
+const { layout, csrfField, errorList, checklistTools } = require('../views');
 const { requireAdmin } = require('../auth');
 const { str } = require('./public');
 const { logActivity, changes } = require('../activity');
-const { sortByName } = require('../search');
+const { sortByName, searchText } = require('../search');
 
 // Stalne grupe (npr. „Grupa 1“) s članovima koji često treniraju zajedno.
 // Služe kao predložak: kod kreiranja termina izborom grupe automatski se označe njeni članovi.
@@ -63,10 +63,11 @@ function groupRoutes(db) {
         <label>Naziv grupe *<input name="name" required maxlength="60" value="${values.name || ''}" placeholder="npr. Grupa 1"></label>
         <fieldset class="recipients">
           <legend>Članovi grupe (${GROUP_MIN}–${GROUP_MAX})</legend>
+          ${members.length ? checklistTools({ key: 'clanovi-grupe', members, selected }) : ''}
           <div class="recipient-list">
             ${members.length === 0
               ? html`<p class="muted">Još nema aktivnih članova.</p>`
-              : sortByName(members).map((m) => html`<label class="check"><input type="checkbox" name="member_ids" value="${m.id}"${selected.has(String(m.id)) ? ' checked' : ''}><span>${m.name}${m.active ? '' : ' (neaktivan)'}</span></label>`)}
+              : sortByName(members).map((m) => html`<label class="check" data-filter="${searchText(m.name, m.username)}"><input type="checkbox" name="member_ids" value="${m.id}"${selected.has(String(m.id)) ? ' checked' : ''}><span>${m.name}${m.active ? '' : ' (neaktivan)'}</span></label>`)}
           </div>
         </fieldset>
         <label>Napomena<input name="notes" maxlength="300" value="${values.notes || ''}" placeholder="npr. srijedom 18 h, napredni"></label>
