@@ -163,6 +163,18 @@ CREATE TABLE IF NOT EXISTS parent_account_players (
 );
 
 -- Linkovi za novu lozinku („Zaboravljena lozinka“): čuva se samo hash tokena; jednokratni, ističu nakon 60 min.
+-- Dnevnik aktivnosti (samo za čitanje; zapisi stariji od 12 mjeseci se brišu automatski).
+CREATE TABLE IF NOT EXISTS activity_log (
+  id         INTEGER PRIMARY KEY,
+  at         TEXT NOT NULL,
+  actor_role TEXT NOT NULL,
+  actor_name TEXT NOT NULL,
+  area       TEXT NOT NULL,
+  text       TEXT NOT NULL,
+  search     TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS activity_log_at ON activity_log (at);
+
 -- Prijave (sesije): kolačić nosi samo nasumični token, ovdje se čuva njegov hash.
 -- Odjava i promjena lozinke brišu redove, pa djeluju odmah. kind: user | trainer | parent.
 CREATE TABLE IF NOT EXISTS sessions (

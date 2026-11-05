@@ -18,6 +18,7 @@ const {
 } = require('../views');
 const { requireAdmin, hashPassword, readablePassword, endSessionsFor } = require('../auth');
 const { searchText, matchesSearch } = require('../search');
+const { logActivity, changes, money } = require('../activity');
 
 // Upit iz polja „Filter“ (?trazi=…).
 const filterQuery = (v) => (typeof v === 'string' ? v.trim().slice(0, 100) : '');
@@ -62,6 +63,9 @@ function toId(v) {
 module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_EMAIL_DEFAULT, mailDelayMs = 600 } = {}) {
   const router = express.Router();
   router.use(requireAdmin);
+  // Dnevnik aktivnosti
+  const log = (req, area, text) => logActivity(db, req, area, text);
+  const realEmail = (e) => (e && !isPlaceholderEmail(e) ? e : '');
 
   const getMember = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'member'");
   const allMembers = db.prepare("SELECT * FROM users WHERE role = 'member' ORDER BY active DESC, name COLLATE NOCASE");
@@ -174,6 +178,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       const result = mailer
         ? await sendBackupMail(db, mailer, { to: backupEmail, reason: 'ručno' })
         : { ok: false, error: 'slanje e-maila nije podešeno' };
+      log(req, 'Sistem', result.ok ? `sigurnosna kopija poslana e-mailom na ${backupEmail}` : `sigurnosna kopija nije poslana (${result.error})`);
       if (result.ok) res.flash('success', `Sigurnosna kopija je poslana na ${backupEmail}.`);
       else res.flash('error', `Sigurnosna kopija nije poslana: ${result.error}. Detalji su u logovima (Railway → Deploy Logs).`);
       res.redirect('/admin');
@@ -230,14 +235,18 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
   router.post('/interessenten/:id/status', (req, res) => {
     const status = req.body.status;
     if (!LEAD_STATUSES.includes(status)) return res.status(400).send('Neispravan status.');
+    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(toId(req.params.id));
     const r = db.prepare('UPDATE leads SET status = ? WHERE id = ?').run(status, toId(req.params.id));
     if (!r.changes) return notFound(res, 'upit');
+    log(req, 'Zainteresovani', `${lead.name} – ${changes([['Status', lead.status, status]]) || `status: ${status}`}`);
     res.flash('success', 'Status je ažuriran.');
     res.redirect('/admin/interessenten');
   });
 
   router.post('/interessenten/:id/loeschen', (req, res) => {
+    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(toId(req.params.id));
     db.prepare('DELETE FROM leads WHERE id = ?').run(toId(req.params.id));
+    if (lead) log(req, 'Zainteresovani', `upit obrisan – ${lead.name}`);
     res.flash('success', 'Upit je obrisan.');
     res.redirect('/admin/interessenten');
   });
@@ -468,6 +477,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       db.exec('ROLLBACK');
       throw err;
     }
+    log(req, 'Članovi', `više novih članova dodano (${created.length}): ${created.map((c) => c.name).join(', ')}`);
     // Stranica s lozinkama u čistom tekstu ne smije ostati u kešu preglednika.
     res.set('Cache-Control', 'no-store');
     res.send(String(bulkPage(req, { created })));
@@ -504,6 +514,8 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     if (leadId) {
       db.prepare("UPDATE leads SET status = 'član', converted_user_id = ? WHERE id = ?").run(r.lastInsertRowid, leadId);
     }
+    log(req, 'Članovi', `novi član dodan – ${values.name} (${values.username}${realEmail(values.email) ? `, ${values.email}` : ''}${
+      rate ? `, ${money(rate)}/h` : ''}${fee ? `, članarina ${money(fee)}` : ''})`);
     res.flash('success', `Član ${values.name} je kreiran. Prijava: ${values.username} / lozinka: ${values.password}`);
     res.redirect(`/admin/mitglieder/${r.lastInsertRowid}`);
   });
@@ -542,13 +554,26 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       `UPDATE users SET name = ?, username = ?, email = ?, phone = ?, hourly_rate_cents = ?, monthly_fee_cents = ?, active = ?, notes = ?
         WHERE id = ?`
     ).run(values.name, values.username, values.email, values.phone || null, rate, fee, values.active ? 1 : 0, values.notes || null, member.id);
+    const diff = changes([
+      ['Ime', member.name, values.name],
+      ['Korisničko ime', member.username, values.username],
+      ['E-mail', realEmail(member.email), realEmail(values.email)],
+      ['Telefon', member.phone, values.phone],
+      ['Cijena po satu', money(member.hourly_rate_cents), money(rate)],
+      ['Članarina', money(member.monthly_fee_cents), money(fee)],
+      ['Status', member.active ? 'aktivan' : 'neaktivan', values.active ? 'aktivan' : 'neaktivan'],
+    ]);
+    const notesChanged = (member.notes || '') !== (values.notes || '');
+    if (diff || notesChanged) log(req, 'Članovi', `${values.name} izmijenjen – ${[diff, notesChanged ? 'napomena izmijenjena' : ''].filter(Boolean).join(', ')}`);
     if (values.password) {
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(values.password), member.id);
       endSessionsFor(db, 'user', member.id, { keep: req.session.sid });
+      log(req, 'Članovi', `${values.name} – lozinka promijenjena`);
     }
     if (req.body.reprice === '1') {
       db.prepare('UPDATE lessons SET price_cents = CAST(ROUND(? * duration_min / 60.0) AS INTEGER) WHERE user_id = ? AND date >= ?')
         .run(rate, member.id, D.todayISO());
+      log(req, 'Termini', `${values.name} – cijene budućih termina preračunate na ${money(rate)}/h`);
     }
     res.flash('success', `Promjene za ${values.name} su sačuvane.${values.password ? ' Nova lozinka je postavljena.' : ''}`);
     res.redirect(`/admin/mitglieder/${member.id}`);
@@ -558,6 +583,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     const member = getMember.get(toId(req.params.id));
     if (!member) return notFound(res, 'član');
     db.prepare('DELETE FROM users WHERE id = ?').run(member.id);
+    log(req, 'Članovi', `član obrisan – ${member.name} (${member.username || ''})`);
     res.flash('success', `${member.name} je obrisan/a.`);
     res.redirect('/admin/mitglieder');
   });
@@ -577,6 +603,14 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
   function lessonSet(lesson) {
     return lesson.group_id ? groupRows.all(lesson.group_id) : [lesson];
   }
+
+  // Dnevnik: kratak opis termina, npr. „Individualni trening, Utorak, 20.10.2026. 18:05–19:05, Ali Hadžić“.
+  const userName = (id) => (db.prepare('SELECT name FROM users WHERE id = ?').get(id) || {}).name || '?';
+  const trainerName = (id) => (id ? (getTrainer.get(id) || {}).name || '?' : '');
+  function lessonDesc(l, names) {
+    return `${LESSON_KINDS[l.kind] || LESSON_KINDS.individual}, ${D.formatDateLong(l.date)} ${lessonTimeRange(l)}, ${names}`;
+  }
+  const lessonSetDesc = (lesson) => lessonDesc(lesson, lessonSet(lesson).map((r) => userName(r.user_id)).join(', '));
 
   function transaction(fn) {
     db.exec('BEGIN');
@@ -862,17 +896,20 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       res.redirect(back);
     };
   }
-  router.post('/termine/sedmica/objavi', weekAction((monday) => {
+  router.post('/termine/sedmica/objavi', weekAction((monday, req) => {
     releaseWeek(db, monday);
+    log(req, 'Termini', `sedmica od ${D.formatDate(monday)} objavljena`);
     return `Sedmica od ${D.formatDate(monday)} je objavljena – članovi je sada vide.`;
   }));
-  router.post('/termine/sedmica/sakrij', weekAction((monday) => {
+  router.post('/termine/sedmica/sakrij', weekAction((monday, req) => {
     const autoOff = hideWeek(db, monday);
+    log(req, 'Termini', `sedmica od ${D.formatDate(monday)} ponovo skrivena${autoOff ? ' (automatska objava isključena)' : ''}`);
     return `Sedmica od ${D.formatDate(monday)} je ponovo skrivena.${autoOff ? ' Automatska objava za nju je isključena.' : ''}`;
   }));
   router.post('/termine/sedmica/auto', weekAction((monday, req) => {
     const on = req.body.auto === '1';
     setAutoRelease(db, monday, on);
+    log(req, 'Termini', `sedmica od ${D.formatDate(monday)} – automatska objava ${on ? 'uključena' : 'isključena'}`);
     return on ? `Automatska objava za sedmicu od ${D.formatDate(monday)} je uključena.` : `Automatska objava za sedmicu od ${D.formatDate(monday)} je isključena.`;
   }));
 
@@ -887,6 +924,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       for (let i = 0; i < v.repeat; i++) insertOccurrence(v, participants, D.addDays(v.date, 7 * i));
     });
     const who = participantNames(participants);
+    const prices = [...new Set(participants.map((p) => money(p.price)))].join(' / ');
+    log(req, 'Termini', `${v.repeat > 1 ? `novi termini (${v.repeat}× sedmično, prvi)` : 'novi termin'} – ${lessonDesc(v, who)}, cijena ${prices}${
+      v.trainer_id ? `, trener ${trainerName(v.trainer_id)}` : ''}`);
     res.flash('success', v.repeat > 1
       ? `Kreirano ${v.repeat} sedmičnih termina (${LESSON_KINDS[v.kind]}) za: ${who}, od ${D.formatDateLong(v.date)}`
       : `${LESSON_KINDS[v.kind]} za: ${who} kreiran je za ${D.formatDateLong(v.date)}`);
@@ -989,6 +1029,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     if (attendance && !ATTENDANCE[attendance]) return res.status(400).send('Neispravan status.');
     const note = attendance === 'other' ? str(req.body.note, 200) || null : null;
     db.prepare('UPDATE lessons SET attendance = ?, attendance_note = ? WHERE id = ?').run(attendance || null, note, row.id);
+    const label = (a, n) => (a ? `${ATTENDANCE[a] || a}${n ? ` (${n})` : ''}` : '–');
+    const diff = changes([['Prisustvo', label(row.attendance, row.attendance_note), label(attendance, note)]]);
+    if (diff) log(req, 'Termini', `${lessonDesc(row, userName(row.user_id))} – ${diff}`);
     res.flash('success', 'Status je sačuvan.');
     res.redirect(`/admin/termine/${lesson.id}#igraci`);
   });
@@ -1003,6 +1046,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     }
     const billable = row.billable === 0 ? 1 : 0;
     db.prepare('UPDATE lessons SET billable = ? WHERE id = ?').run(billable, row.id);
+    log(req, 'Termini', `${lessonDesc(row, member.name)} – ${billable ? 'ponovo uključen u obračun' : 'isključen iz obračuna'}`);
     res.flash('success', billable ? 'Termin je ponovo u obračunu.' : 'Termin je isključen iz obračuna.');
     res.redirect(`/admin/termine/${lesson.id}#igraci`);
   });
@@ -1054,6 +1098,19 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     // Termin (ili cijelu grupu) zamjenjujemo novim redovima s istim group_id.
     // Status prisustva i isključenje iz obračuna ostaju sačuvani za svakog igrača.
     const kept = new Map(lessonSet(lesson).map((r) => [r.user_id, r]));
+    const oldNames = [...kept.values()].map((r) => userName(r.user_id)).join(', ');
+    const statusOf = (c, l) => (c ? LESSON_STATUSES.cancelled : activeStatusLabel(l));
+    const diff = changes([
+      ['Vrsta', LESSON_KINDS[lesson.kind] || LESSON_KINDS.individual, LESSON_KINDS[v.kind]],
+      ['Igrači', oldNames, participantNames(participants)],
+      ['Datum', D.formatDate(lesson.date), D.formatDate(v.date)],
+      ['Vrijeme', lessonTimeRange(lesson), lessonTimeRange(v)],
+      ['Teren', lesson.court, v.court],
+      ['Trener', trainerName(lesson.trainer_id), trainerName(v.trainer_id)],
+      ['Cijena', money(lesson.price_cents), money(participants[0].price)],
+      ['Status', statusOf(lesson.cancelled, lesson), statusOf(v.cancelled, v)],
+      ['Napomena', lesson.note, v.note],
+    ]);
     transaction(() => {
       for (const row of kept.values()) deleteLesson.run(row.id);
       insertOccurrence(v, participants, v.date, lesson.group_id);
@@ -1068,6 +1125,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
         if (old) restore.run(old.attendance, old.attendance_note, old.billable, old.display_amount_cents ?? null, old.display_note ?? null, row.id);
       }
     });
+    log(req, 'Termini', `termin izmijenjen – ${lessonDesc(v, participantNames(participants))}${diff ? ` – ${diff}` : ' (bez promjena)'}`);
     res.flash('success', 'Termin je sačuvan.');
     res.redirect(`/admin/termine?woche=${D.mondayOf(v.date)}`);
   });
@@ -1080,6 +1138,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     transaction(() => {
       for (const row of lessonSet(lesson)) update.run(cancelled, row.id);
     });
+    log(req, 'Termini', `${lessonSetDesc(lesson)} – status: ${cancelled ? LESSON_STATUSES.cancelled : activeStatusLabel(lesson)}`);
     res.flash('success', `Status termina: ${cancelled ? LESSON_STATUSES.cancelled : activeStatusLabel(lesson)}.`);
     const back = typeof req.body.back === 'string' && req.body.back.startsWith('/admin/termine') ? req.body.back : `/admin/termine?woche=${D.mondayOf(lesson.date)}`;
     res.redirect(back);
@@ -1173,6 +1232,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
         build: cancelMail(info, message), delayMs: mailDelayMs,
         logLabel: 'E-mail o otkazivanju', logContext: `termin ${info.date} ${info.time}`,
       });
+      if (result.sent || result.failed) {
+        log(req, 'Termini', `e-mail o otkazivanju – ${lessonSetDesc(lesson)}: poslano ${result.sent}${result.failed ? `, nije poslano ${result.failed}` : ''}`);
+      }
       res.flash(result.failed ? 'error' : 'success', resultMessage(result));
       res.redirect(back);
     } catch (err) {
@@ -1183,9 +1245,11 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
   router.post('/termine/:id/loeschen', (req, res) => {
     const lesson = getLesson.get(toId(req.params.id));
     if (!lesson) return notFound(res, 'termin');
+    const desc = lessonSetDesc(lesson);
     transaction(() => {
       for (const row of lessonSet(lesson)) deleteLesson.run(row.id);
     });
+    log(req, 'Termini', `termin obrisan – ${desc}`);
     res.flash('success', 'Termin je obrisan.');
     res.redirect(`/admin/termine?woche=${D.mondayOf(lesson.date)}`);
   });
@@ -1494,6 +1558,8 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       return res.send(String(lessonAmountPage(req, ctx, { amount, note, errors: ['Neispravan iznos (npr. 25,00).'] })));
     }
     db.prepare('UPDATE lessons SET display_amount_cents = ?, display_note = ? WHERE id = ?').run(cents, note || null, ctx.lesson.id);
+    log(req, 'Iznosi', `${ctx.member.name}, ${D.monthLabel(ctx.month)} – termin ${D.formatDate(ctx.lesson.date)} ${lessonTimeRange(ctx.lesson)}: ${
+      changes([['Iznos', money(ctx.lesson.display_amount_cents), money(cents)], ['Napomena', ctx.lesson.display_note, note]]) || 'bez promjena'}`);
     res.flash('success', `Iznos za termin ${D.formatDate(ctx.lesson.date)} je sačuvan: ${formatMoney(cents)}.`);
     res.redirect(`${ctx.detailUrl}#termin-${ctx.lesson.id}`);
   });
@@ -1502,6 +1568,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     const ctx = displayLessonContext(req, res);
     if (!ctx) return;
     db.prepare('UPDATE lessons SET display_amount_cents = NULL, display_note = NULL WHERE id = ?').run(ctx.lesson.id);
+    log(req, 'Iznosi', `${ctx.member.name}, ${D.monthLabel(ctx.month)} – iznos za termin ${D.formatDate(ctx.lesson.date)} ${lessonTimeRange(ctx.lesson)} uklonjen (bio ${money(ctx.lesson.display_amount_cents)})`);
     res.flash('success', `Iznos za termin ${D.formatDate(ctx.lesson.date)} je uklonjen.`);
     res.redirect(`${ctx.detailUrl}#termin-${ctx.lesson.id}`);
   });
@@ -1523,7 +1590,10 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       res.flash('error', 'Neispravan iznos za treninge.');
       return res.redirect(`${detailUrl}#iznos-treninga`);
     }
+    const before = monthlyStatement(db, member, month).display;
     setDisplayTotal(db, member, month, cents);
+    const auto = (c) => (c === null || c === undefined ? 'automatski zbir' : money(c));
+    log(req, 'Iznosi', `${member.name}, ${D.monthLabel(month)} – ${changes([['Ručni iznos za treninge', auto(before && before.override), auto(cents)]]) || 'iznos za treninge bez promjena'}`);
     res.flash('success', cents === null ? 'Iznos za treninge se ponovo računa automatski.' : `Iznos za treninge je ručno postavljen: ${formatMoney(cents)}.`);
     res.redirect(`${detailUrl}#iznos-treninga`);
   });
@@ -1536,6 +1606,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     try {
       for (const m of members) setReleased(db, m.id, req.body.month, released);
       db.exec('COMMIT');
+      log(req, 'Iznosi', `${D.monthLabel(req.body.month)}: ${released ? 'obračun odobren svim članovima' : 'svi obračuni vraćeni u pripremu'}`);
     } catch (err) {
       db.exec('ROLLBACK');
       throw err;
@@ -1550,6 +1621,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     if (!D.isValidMonth(req.body.month)) return res.status(400).send('Neispravan mjesec.');
     const released = req.body.released === '1';
     setReleased(db, member.id, req.body.month, released);
+    log(req, 'Iznosi', `${member.name}, ${D.monthLabel(req.body.month)} ${released ? 'odobreno za člana' : 'vraćeno u pripremu'}`);
     res.flash('success', `${member.name}, ${D.monthLabel(req.body.month)}: ${released ? 'obračun odobren za člana' : 'obračun vraćen u pripremu'}.`);
     const back = typeof req.body.back === 'string' && req.body.back.startsWith('/admin/abrechnung') ? req.body.back : '/admin/abrechnung';
     res.redirect(back);
@@ -1570,7 +1642,16 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
         })));
       }
     }
+    const prev = getPayment.get(member.id, req.body.month);
     setPaid(db, member.id, req.body.month, paid, paidAt);
+    const now = getPayment.get(member.id, req.body.month);
+    const day = (v) => (v ? D.formatDate(String(v).slice(0, 10)).replace(/\.$/, '') : '–');
+    const who = `${member.name}, ${D.monthLabel(req.body.month)}`;
+    if (!paid) log(req, 'Iznosi', `${who} označeno kao nije plaćeno${prev && prev.paid ? ` (bilo plaćeno, datum uplate ${day(prev.paid_at)})` : ''}`);
+    else if (prev && prev.paid) {
+      const diff = changes([['Datum uplate', day(prev.paid_at), day(now.paid_at)]]);
+      if (diff) log(req, 'Iznosi', `${who} – ${diff}`);
+    } else log(req, 'Iznosi', `${who} označeno kao plaćeno, datum uplate ${day(now.paid_at)}`);
     res.flash('success', `${member.name}, ${D.monthLabel(req.body.month)}: ${paid ? 'plaćeno' : 'nije plaćeno'}.`);
     const back = typeof req.body.back === 'string' && req.body.back.startsWith('/admin/abrechnung') ? req.body.back : '/admin/abrechnung';
     res.redirect(back);
@@ -1589,6 +1670,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     } else {
       db.prepare('INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, ?, ?, ?)')
         .run(member.id, month, description, amount);
+      log(req, 'Iznosi', `${member.name}, ${D.monthLabel(month)} – stavka dodana: ${description}, ${money(amount)}`);
       res.flash('success', 'Stavka je dodana.');
     }
     res.redirect(`/admin/abrechnung/${member.id}?monat=${month}`);
@@ -1603,7 +1685,10 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     if (isMonthClosed(db, member, month)) {
       res.flash('error', `${D.monthLabel(month)} je zaključen. Za izmjenu ga prvo retroaktivno otvori.`);
     } else {
+      const oldMode = modeForMonth(db, member, month);
       setMonthMode(db, member.id, month, req.body.billing_mode);
+      const diff = changes([['Način obračuna', BILLING_MODE_SHORT[oldMode], BILLING_MODE_SHORT[req.body.billing_mode]]]);
+      if (diff) log(req, 'Iznosi', `${member.name}, ${D.monthLabel(month)} – ${diff}`);
       res.flash('success', `${member.name}, ${D.monthLabel(month)}: način obračuna je sačuvan (${BILLING_MODE_SHORT[req.body.billing_mode]}).`);
     }
     res.redirect(`/admin/abrechnung/${member.id}?monat=${month}`);
@@ -1617,6 +1702,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     if (!D.isValidMonth(month)) return res.status(400).send('Neispravan mjesec.');
     if (isMonthClosed(db, member, month)) {
       reopenMonth(db, member.id, month);
+      log(req, 'Iznosi', `${member.name}, ${D.monthLabel(month)} otključan za retroaktivne izmjene`);
       res.flash('success', `${D.monthLabel(month)} je otključan za retroaktivne izmjene. Kad završiš, zaključaj ga ponovo.`);
     }
     res.redirect(`/admin/abrechnung/${member.id}?monat=${month}`);
@@ -1630,7 +1716,10 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     if (month >= D.monthOf(D.todayISO())) {
       res.flash('error', 'Zaključiti se mogu samo završeni mjeseci.');
     } else {
+      const before = monthlyStatement(db, member, month).total;
       closeMonth(db, member, month);
+      log(req, 'Iznosi', `${member.name}, ${D.monthLabel(month)} ponovo zaključen – iznos ${money(monthlyStatement(db, member, month).total)}${
+        before !== monthlyStatement(db, member, month).total ? ` (prije ${money(before)})` : ''}`);
       res.flash('success', `${D.monthLabel(month)} je ponovo zaključen.`);
     }
     res.redirect(`/admin/abrechnung/${member.id}?monat=${month}`);
@@ -1645,6 +1734,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       return res.redirect(`/admin/abrechnung/${adj.user_id}?monat=${adj.month}`);
     }
     db.prepare('DELETE FROM adjustments WHERE id = ?').run(adj.id);
+    log(req, 'Iznosi', `${owner ? owner.name : '?'}, ${D.monthLabel(adj.month)} – stavka obrisana: ${adj.description}, ${money(adj.amount_cents)}`);
     res.flash('success', 'Stavka je obrisana.');
     res.redirect(`/admin/abrechnung/${adj.user_id}?monat=${adj.month}`);
   });
@@ -1739,6 +1829,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       db.exec('ROLLBACK');
       throw err;
     }
+    log(req, 'Aktuelnosti', `nova aktuelnost – „${values.title}“ (primaoci: ${values.audience === 'all' ? `svi članovi, ${recipients.length}` : recipients.map((m) => m.name).join(', ')})`);
     res.flash('success', `Aktuelnost je poslana (primaoci: ${recipients.length}).`);
     res.redirect('/admin/aktuelnosti');
   });
@@ -1805,6 +1896,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
         kind: 'news', ref: item.id, users: newsMembers.all(), selected: selectedIds(req.body),
         build: newsMail(item), delayMs: mailDelayMs, logLabel: 'E-mail s aktuelnošću', logContext: `„${item.title}“`,
       });
+      if (result.sent || result.failed) {
+        log(req, 'Aktuelnosti', `e-mail s aktuelnošću „${item.title}“: poslano ${result.sent}${result.failed ? `, nije poslano ${result.failed}` : ''}`);
+      }
       res.flash(result.failed ? 'error' : 'success', resultMessage(result));
       res.redirect(`/admin/aktuelnosti/${item.id}/email`);
     } catch (err) {
@@ -1813,7 +1907,9 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
   });
 
   router.post('/aktuelnosti/:id/loeschen', (req, res) => {
+    const item = getNews.get(toId(req.params.id));
     db.prepare('DELETE FROM news WHERE id = ?').run(toId(req.params.id));
+    if (item) log(req, 'Aktuelnosti', `aktuelnost obrisana – „${item.title}“`);
     res.flash('success', 'Aktuelnost je obrisana.');
     res.redirect('/admin/aktuelnosti');
   });

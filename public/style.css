@@ -462,6 +462,11 @@ body:has(.sticky-bar) tr[data-filter] { scroll-margin-top: 220px; }
   body:has(.sticky-bar) tr[data-filter] { scroll-margin-top: 120px; }
 }
 
+/* Dnevnik aktivnosti */
+.log-filter { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; margin: 0 0 14px; }
+.log-filter label { min-width: 200px; }
+.activity-log td.when { white-space: nowrap; }
+
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
 

@@ -161,6 +161,17 @@ Tests: `npm test`
   des Spielers, auch nachdem dort etwas gespeichert wurde. Der Zurück-Pfeil des Browsers behält den Filter ebenfalls.
 - Die Summen unter „Mjesečni iznosi“ gelten weiterhin für alle Mitglieder. Der Termini-Filter ist unverändert.
 
+## Dnevnik aktivnosti (nur Admin)
+
+- **Admin → „Dnevnik aktivnosti“** zeigt jede Änderung, neueste oben: Datum/Uhrzeit (Ortszeit Sarajevo), wer
+  (Admin, Mitglied, Kinder-Konto, Trainer, Besucher des Anmeldeformulars), Bereich und eine kurze Beschreibung auf
+  Bosnisch, wo sinnvoll mit „alt → neu“ (z. B. „Cijena po satu: 40,00 KM → 30,00 KM“, „Datum uplate: … → …“).
+- Filter nach Bereich (Zainteresovani, Članovi, Grupe, Treneri, Roditelji, Termini, Iznosi, Finansije,
+  Aktuelnosti, Privatni časovi, Sistem) und Suche nach Namen (ohne Akzente/Groß-/Kleinschreibung); 100 Einträge pro Seite.
+- Nur zum Ansehen – Einträge lassen sich nicht ändern oder löschen. Passwörter werden nie gespeichert, nur
+  „lozinka promijenjena“. Einträge älter als 12 Monate werden automatisch gelöscht. Tabelle `activity_log`;
+  das Protokoll beginnt mit diesem Update (frühere Änderungen werden nicht nachgetragen).
+
 ## Wochenfreigabe (Trainingsplan)
 
 - Jede Woche (Mo–So) ist entweder **versteckt** oder **freigegeben**. Mitglieder und Kinder-Konten sehen Termine

@@ -9,6 +9,7 @@ const { trainerReport } = require('../trainers');
 const { layout, csrfField, monthNav } = require('../views');
 const { requireAdmin } = require('../auth');
 const { str } = require('./public');
+const { logActivity } = require('../activity');
 
 // Finansije škole po mjesecu: prihodi i rashodi te rezultat (dobit / gubitak).
 // Automatski se uzimaju: uplate članova (obračuni označeni kao „plaćeno“) i isplate trenerima.
@@ -226,6 +227,8 @@ function financeRoutes(db) {
     } else {
       db.prepare('INSERT INTO finance_entries (month, type, category, description, amount_cents) VALUES (?, ?, ?, ?, ?)')
         .run(month, type, category, str(req.body.description, 200) || null, amount);
+      const desc = str(req.body.description, 200);
+      logActivity(db, req, 'Finansije', `${D.monthLabel(month)} – ${type === 'income' ? 'prihod' : 'rashod'} dodan: ${category}${desc ? ` (${desc})` : ''}, ${formatMoney(amount)}`);
       res.flash('success', `${type === 'income' ? 'Prihod' : 'Rashod'} „${category}“ (${formatMoney(amount)}) je dodan.`);
     }
     res.redirect(`/admin/finansije?monat=${month}`);
@@ -235,6 +238,8 @@ function financeRoutes(db) {
     const entry = db.prepare('SELECT * FROM finance_entries WHERE id = ?').get(toId(req.params.id));
     if (!entry) return res.status(404).send('Nije pronađeno: stavka.');
     db.prepare('DELETE FROM finance_entries WHERE id = ?').run(entry.id);
+    logActivity(db, req, 'Finansije', `${D.monthLabel(entry.month)} – ${entry.type === 'income' ? 'prihod' : 'rashod'} obrisan: ${entry.category}${
+      entry.description ? ` (${entry.description})` : ''}, ${formatMoney(entry.amount_cents)}`);
     res.flash('success', 'Stavka je obrisana.');
     res.redirect(`/admin/finansije?monat=${entry.month}`);
   });

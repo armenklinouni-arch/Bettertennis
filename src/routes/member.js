@@ -14,6 +14,7 @@ const {
   USERNAME_RE, normalizeUsername, usernameTaken, placeholderEmail, isPlaceholderEmail, CHILDREN_LIMIT,
 } = require('../db');
 const { EMAIL_RE } = require('./public');
+const { logActivity, changes } = require('../activity');
 const {
   isSlotOpen, slotStartMs, slotLabel, formatSarajevo, NOTIFY_EMAIL_DEFAULT,
 } = require('../private-lessons');
@@ -175,6 +176,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
       return res.redirect('/mitglied');
     }
     db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, req.user.id);
+    logActivity(db, req, 'Članovi', `${req.user.name} – e-mail unesen (prozor nakon prijave): ${email}`);
     delete req.session.emailPrompt;
     res.flash('success', 'Vaša e-mail adresa je sačuvana. Hvala!');
     res.redirect('/mitglied');
@@ -388,6 +390,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
       `INSERT INTO users (name, username, email, password_hash, role, hourly_rate_cents, monthly_fee_cents, active, parent_id)
        VALUES (?, ?, ?, ?, 'member', 0, 0, 1, ?)`
     ).run(values.name, values.username, placeholderEmail(values.username), hashPassword(password), req.user.id);
+    logActivity(db, req, 'Članovi', `${req.user.name} – dječiji račun napravljen: ${values.name} (${values.username})`);
     res.flash('success', `Račun za ${values.name} je napravljen. Prijava: ${values.username}`);
     res.redirect('/mitglied/djeca');
   });
@@ -400,6 +403,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
       res.flash('error', 'Lozinka mora imati najmanje 8 znakova.');
     } else {
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ? AND parent_id = ?').run(hashPassword(password), child.id, req.user.id);
+      logActivity(db, req, 'Članovi', `${req.user.name} – dječiji račun ${child.name}: lozinka promijenjena`);
       endSessionsFor(db, 'user', child.id);
       res.flash('success', `Nova lozinka za ${child.name} je postavljena.`);
     }
@@ -410,6 +414,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
     const child = childOf(req);
     if (!child) return res.status(404).send('Nije pronađeno.');
     db.prepare('DELETE FROM users WHERE id = ? AND parent_id = ?').run(child.id, req.user.id);
+    logActivity(db, req, 'Članovi', `${req.user.name} – dječiji račun obrisan: ${child.name}`);
     res.flash('success', `Račun za ${child.name} je obrisan.`);
     res.redirect('/mitglied/djeca');
   });
@@ -493,6 +498,8 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
     // Bez e-maila ostaje interna zamjenska adresa (kao do sada).
     db.prepare('UPDATE users SET email = ?, phone = ? WHERE id = ?')
       .run(values.email || req.user.email, values.phone || null, req.user.id);
+    const diff = changes([['E-mail', saved, values.email || saved], ['Telefon', req.user.phone, values.phone]]);
+    if (diff) logActivity(db, req, 'Članovi', `${req.user.name} – moji podaci: ${diff}`);
     res.flash('success', 'Vaši podaci su sačuvani.');
     res.redirect('/mitglied/moji-podaci');
   });
@@ -540,6 +547,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
       return res.send(String(passwordPage(req, errors)));
     }
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), req.user.id);
+    logActivity(db, req, 'Članovi', `${req.user.name} – lozinka promijenjena`);
     endSessionsFor(db, 'user', req.user.id, { keep: req.session.sid }); // ostali uređaji se odjavljuju
     res.flash('success', 'Tvoja lozinka je promijenjena.');
     res.redirect(req.user.role === 'admin' ? '/admin' : '/mitglied');
@@ -619,6 +627,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
       `INSERT OR IGNORE INTO private_requests (slot_id, user_id, slot_date, slot_start, slot_end, requested_at)
        VALUES (?, ?, ?, ?, ?, ?)`
     ).run(slot.id, req.user.id, slot.date, slot.start_time, slot.end_time, requestedAt);
+    if (inserted.changes) logActivity(db, req, 'Privatni časovi', `upit poslan – ${req.user.name}, ${slotLabel(slot)}`);
     if (inserted.changes && mailer && notifyEmail) {
       const u = req.user;
       const contact = [u.phone && `Telefon: ${u.phone}`, u.email && !isPlaceholderEmail(u.email) && `E-mail: ${u.email}`]

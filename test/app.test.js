@@ -3825,3 +3825,126 @@ test('Iznosi: Leiste mit Monat und Filter bleibt oben (auch Handy); Monatswechse
   assert.match(js, /bt-month-pos/);
   assert.match(js, /--sticky-top/);
 });
+
+// ---------------------------------------------------------------- Dnevnik aktivnosti
+const logRows = () => db.prepare('SELECT * FROM activity_log ORDER BY id').all();
+const lastLog = (area) => db.prepare('SELECT * FROM activity_log WHERE (? IS NULL OR area = ?) ORDER BY id DESC LIMIT 1').get(area ?? null, area ?? null);
+const logTexts = (since) => db.prepare('SELECT area, actor_name, text FROM activity_log WHERE id > ? ORDER BY id').all(since);
+const maxLogId = () => db.prepare('SELECT COALESCE(MAX(id), 0) AS m FROM activity_log').get().m;
+
+test('Dnevnik aktivnosti: Seite nur für Admin, neueste oben, Filter nach Bereich, Suche nach Namen, nur lesen', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  assert.match((await admin.request('/admin')).text, /href="\/admin\/dnevnik"[^>]*>Dnevnik aktivnosti</);
+  const start = maxLogId();
+  await admin.post('/admin/mitglieder', { name: 'Amar Kovač', username: 'amar.kovac.log', email: '', password: 'Lozinka123', active: '1', hourly_rate: '40', monthly_fee: '' }, '/admin/mitglieder/neu');
+  await admin.post('/admin/grupe', { name: 'Dnevnik grupa' }, '/admin/grupe/nova').catch(() => {});
+  const page = await admin.request('/admin/dnevnik');
+  assert.equal(page.status, 200);
+  assert.match(page.text, /<h1>Dnevnik aktivnosti<\/h1>/);
+  // Eintrag mit Datum/Uhrzeit (Sarajevo), wer, Bereich, Beschreibung
+  const entry = logTexts(start).find((e) => /novi član dodan – Amar Kovač/.test(e.text));
+  assert.ok(entry, JSON.stringify(logTexts(start)));
+  assert.equal(entry.area, 'Članovi');
+  assert.match(entry.actor_name, /^Admin/);
+  assert.match(page.text, /<td class="when">09\.10\.2026\. 10:00<\/td>/);
+  assert.match(page.text, /Članovi: novi član dodan – Amar Kovač/);
+  // Neueste oben
+  const ids = [...page.text.matchAll(/<tr data-log="(\d+)"/g)].map((x) => Number(x[1]));
+  assert.ok(ids.length >= 1);
+  assert.deepEqual(ids, [...ids].sort((a, b) => b - a));
+  // Filter nach Bereich und Suche nach Namen (ohne Akzente)
+  const filtered = (await admin.request('/admin/dnevnik?oblast=%C4%8Clanovi&trazi=kovac')).text;
+  assert.match(filtered, /<select name="oblast"[\s\S]*<option value="Članovi" selected>/);
+  assert.match(filtered, /novi član dodan – Amar Kovač/);
+  assert.doesNotMatch((await admin.request('/admin/dnevnik?oblast=Termini&trazi=kovac')).text, /Amar Kovač/);
+  assert.doesNotMatch((await admin.request('/admin/dnevnik?trazi=nepostoji')).text, /<tr data-log=/);
+  // Nur Admin
+  makeMember('Dnevnik Clan', 'dnevnik.clan');
+  const m = client();
+  await m.login('dnevnik.clan', 'memberpass1');
+  assert.equal((await m.request('/admin/dnevnik')).status, 403);
+  assert.equal((await client().request('/admin/dnevnik')).status, 302);
+  // Nur lesen: kein Ändern/Löschen möglich
+  const before = logRows().length;
+  for (const p of ['/admin/dnevnik', `/admin/dnevnik/${entry ? ids[0] : 1}`, `/admin/dnevnik/${ids[0]}/obrisi`]) {
+    assert.equal((await admin.post(p, {}, '/admin/dnevnik')).status, 404, p);
+  }
+  assert.equal(logRows().length, before);
+  assert.doesNotMatch(page.text, /<form method="post"[^>]*dnevnik/);
+});
+
+test('Dnevnik aktivnosti: Einträge mit alt → neu aus allen Bereichen; Passwörter nie im Protokoll', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const start = maxLogId();
+  // Članovi: anlegen, Preis ändern, Passwort setzen
+  await admin.post('/admin/mitglieder', { name: 'Ali Hadžić', username: 'ali.hadzic.log', email: 'ali.log@primjer.ba', password: 'GeheimesPW77', active: '1', hourly_rate: '40', monthly_fee: '' }, '/admin/mitglieder/neu');
+  const ali = db.prepare("SELECT id FROM users WHERE username = 'ali.hadzic.log'").get().id;
+  await admin.post(`/admin/mitglieder/${ali}`, { name: 'Ali Hadžić', username: 'ali.hadzic.log', email: 'ali.log@primjer.ba', phone: '', password: 'NovoTajno88', active: '1', hourly_rate: '30', monthly_fee: '' }, `/admin/mitglieder/${ali}`);
+  let t = logTexts(start).map((e) => `${e.area}: ${e.text}`).join('\n');
+  assert.match(t, /Članovi: novi član dodan – Ali Hadžić/);
+  assert.match(t, /Članovi: Ali Hadžić izmijenjen – Cijena po satu: 40,00 KM → 30,00 KM/);
+  assert.match(t, /Članovi: Ali Hadžić – lozinka promijenjena/);
+
+  // Iznosi: plaćeno mit Datum, Datum ändern, Stavka, Abrechnungsart
+  const month = '2026-10';
+  await admin.post(`/admin/abrechnung/${ali}/odobri`, { month, released: '1' }, `/admin/abrechnung?monat=${month}`);
+  await admin.post(`/admin/abrechnung/${ali}/placeno`, { month, paid: '1', paid_at: '2026-10-27' }, `/admin/abrechnung?monat=${month}`);
+  await admin.post(`/admin/abrechnung/${ali}/placeno`, { month, paid: '1', paid_at: '2026-10-28' }, `/admin/abrechnung?monat=${month}`);
+  await admin.post(`/admin/abrechnung/${ali}/posten`, { month, description: 'Lopte', amount: '5,00' }, `/admin/abrechnung/${ali}?monat=${month}`);
+  await admin.post(`/admin/abrechnung/${ali}/nacin`, { month, billing_mode: 'display' }, `/admin/abrechnung/${ali}?monat=${month}`);
+  t = logTexts(start).map((e) => `${e.area}: ${e.text}`).join('\n');
+  assert.match(t, /Iznosi: Ali Hadžić, Oktobar 2026 odobreno za člana/);
+  assert.match(t, /Iznosi: Ali Hadžić, Oktobar 2026 označeno kao plaćeno, datum uplate 27\.10\.2026/);
+  assert.match(t, /Iznosi: Ali Hadžić, Oktobar 2026 – Datum uplate: 27\.10\.2026 → 28\.10\.2026/);
+  assert.match(t, /Iznosi: Ali Hadžić, Oktobar 2026 – stavka dodana: Lopte, 5,00 KM/);
+  assert.match(t, /Iznosi: Ali Hadžić, Oktobar 2026 – Način obračuna: prema rasporedu → prikaz bez obračuna/);
+
+  // Termini: anlegen, Preis ändern, absagen
+  await admin.post('/admin/termine', { kind: 'individual', user_id: String(ali), date: '2026-10-20', start_time: '18:05', duration_min: '60', court: '', price: '40', repeat: '1' }, '/admin/termine');
+  const lesson = db.prepare("SELECT * FROM lessons WHERE user_id = ? AND date = '2026-10-20'").get(ali);
+  await admin.post(`/admin/termine/${lesson.id}`, { kind: 'individual', user_id: String(ali), date: '2026-10-20', start_time: '18:05', duration_min: '60', court: '', price: '30', status: 'done' }, `/admin/termine/${lesson.id}`);
+  const edited = db.prepare("SELECT * FROM lessons WHERE user_id = ? AND date = '2026-10-20'").get(ali);
+  await admin.post(`/admin/termine/${edited.id}/status`, { status: 'cancelled' }, '/admin/termine');
+  t = logTexts(start).map((e) => `${e.area}: ${e.text}`).join('\n');
+  assert.match(t, /Termini: novi termin – Individualni trening, Utorak, 20\.10\.2026\. 18:05–19:05, Ali Hadžić/);
+  assert.match(t, /Termini: termin izmijenjen – Individualni trening, Utorak, 20\.10\.2026\. 18:05–19:05, Ali Hadžić – Cijena: 40,00 KM → 30,00 KM/);
+  assert.match(t, /Termini: Individualni trening, Utorak, 20\.10\.2026\. 18:05–19:05, Ali Hadžić – status: Otkazan/);
+
+  // Privatni časovi und Aktuelnosti
+  await admin.post('/admin/privatni-casovi', { date: '2026-10-30', start_time: '10:00', end_time: '11:00' }, '/admin/privatni-casovi');
+  await admin.post('/admin/aktuelnosti', { title: 'Dnevnik vijest', body: 'Tekst', audience: 'all' }, '/admin/aktuelnosti');
+  t = logTexts(start).map((e) => `${e.area}: ${e.text}`).join('\n');
+  assert.match(t, /Privatni časovi: slobodni termin dodan – Petak, 30\.10\.2026\. 10:00–11:00/);
+  assert.match(t, /Aktuelnosti: nova aktuelnost – „Dnevnik vijest“/);
+
+  // Mitglied selbst: Moji podaci, Passwort, Anfrage Privatstunde – als „Član“
+  const m = client();
+  await m.login('ali.hadzic.log', 'NovoTajno88');
+  await m.post('/mitglied/moji-podaci', { email: 'ali.log@primjer.ba', phone: '061 222 333' }, '/mitglied/moji-podaci');
+  await m.post('/mitglied/passwort', { current: 'NovoTajno88', password: 'JosNovije99', password2: 'JosNovije99' }, '/mitglied/passwort');
+  const slot = db.prepare("SELECT id FROM private_slots WHERE date = '2026-10-30' AND start_time = '10:00'").get().id;
+  await m.post(`/mitglied/privatni-cas/${slot}`, {}, `/mitglied/privatni-cas/${slot}`);
+  const own = logTexts(start).filter((e) => /^Član – Ali Hadžić/.test(e.actor_name)).map((e) => `${e.area}: ${e.text}`).join('\n');
+  assert.match(own, /Članovi: Ali Hadžić – moji podaci: Telefon: – → 061 222 333/);
+  assert.match(own, /Članovi: Ali Hadžić – lozinka promijenjena/);
+  assert.match(own, /Privatni časovi: upit poslan – Ali Hadžić, Petak, 30\.10\.2026\. 10:00–11:00/);
+
+  // Passwörter tauchen nirgends im Protokoll auf
+  const all = JSON.stringify(logRows());
+  for (const pw of ['GeheimesPW77', 'NovoTajno88', 'JosNovije99', 'Lozinka123']) assert.ok(!all.includes(pw), pw);
+  // Seite zeigt den alt → neu Text
+  assert.match((await admin.request('/admin/dnevnik?trazi=hadzic')).text, /Cijena po satu: 40,00 KM → 30,00 KM/);
+});
+
+test('Dnevnik aktivnosti: Einträge älter als 12 Monate werden automatisch gelöscht', async () => {
+  const { cleanupActivity } = require('../src/activity');
+  const ins = db.prepare("INSERT INTO activity_log (at, actor_role, actor_name, area, text, search) VALUES (?, 'admin', 'Admin – Test', 'Sistem', ?, '')");
+  ins.run('2025-09-01T10:00:00.000Z', 'stari zapis 13 mjeseci');
+  ins.run('2025-11-20T10:00:00.000Z', 'zapis 11 mjeseci');
+  cleanupActivity(db);
+  const texts = db.prepare("SELECT text FROM activity_log WHERE area = 'Sistem'").all().map((r) => r.text);
+  assert.ok(!texts.includes('stari zapis 13 mjeseci'));
+  assert.ok(texts.includes('zapis 11 mjeseci'));
+});

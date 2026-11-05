@@ -9,6 +9,7 @@ const { layout, csrfField, errorList } = require('../views');
 const {
   verifyPassword, hashPassword, DUMMY_HASH, homeFor, startSession, endSession, endSessionsFor,
 } = require('../auth');
+const { logActivity } = require('../activity');
 const { isPlaceholderEmail, needsEmailPrompt } = require('../db');
 
 const LEVELS = ['Početnik', 'Povratnik', 'Napredni', 'Takmičar'];
@@ -254,6 +255,7 @@ module.exports = function publicRoutes(db, {
     db.prepare(
       'INSERT INTO leads (name, email, phone, level, availability, message) VALUES (?, ?, ?, ?, ?, ?)'
     ).run(values.name, values.email, values.phone, values.level, values.availability || null, values.message || null);
+    logActivity(db, req, 'Zainteresovani', `nova prijava – ${values.name} (${values.email}${values.phone ? `, ${values.phone}` : ''})`);
     res.redirect('/danke');
   });
 
@@ -479,6 +481,8 @@ module.exports = function publicRoutes(db, {
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), account.user_id);
       endSessionsFor(db, 'user', account.user_id); // sve postojeće prijave ovog računa prestaju
       db.prepare('UPDATE password_resets SET used_at = ? WHERE user_id = ? AND used_at IS NULL').run(Date.now(), account.user_id);
+      const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(account.user_id);
+      logActivity(db, { user: owner }, 'Članovi', `${owner ? owner.name : '?'} – lozinka promijenjena (link „Zaboravljena lozinka“)`);
       db.exec('COMMIT');
     } catch (err) {
       db.exec('ROLLBACK');

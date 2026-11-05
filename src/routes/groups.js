@@ -5,6 +5,7 @@ const { html } = require('../html');
 const { layout, csrfField, errorList } = require('../views');
 const { requireAdmin } = require('../auth');
 const { str } = require('./public');
+const { logActivity, changes } = require('../activity');
 
 // Stalne grupe (npr. „Grupa 1“) s članovima koji često treniraju zajedno.
 // Služe kao predložak: kod kreiranja termina izborom grupe automatski se označe njeni članovi.
@@ -149,6 +150,10 @@ function groupRoutes(db) {
     }
   }
 
+  // Dnevnik: imena igrača (abecedno).
+  const namesOf = (ids) => ids.map((id) => (db.prepare('SELECT name FROM users WHERE id = ?').get(id) || {}).name || '?')
+    .sort((a, b) => a.localeCompare(b, 'bs')).join(', ');
+
   router.get('/', (req, res) => {
     const nextNumber = db.prepare('SELECT COUNT(*) AS n FROM training_groups').get().n + 1;
     res.send(String(page(req, { formHtml: groupForm(req, { values: { name: `Grupa ${nextNumber}` } }) })));
@@ -165,6 +170,7 @@ function groupRoutes(db) {
       const { lastInsertRowid } = db.prepare('INSERT INTO training_groups (name, notes) VALUES (?, ?)').run(values.name, values.notes || null);
       saveMembers(lastInsertRowid, values.member_ids);
     });
+    logActivity(db, req, 'Grupe', `nova grupa – „${values.name}“: ${namesOf(values.member_ids) || 'bez igrača'}`);
     res.flash('success', `Grupa „${values.name}“ je kreirana (${membersLabel(values.member_ids.length)}).`);
     res.redirect('/admin/grupe');
   });
@@ -186,10 +192,13 @@ function groupRoutes(db) {
       res.status(400);
       return res.send(String(page(req, { editing: group, formHtml: groupForm(req, { group, values, errors }) })));
     }
+    const oldIds = db.prepare('SELECT user_id FROM training_group_members WHERE group_id = ?').all(group.id).map((r) => r.user_id);
     transaction(() => {
       db.prepare('UPDATE training_groups SET name = ?, notes = ? WHERE id = ?').run(values.name, values.notes || null, group.id);
       saveMembers(group.id, values.member_ids);
     });
+    const diff = changes([['Naziv', group.name, values.name], ['Igrači', namesOf(oldIds), namesOf(values.member_ids)], ['Napomena', group.notes, values.notes]]);
+    logActivity(db, req, 'Grupe', `grupa „${values.name}“ izmijenjena${diff ? ` – ${diff}` : ' (bez promjena)'}`);
     res.flash('success', `Grupa „${values.name}“ je sačuvana.`);
     res.redirect('/admin/grupe');
   });
@@ -198,6 +207,7 @@ function groupRoutes(db) {
     const group = getGroup.get(toId(req.params.id));
     if (!group) return res.status(404).send('Nije pronađeno: grupa.');
     db.prepare('DELETE FROM training_groups WHERE id = ?').run(group.id);
+    logActivity(db, req, 'Grupe', `grupa obrisana – „${group.name}“`);
     res.flash('success', `Grupa „${group.name}“ je obrisana.`);
     res.redirect('/admin/grupe');
   });

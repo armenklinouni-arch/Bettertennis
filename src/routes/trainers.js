@@ -8,6 +8,7 @@ const { formatHours } = require('../billing');
 const { trainerReport } = require('../trainers');
 const { layout, csrfField, errorList, monthNav, lessonTimeRange, LESSON_KINDS } = require('../views');
 const { requireAdmin, hashPassword, endSessionsFor } = require('../auth');
+const { logActivity, changes, money } = require('../activity');
 const { EMAIL_RE, str } = require('./public');
 const { USERNAME_RE, normalizeUsername, usernameTaken } = require('../db');
 
@@ -195,6 +196,8 @@ module.exports = function trainerRoutes(db) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(values.name, values.phone || null, values.username, values.email || null, rateIndividual, rateGroup, values.active ? 1 : 0, values.notes || null,
       values.password ? hashPassword(values.password) : null);
+    logActivity(db, req, 'Treneri', `novi trener dodan – ${values.name} (${values.username}, individualni ${money(rateIndividual)}/h, grupni ${money(rateGroup)}/h${
+      values.password ? ', pristup s lozinkom' : ''})`);
     res.flash('success', `Trener ${values.name} je kreiran.${values.password ? ` Prijava: ${values.username} / lozinka: ${values.password}` : ''}`);
     res.redirect(`/admin/treneri/${r.lastInsertRowid}`);
   });
@@ -227,6 +230,17 @@ module.exports = function trainerRoutes(db) {
       `UPDATE trainers SET name = ?, phone = ?, username = ?, email = ?, rate_individual_cents = ?, rate_group_cents = ?, active = ?, notes = ?
         WHERE id = ?`
     ).run(values.name, values.phone || null, values.username, values.email || null, rateIndividual, rateGroup, values.active ? 1 : 0, values.notes || null, trainer.id);
+    const diff = changes([
+      ['Ime', trainer.name, values.name], ['Korisničko ime', trainer.username, values.username], ['Telefon', trainer.phone, values.phone],
+      ['E-mail', trainer.email, values.email], ['Satnica individualni', money(trainer.rate_individual_cents), money(rateIndividual)],
+      ['Satnica grupni', money(trainer.rate_group_cents), money(rateGroup)],
+      ['Status', trainer.active ? 'aktivan' : 'neaktivan', values.active ? 'aktivan' : 'neaktivan'],
+    ]);
+    if (diff || (trainer.notes || '') !== (values.notes || '')) {
+      logActivity(db, req, 'Treneri', `${values.name} izmijenjen – ${[diff, (trainer.notes || '') !== (values.notes || '') ? 'napomena izmijenjena' : ''].filter(Boolean).join(', ')}`);
+    }
+    if (values.revoke) logActivity(db, req, 'Treneri', `${values.name} – pristup uklonjen`);
+    else if (values.password) logActivity(db, req, 'Treneri', `${values.name} – lozinka promijenjena`);
     let access = '';
     if (values.revoke) {
       db.prepare('UPDATE trainers SET password_hash = NULL WHERE id = ?').run(trainer.id);
@@ -245,6 +259,7 @@ module.exports = function trainerRoutes(db) {
     const trainer = getTrainer.get(toId(req.params.id));
     if (!trainer) return notFound(res);
     db.prepare('DELETE FROM trainers WHERE id = ?').run(trainer.id);
+    logActivity(db, req, 'Treneri', `trener obrisan – ${trainer.name}`);
     res.flash('success', `Trener ${trainer.name} je obrisan.`);
     res.redirect('/admin/treneri');
   });
@@ -341,6 +356,7 @@ module.exports = function trainerRoutes(db) {
     } else {
       db.prepare('INSERT INTO trainer_bonuses (trainer_id, month, description, amount_cents) VALUES (?, ?, ?, ?)')
         .run(trainer.id, month, description, amount);
+      logActivity(db, req, 'Treneri', `${trainer.name}, ${D.monthLabel(month)} – dodatna isplata: ${description}, ${money(amount)}`);
       res.flash('success', 'Dodatna isplata je dodana.');
     }
     res.redirect(`/admin/treneri/${trainer.id}?monat=${month}`);
@@ -350,6 +366,8 @@ module.exports = function trainerRoutes(db) {
     const bonus = db.prepare('SELECT * FROM trainer_bonuses WHERE id = ?').get(toId(req.params.id));
     if (!bonus) return res.status(404).send('Nije pronađeno: isplata.');
     db.prepare('DELETE FROM trainer_bonuses WHERE id = ?').run(bonus.id);
+    const owner = getTrainer.get(bonus.trainer_id);
+    logActivity(db, req, 'Treneri', `${owner ? owner.name : '?'}, ${D.monthLabel(bonus.month)} – dodatna isplata obrisana: ${bonus.description}, ${money(bonus.amount_cents)}`);
     res.flash('success', 'Dodatna isplata je obrisana.');
     res.redirect(`/admin/treneri/${bonus.trainer_id}?monat=${bonus.month}`);
   });

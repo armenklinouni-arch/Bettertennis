@@ -7,6 +7,7 @@ const { layout, csrfField, errorList } = require('../views');
 const { requireAdmin, hashPassword, readablePassword, endSessionsFor } = require('../auth');
 const { USERNAME_RE, normalizeUsername, usernameTaken } = require('../db');
 const { str } = require('./public');
+const { logActivity, changes } = require('../activity');
 
 function toId(v) {
   const n = Number(v);
@@ -23,6 +24,10 @@ module.exports = function parentAccountRoutes(db) {
     `SELECT u.* FROM parent_account_players p JOIN users u ON u.id = p.user_id
       WHERE p.parent_account_id = ? ORDER BY u.name COLLATE NOCASE`
   );
+
+  // Dnevnik: imena igrača (abecedno).
+  const playerNames = (ids) => ids.map((id) => (db.prepare('SELECT name FROM users WHERE id = ?').get(id) || {}).name || '?')
+    .sort((a, b) => a.localeCompare(b, 'bs')).join(', ');
 
   function setPlayers(accountId, ids) {
     db.prepare('DELETE FROM parent_account_players WHERE parent_account_id = ?').run(accountId);
@@ -146,6 +151,7 @@ module.exports = function parentAccountRoutes(db) {
       setPlayers(r.lastInsertRowid, values.player_ids);
       return r.lastInsertRowid;
     });
+    logActivity(db, req, 'Roditelji', `novi roditeljski račun – ${values.name} (${values.username}), igrači: ${playerNames(values.player_ids) || '–'}`);
     res.flash('success', `Roditeljski račun ${values.name} je kreiran. Prijava: ${values.username} / lozinka: ${values.password}`);
     res.redirect(`/admin/roditelji/${id}`);
   });
@@ -165,6 +171,14 @@ module.exports = function parentAccountRoutes(db) {
       res.status(400);
       return res.send(String(accountForm(req, { account, values, errors })));
     }
+    const oldPlayers = playerNames(playersOf.all(account.id).map((p) => p.id));
+    const diff = changes([
+      ['Ime', account.name, values.name], ['Korisničko ime', account.username, values.username],
+      ['Status', account.active ? 'aktivan' : 'neaktivan', values.active ? 'aktivan' : 'neaktivan'],
+      ['Igrači', oldPlayers, playerNames(values.player_ids)],
+    ]);
+    if (diff) logActivity(db, req, 'Roditelji', `${values.name} izmijenjen – ${diff}`);
+    if (values.password) logActivity(db, req, 'Roditelji', `${values.name} – lozinka promijenjena`);
     transaction(() => {
       db.prepare('UPDATE parent_accounts SET name = ?, username = ?, active = ? WHERE id = ?')
         .run(values.name, values.username, values.active ? 1 : 0, account.id);
@@ -182,6 +196,7 @@ module.exports = function parentAccountRoutes(db) {
     const account = getAccount.get(toId(req.params.id));
     if (!account) return res.status(404).send('Nije pronađeno: roditeljski račun.');
     db.prepare('DELETE FROM parent_accounts WHERE id = ?').run(account.id);
+    logActivity(db, req, 'Roditelji', `roditeljski račun obrisan – ${account.name}`);
     res.flash('success', `Roditeljski račun ${account.name} je obrisan.`);
     res.redirect('/admin/roditelji');
   });

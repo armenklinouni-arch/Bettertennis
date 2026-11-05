@@ -8,6 +8,7 @@ const D = require('../dates');
 const { layout, csrfField, errorList } = require('../views');
 const { requireAdmin } = require('../auth');
 const { isSlotOpen, slotStartMs, slotLabel, formatSarajevo } = require('../private-lessons');
+const { logActivity } = require('../activity');
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -129,6 +130,7 @@ module.exports = function privateAdminRoutes(db) {
       return res.send(String(page(req, { values, errors })));
     }
     db.prepare('INSERT INTO private_slots (date, start_time, end_time) VALUES (?, ?, ?)').run(values.date, values.start_time, values.end_time);
+    logActivity(db, req, 'Privatni časovi', `slobodni termin dodan – ${slotLabel(values)}`);
     res.flash('success', `Slobodni termin ${slotLabel(values)} je dodan.`);
     res.redirect('/admin/privatni-casovi');
   });
@@ -136,7 +138,9 @@ module.exports = function privateAdminRoutes(db) {
   const slotAction = (fn) => (req, res) => {
     const slot = getSlot.get(toId(req.params.id));
     if (!slot) return res.status(404).send('Nije pronađeno: termin.');
-    res.flash('success', fn(slot));
+    const message = fn(slot);
+    logActivity(db, req, 'Privatni časovi', message.replace(/\.$/, ''));
+    res.flash('success', message);
     res.redirect('/admin/privatni-casovi');
   };
   router.post('/:id/blokiraj', slotAction((s) => {
@@ -157,6 +161,8 @@ module.exports = function privateAdminRoutes(db) {
     const r = id && db.prepare('SELECT * FROM private_requests WHERE id = ?').get(id);
     if (!r) return res.status(404).send('Nije pronađeno: upit.');
     db.prepare('UPDATE private_requests SET done = ?, done_at = ? WHERE id = ?').run(done ? 1 : 0, done ? new Date().toISOString() : null, r.id);
+    const who = (db.prepare('SELECT name FROM users WHERE id = ?').get(r.user_id) || {}).name || '?';
+    logActivity(db, req, 'Privatni časovi', `upit ${who} (${slotLabel({ date: r.slot_date, start_time: r.slot_start, end_time: r.slot_end })}) ${done ? 'označen kao završen' : 'ponovo otvoren'}`);
     res.flash('success', done ? 'Upit je označen kao završen.' : 'Upit je ponovo otvoren.');
     res.redirect('/admin/privatni-casovi');
   };

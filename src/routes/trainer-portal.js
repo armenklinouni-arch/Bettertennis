@@ -8,6 +8,7 @@ const { formatHours } = require('../billing');
 const { trainerReport, trainerSessionsBetween, trainerTotalsUntil } = require('../trainers');
 const { layout, csrfField, errorList, weekView, monthNav, lessonTimeRange, LESSON_KINDS } = require('../views');
 const { requireTrainer, hashPassword, verifyPassword, endSessionsFor } = require('../auth');
+const { logActivity } = require('../activity');
 
 // Trenerski dio: svaki trener vidi samo svoje termine, svoje igrače i svoju isplatu.
 // Cijene članova i podaci drugih trenera ovdje se nikad ne prikazuju.
@@ -139,6 +140,7 @@ module.exports = function trainerPortalRoutes(db) {
       return res.send(String(passwordPage(req, errors)));
     }
     db.prepare('UPDATE trainers SET password_hash = ? WHERE id = ?').run(hashPassword(password), req.user.trainer_id);
+    logActivity(db, req, 'Treneri', `${req.user.name} – lozinka promijenjena`);
     endSessionsFor(db, 'trainer', req.user.trainer_id, { keep: req.session.sid });
     res.flash('success', 'Tvoja lozinka je promijenjena.');
     res.redirect('/trener');
