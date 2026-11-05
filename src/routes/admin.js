@@ -21,6 +21,20 @@ const { searchText, matchesSearch } = require('../search');
 
 // Upit iz polja „Filter“ (?trazi=…).
 const filterQuery = (v) => (typeof v === 'string' ? v.trim().slice(0, 100) : '');
+
+// Povratak na listu (Iznosi / Članovi) s istim filterom, mjesecom i redom. Adresa dolazi iz linka
+// (?back=…) i pamti se u sesiji, da ostane i nakon spremanja na stranici detalja.
+function listBackUrl(req, res, { key, id, prefix, fallback }) {
+  const ok = (u) => typeof u === 'string' && u.length <= 500 && u.startsWith(prefix) && /^([?#]|$)/.test(u.slice(prefix.length));
+  const raw = req.query.back;
+  if (ok(raw)) {
+    req.session.listBack = { ...(req.session.listBack || {}), [key]: { id, url: raw } };
+    res.saveSession();
+    return raw;
+  }
+  const stored = req.session.listBack && req.session.listBack[key];
+  return stored && stored.id === id && ok(stored.url) ? stored.url : fallback;
+}
 const { EMAIL_RE, str } = require('./public');
 const { listGroupsWithMembers } = require('./groups');
 const { sendBackupMail, BACKUP_EMAIL_DEFAULT } = require('../backup');
@@ -264,7 +278,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
               <td class="num">${formatMoney(st.total)}<br><span class="small muted">${st.manual ? BILLING_MODE_SHORT.manual : `Termini: ${st.lessonCount}`}</span> ${paymentBadge(st, { showDate: true })}</td>
               <td>${m.active ? 'aktivan' : 'neaktivan'}</td>
               <td class="actions">
-                <a class="btn btn-ghost btn-sm" href="/admin/mitglieder/${m.id}">Uredi</a>
+                <a class="btn btn-ghost btn-sm" href="/admin/mitglieder/${m.id}?back=${encodeURIComponent(`/admin/mitglieder${q ? `?trazi=${encodeURIComponent(q)}` : ''}#clan-${m.id}`)}">Uredi</a>
                 <a class="btn btn-ghost btn-sm" href="/admin/termine?mitglied=${m.id}">Termini</a>
                 <a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}">Iznos</a>
               </td>
@@ -274,7 +288,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     })));
   });
 
-  function memberForm(req, { member, values, errors = [], leadId = null }) {
+  function memberForm(req, { member, values, errors = [], leadId = null, listBack = null }) {
     const isNew = !member;
     const v = values;
     return layout(req, {
@@ -283,6 +297,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       <div class="page-head">
         <h1>${isNew ? 'Kreiraj novog člana' : `Uredi člana: ${member.name}`}</h1>
         ${isNew ? '' : html`<div class="btn-row">
+          ${listBack ? html`<a class="btn btn-ghost" href="${listBack}">← Nazad na članove</a>` : ''}
           <a class="btn btn-ghost" href="/admin/termine?mitglied=${member.id}">Termini</a>
           <a class="btn btn-ghost" href="/admin/abrechnung/${member.id}">Mjesečni iznos</a>
         </div>`}
@@ -493,6 +508,10 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     res.redirect(`/admin/mitglieder/${r.lastInsertRowid}`);
   });
 
+  const memberListBack = (req, res, member) => listBackUrl(req, res, {
+    key: 'clanovi', id: member.id, prefix: '/admin/mitglieder', fallback: `/admin/mitglieder#clan-${member.id}`,
+  });
+
   router.get('/mitglieder/:id', (req, res) => {
     const member = getMember.get(toId(req.params.id));
     if (!member) return notFound(res, 'član');
@@ -506,7 +525,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       notes: member.notes || '',
       active: !!member.active,
     };
-    res.send(String(memberForm(req, { member, values })));
+    res.send(String(memberForm(req, { member, values, listBack: memberListBack(req, res, member) })));
   });
 
   router.post('/mitglieder/:id', (req, res) => {
@@ -517,7 +536,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     if (!errors.length) errors.push(...uniquenessErrors(values, member.id));
     if (errors.length) {
       res.status(400);
-      return res.send(String(memberForm(req, { member, values, errors })));
+      return res.send(String(memberForm(req, { member, values, errors, listBack: memberListBack(req, res, member) })));
     }
     db.prepare(
       `UPDATE users SET name = ?, username = ?, email = ?, phone = ?, hourly_rate_cents = ?, monthly_fee_cents = ?, active = ?, notes = ?
@@ -1286,7 +1305,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
             <td class="num"><strong>${formatMoney(st.total)}</strong></td>
             <td>${releaseBadge(st)}</td>
             <td>${paymentBadge(st, { showDate: true })}</td>
-            <td class="actions">${releaseToggle(req, m, st, rowBack(m))}${paidToggle(req, m, st, rowBack(m))}<a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}">Detalji</a></td>
+            <td class="actions">${releaseToggle(req, m, st, rowBack(m))}${paidToggle(req, m, st, rowBack(m))}<a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${m.id}?monat=${month}&back=${encodeURIComponent(rowBack(m))}">Detalji</a></td>
           </tr>`)}
           <tr class="filter-empty"${shown ? html` hidden` : ''}><td colspan="10" class="empty">Nema članova za ovaj filter.</td></tr>`}</tbody>
         <tfoot>
@@ -1320,7 +1339,10 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       body: html`
       <div class="page-head">
         <h1>Mjesečni iznos: ${member.name}</h1>
-        <a class="btn btn-ghost" href="/admin/mitglieder/${member.id}">Uredi člana</a>
+        <div class="btn-row">
+          <a class="btn btn-ghost" href="${listBackUrl(req, res, { key: 'iznosi', id: member.id, prefix: '/admin/abrechnung', fallback: `/admin/abrechnung?monat=${month}#clan-${member.id}` })}">← Nazad na iznose</a>
+          <a class="btn btn-ghost" href="/admin/mitglieder/${member.id}">Uredi člana</a>
+        </div>
       </div>
       ${monthNav(`/admin/abrechnung/${member.id}`, month)}
       <div class="summary-tile big">

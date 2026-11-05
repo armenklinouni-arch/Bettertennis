@@ -3731,3 +3731,65 @@ test('Termini-Filter oben: nur Mitgliedskonten; Link mit Kinder-Konto zeigt das 
   assert.match(viaKid, /<h1>Termini – Filter Roditelj<\/h1>/);
   assert.match(viaKid, /12:05–13:05/);
 });
+
+// ---------------------------------------------------------------- Zurück zur gefilterten Liste (Iznosi / Članovi)
+test('Iznosi → Detalji → „← Nazad na iznose“: gleicher Filter, Monat und Zeile – auch nach dem Speichern', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const ali = makeMember('Ali Nazadović', 'ali.nazad', { fee: 2000 });
+  const other = makeMember('Zana Ostala', 'zana.ostala', { fee: 2000 });
+  const month = '2026-10';
+  const listUrl = `/admin/abrechnung?monat=${month}&trazi=ali#clan-${ali}`;
+  const enc = (u) => encodeURIComponent(u).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const amp = (u) => u.replace(/&/g, '&amp;').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const backLink = (t) => (/<a class="btn btn-ghost" href="([^"]*)">← Nazad na iznose<\/a>/.exec(t) || [])[1];
+
+  // Liste mit Filter: „Detalji“ trägt die Rücksprungadresse
+  const list = (await admin.request(`/admin/abrechnung?monat=${month}&trazi=ali`)).text;
+  const detailHref = `/admin/abrechnung/${ali}\\?monat=${month}&back=${enc(listUrl)}`;
+  assert.match(list, new RegExp(`href="${detailHref}">Detalji</a>`));
+  // Details: Knopf zurück mit Filter, Monat und Zeile
+  let page = (await admin.request(`/admin/abrechnung/${ali}?monat=${month}&back=${encodeURIComponent(listUrl)}`)).text;
+  assert.equal(backLink(page), listUrl.replace(/&/g, '&amp;'));
+  // Nach dem Speichern (neue Stavka) und beim Monatswechsel in den Details bleibt der Knopf gleich
+  const saved = await admin.post(`/admin/abrechnung/${ali}/posten`, { month, description: 'Lopte', amount: '5,00' }, `/admin/abrechnung/${ali}?monat=${month}`);
+  assert.equal(saved.status, 302);
+  page = (await admin.request(saved.location)).text;
+  assert.match(page, /Lopte/);
+  assert.equal(backLink(page), listUrl.replace(/&/g, '&amp;'));
+  await admin.post(`/admin/abrechnung/${ali}/odobri`, { month, released: '1', back: `/admin/abrechnung/${ali}?monat=${month}` }, `/admin/abrechnung/${ali}?monat=${month}`);
+  assert.equal(backLink((await admin.request(`/admin/abrechnung/${ali}?monat=${month}`)).text), listUrl.replace(/&/g, '&amp;'));
+  assert.equal(backLink((await admin.request(`/admin/abrechnung/${ali}?monat=2026-09`)).text), listUrl.replace(/&/g, '&amp;'));
+  // Die Liste über diesen Link zeigt den Filter und nur den passenden Spieler
+  const back = (await admin.request(listUrl.split('#')[0])).text;
+  assert.match(back, /value="ali"/);
+  assert.match(back, new RegExp(`<tr id="clan-${other}"[^>]*\\shidden`));
+  // Anderer Spieler ohne Rücksprungadresse → Liste seines Monats, an seiner Zeile
+  assert.equal(backLink((await admin.request(`/admin/abrechnung/${other}?monat=${month}`)).text), amp(`/admin/abrechnung?monat=${month}#clan-${other}`).replace(/\\/g, ''));
+  // Fremde Adressen werden nicht übernommen
+  for (const bad of ['https://evil.example/', '//evil.example/admin/abrechnung', '/admin/abrechnung/5/placeno?month=2026-10']) {
+    const t = (await admin.request(`/admin/abrechnung/${other}?monat=${month}&back=${encodeURIComponent(bad)}`)).text;
+    assert.equal(backLink(t), `/admin/abrechnung?monat=${month}#clan-${other}`.replace(/&/g, '&amp;'), bad);
+  }
+});
+
+test('Članovi → Uredi → „← Nazad na članove“: gleicher Filter und Zeile – auch nach dem Speichern', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const ali = makeMember('Alija Clanović', 'alija.clan');
+  const listUrl = `/admin/mitglieder?trazi=alija#clan-${ali}`;
+  const backLink = (t) => (/<a class="btn btn-ghost" href="([^"]*)">← Nazad na članove<\/a>/.exec(t) || [])[1];
+  const list = (await admin.request('/admin/mitglieder?trazi=alija')).text;
+  assert.match(list, new RegExp(`href="/admin/mitglieder/${ali}\\?back=${encodeURIComponent(listUrl).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}">Uredi</a>`));
+  let page = (await admin.request(`/admin/mitglieder/${ali}?back=${encodeURIComponent(listUrl)}`)).text;
+  assert.equal(backLink(page), listUrl);
+  const saved = await admin.post(`/admin/mitglieder/${ali}`, { name: 'Alija Clanović', username: 'alija.clan', email: 'alija.clan@kids-test.de', phone: '061 1', active: '1' }, `/admin/mitglieder/${ali}`);
+  assert.equal(saved.status, 302);
+  page = (await admin.request(saved.location)).text;
+  assert.equal(backLink(page), listUrl);
+  assert.equal(db.prepare('SELECT phone FROM users WHERE id = ?').get(ali).phone, '061 1');
+  // Ohne Rücksprungadresse → ganze Liste an seiner Zeile; fremde Adressen werden ignoriert
+  const other = makeMember('Bez Filtera', 'bez.filtera');
+  assert.equal(backLink((await admin.request(`/admin/mitglieder/${other}`)).text), `/admin/mitglieder#clan-${other}`);
+  assert.equal(backLink((await admin.request(`/admin/mitglieder/${other}?back=${encodeURIComponent('https://evil.example/')}`)).text), `/admin/mitglieder#clan-${other}`);
+});
