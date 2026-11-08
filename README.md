@@ -195,6 +195,8 @@ Tests: `npm test`
   klickbar), unten auf jeder Seite ist Platz, damit nichts verdeckt bleibt.
 - Zwischen den Animationen steht es in der Return-Position (`spremni.svg`, wippt leicht) und spielt etwa alle
   20–30 Sekunden zufällig eine der fünf Animationen (`#jednom`). „×“ blendet es bis zum Schließen des Browsers aus.
+  Klick/Tippen auf die Figur spielt sofort eine zufällige Animation (während einer laufenden passiert nichts);
+  nur die Figur selbst ist klickbar, der Rest des Bildes lässt Klicks durch.
   Bei „weniger Bewegung“ (prefers-reduced-motion) bleibt es ein stehendes Bild.
 - Grafiken: `public/img/maskota-animacije/` (Generator: `node scripts/maskota-animacije.js`).
 

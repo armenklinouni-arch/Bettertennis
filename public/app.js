@@ -354,8 +354,10 @@ document.addEventListener('change', (event) => {
     let anims = {};
     try { anims = JSON.parse(widget.getAttribute('data-anims') || '{}'); } catch { anims = {}; }
     const names = Object.keys(anims);
+    const hit = widget.querySelector('.mascot-hit');
     let timer = null;
     let plays = 0;
+    let playing = false;
     close.addEventListener('click', () => {
       widget.hidden = true;
       window.clearTimeout(timer);
@@ -366,16 +368,22 @@ document.addEventListener('change', (event) => {
     names.forEach((n) => { const pre = new Image(); pre.src = `${dir}${n}.svg`; });
     const schedule = () => { timer = window.setTimeout(play, 20000 + Math.random() * 10000); };
     function play() {
+      if (playing) return;
       if (document.hidden) return schedule();
+      window.clearTimeout(timer);
+      playing = true;
       const name = names[Math.floor(Math.random() * names.length)];
       plays += 1;
       // ?v=… da animacija svaki put krene od početka; #jednom = bez petlje
       img.src = `${dir}${name}.svg?v=${plays}#jednom`;
       timer = window.setTimeout(() => {
         img.src = ready;
+        playing = false;
         schedule();
       }, anims[name] + 150);
     }
+    // Klik/tap na maskotu: odmah jedna animacija (dok jedna traje, klik ne radi ništa).
+    if (hit) hit.addEventListener('click', () => { if (playing) return; play(); });
     schedule();
   });
 })();

@@ -4264,3 +4264,19 @@ test('Maskottchen unten rechts: nur für den Admin; Return-Pose, zufällige Anim
   assert.match(js, /#jednom/);
   assert.match(js, /bt-mascot-hidden/);
 });
+
+test('Maskottchen: Klick/Tippen auf die Figur startet sofort eine Animation (nicht während einer laufenden); X getrennt', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const page = (await admin.request('/admin')).text;
+  const widget = /<div class="mascot-widget" data-mascot data-anims="[^"]+">([\s\S]*?)<\/div>/.exec(page)[1];
+  // Eigene Klickfläche nur über der Figur; das X ist ein eigener Knopf danach (liegt darüber)
+  assert.match(widget, /<button type="button" class="mascot-hit" aria-label="Pokreni animaciju maskote"><\/button><button type="button" class="mascot-close" aria-label="Sakrij maskotu">×<\/button>/);
+  const css = (await client().request('/static/style.css')).text;
+  assert.match(css, /\.mascot-hit \{[^}]*position: absolute;[^}]*pointer-events: auto;[^}]*cursor: pointer;/);
+  assert.match(css, /\.mascot-close \{[^}]*z-index: 2;/);
+  assert.match(css, /\.mascot-img \{[^}]*pointer-events: none;/);
+  const js = (await client().request('/static/app.js')).text;
+  assert.match(js, /mascot-hit/);
+  assert.match(js, /if \(playing\) return;/);
+});
