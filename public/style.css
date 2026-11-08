@@ -491,6 +491,20 @@ tr.status-none td, .swatch.status-none { background: #e7eaee; }
 .status-legend li { display: flex; align-items: center; gap: 6px; }
 .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(17, 48, 76, 0.18); }
 
+/* Maskota (test, samo admin): mala, fiksno dolje desno; klikovi prolaze kroz nju (samo „×“ je klikabilan) */
+.mascot-widget { position: fixed; right: -34px; bottom: 4px; z-index: 30; width: 160px; pointer-events: none; }
+.mascot-widget[hidden] { display: none; }
+.mascot-img { display: block; width: 100%; height: auto; }
+.mascot-close { position: absolute; left: 0; top: 34%; pointer-events: auto; width: 22px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--muted); font: inherit; font-size: 0.95rem; line-height: 1; cursor: pointer; opacity: 0.85; }
+.mascot-close:hover { opacity: 1; color: var(--text); }
+body.has-mascot .site-footer { padding-bottom: 150px; }
+@media (max-width: 700px) {
+  .mascot-widget { width: 108px; right: -24px; bottom: 2px; }
+  .mascot-close { width: 20px; height: 20px; font-size: 0.85rem; }
+  body.has-mascot .site-footer { padding-bottom: 104px; }
+}
+@media print { .mascot-widget { display: none; } }
+
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
 

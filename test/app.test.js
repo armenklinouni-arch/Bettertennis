@@ -4211,3 +4211,56 @@ test('Iznosi: Zeilen nach Status eingefärbt (plaćeno/odobreno/otvoreno/bez tre
   const mt = (await m.request(`/mitglied/abrechnung?monat=${month}`)).text;
   assert.doesNotMatch(mt, /status-legend|status-released|status-paid/);
 });
+
+// ---------------------------------------------------------------- Maskottchen (Test-Einbau): nur Admin
+test('Maskottchen unten rechts: nur für den Admin; Return-Pose, zufällige Animationen, X zum Ausblenden', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const page = (await admin.request('/admin')).text;
+  const widget = /<div class="mascot-widget" data-mascot data-anims="([^"]+)">([\s\S]*?)<\/div>/.exec(page);
+  assert.ok(widget, 'Maskottchen fehlt beim Admin');
+  const anims = JSON.parse(widget[1].replace(/&quot;/g, '"'));
+  assert.deepEqual(Object.keys(anims).sort(), ['forhend', 'poen', 'pogodjen', 'promasaj', 'servis']);
+  assert.ok(Object.values(anims).every((ms) => ms >= 2000 && ms <= 4000));
+  assert.match(widget[2], /<img class="mascot-img" src="\/static\/img\/maskota-animacije\/spremni\.svg" alt="" width="\d+" height="\d+">/);
+  assert.match(widget[2], /<button type="button" class="mascot-close" aria-label="Sakrij maskotu">×<\/button>/);
+  assert.match(page, /<body class="has-mascot">/);
+  // Auch auf anderen Admin-Seiten
+  assert.match((await admin.request('/admin/abrechnung')).text, /data-mascot/);
+
+  // Niemand sonst: Besucher, Login, Mitglied, Kinder-Konto, Elternkonto, Trainer
+  const noMascot = (t) => !/data-mascot|maskota-animacije|has-mascot/.test(t);
+  assert.ok(noMascot((await client().request('/')).text));
+  assert.ok(noMascot((await client().request('/login')).text));
+  const pid = makeMember('Maskota Clan', 'maskota.clan');
+  const m = client();
+  await m.login('maskota.clan', 'memberpass1');
+  assert.ok(noMascot((await m.request('/mitglied')).text));
+  await m.post('/mitglied/djeca', { name: 'Maskota Dijete', username: 'maskota.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const k = client();
+  await k.login('maskota.kid', 'kid-pass-123');
+  assert.ok(noMascot((await k.request('/mitglied')).text));
+  await createParentAccount(admin, { name: 'Maskota Roditelj', username: 'maskota.roditelj', password: 'roditelj-pass-1', players: [pid] });
+  const p = client();
+  await p.login('maskota.roditelj', 'roditelj-pass-1');
+  assert.ok(noMascot((await p.request('/roditelj')).text));
+
+  // Grafiken vorhanden (Return-Pose wippt in Schleife, „weniger Bewegung“ = stehendes Bild)
+  const ready = await client().request('/static/img/maskota-animacije/spremni.svg');
+  assert.equal(ready.status, 200);
+  assert.match(ready.text, /prefers-reduced-motion: reduce/);
+  assert.match(ready.text, /bt-maskota-spremni-sway/);
+  for (const n of Object.keys(anims)) assert.equal((await client().request(`/static/img/maskota-animacije/${n}.svg`)).status, 200);
+  // Stil: klein, fest unten rechts, Klicks gehen durch (nur das X ist klickbar), auf dem Handy kleiner, Platz unten
+  const css = (await client().request('/static/style.css')).text;
+  assert.match(css, /\.mascot-widget \{[^}]*position: fixed;[^}]*right: [^;]+;[^}]*bottom: [^;]+;[^}]*pointer-events: none;/);
+  assert.match(css, /\.mascot-close \{[^}]*pointer-events: auto;/);
+  assert.match(css, /body\.has-mascot \.site-footer \{[^}]*padding-bottom:/);
+  assert.match(css, /@media \(max-width: 700px\) \{[^@]*\.mascot-widget \{[^}]*width: \d+px;/);
+  // Skript: alle 20–30 s zufällige Animation (einmal), danach Return-Pose; X merkt sich das Ausblenden
+  const js = (await client().request('/static/app.js')).text;
+  assert.match(js, /data-mascot/);
+  assert.match(js, /20000/);
+  assert.match(js, /#jednom/);
+  assert.match(js, /bt-mascot-hidden/);
+});

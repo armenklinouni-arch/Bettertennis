@@ -188,6 +188,16 @@ Tests: `npm test`
   „lozinka promijenjena“. Einträge älter als 12 Monate werden automatisch gelöscht. Tabelle `activity_log`;
   das Protokoll beginnt mit diesem Update (frühere Änderungen werden nicht nachgetragen).
 
+## Maskottchen (Test, nur Admin)
+
+- Unten rechts steht klein das Maskottchen (auf dem Handy kleiner), nur für den Admin – Mitglieder, Kinder- und
+  Elternkonten, Trainer und Besucher sehen es nicht. Klicks gehen durch die Figur hindurch (nur das „×“ ist
+  klickbar), unten auf jeder Seite ist Platz, damit nichts verdeckt bleibt.
+- Zwischen den Animationen steht es in der Return-Position (`spremni.svg`, wippt leicht) und spielt etwa alle
+  20–30 Sekunden zufällig eine der fünf Animationen (`#jednom`). „×“ blendet es bis zum Schließen des Browsers aus.
+  Bei „weniger Bewegung“ (prefers-reduced-motion) bleibt es ein stehendes Bild.
+- Grafiken: `public/img/maskota-animacije/` (Generator: `node scripts/maskota-animacije.js`).
+
 ## Wochenfreigabe (Trainingsplan)
 
 - Jede Woche (Mo–So) ist entweder **versteckt** oder **freigegeben**. Mitglieder und Kinder-Konten sehen Termine

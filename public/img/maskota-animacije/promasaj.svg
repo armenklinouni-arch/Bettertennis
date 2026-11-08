@@ -122,6 +122,7 @@
       </g>
       <path class="mouth-wavy alt anim" d="M92 184 q7 -7 14 0 t14 0 t14 0 t14 0" stroke="#11304c" stroke-width="5" stroke-linecap="round" fill="none"/>
     </g>
+    
   </g>
       <path class="fx swoosh anim" d="M300 170 C320 110 290 40 200 20" stroke="#7fbf35" stroke-width="6" stroke-linecap="round" fill="none"/>
       <text class="fx question anim" x="196" y="44" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="700" fill="#11304c">?</text>

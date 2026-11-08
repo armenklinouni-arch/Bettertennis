@@ -20,8 +20,15 @@ const ASSET_VERSION = (() => {
   return hash.digest('hex').slice(0, 10);
 })();
 
+// Maskota (test): samo za admina, dolje desno. Trajanje animacija u ms (vidi scripts/maskota-animacije.js).
+const MASCOT_ANIMS = { servis: 3000, forhend: 2600, promasaj: 4000, poen: 3200, pogodjen: 3600 };
+function mascotWidget() {
+  return html`<div class="mascot-widget" data-mascot data-anims="${JSON.stringify(MASCOT_ANIMS)}"><img class="mascot-img" src="/static/img/maskota-animacije/spremni.svg" alt="" width="380" height="344"><button type="button" class="mascot-close" aria-label="Sakrij maskotu">×</button></div>`;
+}
+
 function layout(req, { title, body, wide = false, fullBleed = false }) {
   const user = req.user;
+  const showMascot = !!user && user.role === 'admin';
   const flash = req.takeFlash();
   const path = req.path;
   const navLink = (href, label, exact = false) => {
@@ -84,7 +91,7 @@ function layout(req, { title, body, wide = false, fullBleed = false }) {
   <link rel="apple-touch-icon" href="/static/img/logo-mark.png">
   <meta name="theme-color" content="#11304c">
 </head>
-<body>
+<body${showMascot ? html` class="has-mascot"` : ''}>
   <header class="site-header">
     <div class="container header-inner${wide || (user && user.role === 'admin') ? ' wide' : ''}">
       <a class="brand" href="${user ? ({ admin: '/admin', trainer: '/trener', parent: '/roditelj' }[user.role] || '/mitglied') : '/'}">
@@ -113,6 +120,7 @@ function layout(req, { title, body, wide = false, fullBleed = false }) {
   <footer class="site-footer">
     <div class="container${wide ? ' wide' : ''}">© ${new Date().getFullYear()} ${SITE_NAME} · Teniska škola</div>
   </footer>
+  ${showMascot ? mascotWidget() : ''}
 </body>
 </html>`;
 }

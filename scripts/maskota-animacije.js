@@ -23,13 +23,33 @@ const smallBall = (cls) => `
 
 // Maskota iz pokretnih dijelova. Animirani elementi nemaju statičke transform-atribute na precima,
 // tako da se tačke okretanja (transform-origin) zadaju direktno u koordinatama crteža.
-function mascot(id, { ballBehind = '' } = {}) {
+// Return-pozicija (čeka lopticu): koljena savijena, reket objema rukama ispred tijela.
+const READY_LEGS = `<path d="M96 214 L82 231 L90 246 M142 216 L158 231 L150 246" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+const READY_FRONT = `
+    <g class="ready-arms">
+      <g transform="translate(150 238) rotate(-80) scale(0.62) translate(-214 -138)">
+        <rect x="208" y="96" width="12" height="44" rx="5" fill="${NAVY}"/>
+        <rect x="208" y="122" width="12" height="18" rx="5" fill="${GREEN}"/>
+        <path d="M214 98 L204 82 M214 98 L224 82" stroke="${NAVY}" stroke-width="5" stroke-linecap="round"/>
+        <ellipse cx="214" cy="50" rx="30" ry="38" fill="#ffffff" fill-opacity="0.9" stroke="${NAVY}" stroke-width="7"/>
+        <g stroke="${GREEN}" stroke-width="2" opacity="0.9">
+          <path d="M196 30 V70 M205 18 V82 M214 14 V86 M223 18 V82 M232 30 V70"/>
+          <path d="M188 34 H240 M186 44 H242 M186 54 H242 M188 64 H240 M194 74 H234"/>
+        </g>
+      </g>
+      <path d="M190 144 C206 184 184 228 148 236 M48 156 C40 198 90 236 128 234" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>
+      <circle cx="146" cy="236" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>
+      <circle cx="127" cy="234" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>
+    </g>`;
+
+function mascot(id, { ballBehind = '', pose = 'default' } = {}) {
+  const ready = pose === 'ready';
   return `
   <ellipse class="shadow" cx="122" cy="266" rx="70" ry="8" fill="${NAVY}" opacity="0.12"/>
   ${ballBehind}
   <g class="fig">
     <g class="legs">
-      <path d="M96 210 L90 244 M142 212 L150 244" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>
+      ${ready ? READY_LEGS : `<path d="M96 210 L90 244 M142 212 L150 244" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>`}
       <g stroke="${NAVY}" stroke-width="4" stroke-linejoin="round" fill="#ffffff">
         <path d="M66 258 C66 246 76 240 92 240 C100 240 104 244 106 250 L108 258 Z"/>
         <path d="M134 258 L136 250 C138 244 142 240 150 240 C166 240 176 246 176 258 Z"/>
@@ -37,7 +57,7 @@ function mascot(id, { ballBehind = '' } = {}) {
       <path d="M68 258 H108 M134 258 H176" stroke="${NAVY}" stroke-width="5" stroke-linecap="round"/>
       <path d="M74 251 C82 247 92 249 100 246 M142 246 C150 249 160 247 168 251" stroke="${GREEN}" stroke-width="4" stroke-linecap="round" fill="none"/>
     </g>
-    <g class="arm-l">
+    ${ready ? '' : `<g class="arm-l">
       <path d="M48 150 C30 140 24 122 30 104" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>
       <circle cx="30" cy="100" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>
     </g>
@@ -54,8 +74,8 @@ function mascot(id, { ballBehind = '' } = {}) {
       </g>
       <path d="M190 138 C204 132 212 122 216 110" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>
       <circle cx="217" cy="106" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>
-    </g>
-    <g class="body">
+    </g>`}
+    <g class="body"${ready ? ' transform="translate(0 6)"' : ''}>
       <circle cx="118" cy="142" r="76" fill="url(#${id}-ball)" stroke="${NAVY}" stroke-width="5"/>
       <g clip-path="url(#${id}-clip)" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.95">
         <path d="M50 96 C82 120 84 168 54 196"/>
@@ -102,6 +122,7 @@ function mascot(id, { ballBehind = '' } = {}) {
       </g>
       <path class="mouth-wavy alt" d="M92 184 q7 -7 14 0 t14 0 t14 0 t14 0" stroke="${NAVY}" stroke-width="5" stroke-linecap="round" fill="none"/>
     </g>
+    ${ready ? READY_FRONT : ''}
   </g>`;
 }
 
@@ -137,6 +158,20 @@ const rot = (d) => `rotate(${d}deg)`;
 // Opacity za alternativne dijelove (lica, efekti): uključeno između od–do.
 const showBetween = (name, from, to) => kf(name, 'opacity', [[0, 0], [Math.max(0, from - 0.5), 0], [from, 1], [to, 1], [Math.min(100, to + 0.5), 0], [100, 0]]);
 const hideBetween = (name, from, to) => kf(name, 'opacity', [[0, 1], [Math.max(0, from - 0.5), 1], [from, 0], [to, 0], [Math.min(100, to + 0.5), 1], [100, 1]]);
+
+// Return-pozicija: lagano njihanje u petlji (između animacija).
+const READY = {
+  file: 'spremni', title: 'Return-pozicija', label: 'Maskota čeka lopticu u return-poziciji', dur: 1.8, pose: 'ready',
+  extra: () => '',
+  css: (id) => {
+    const s = `#${id}`;
+    return `
+      ${s} .fig { animation-name: ${id}-sway; }
+      ${s} .pupils { animation-name: ${id}-look; animation-duration: 5.4s; }
+      ${kf(`${id}-sway`, 'transform', [[0, `${tr(-3, 0)} rotate(-2deg)`], [25, `${tr(0, 2)} rotate(0deg)`], [50, `${tr(3, 0)} rotate(2deg)`], [75, `${tr(0, 2)} rotate(0deg)`], [100, `${tr(-3, 0)} rotate(-2deg)`]])}
+      ${kf(`${id}-look`, 'transform', [[0, 'none'], [30, 'none'], [36, tr(3, 0)], [56, tr(3, 0)], [62, tr(-2, 0)], [80, tr(-2, 0)], [86, 'none'], [100, 'none']])}`;
+  },
+};
 
 const SCENES = [
   {
@@ -305,7 +340,7 @@ function sceneSvg(scene, { standalone = true } = {}) {
     .replace(/\n\s*\n/g, '\n');
   const animated = ['arm-r', 'arm-l', 'fig', 'body', 'shadow', 'tb', 'swoosh', 'swoosh2', 'pupils', 'question', 'mouth', 'mouth-o', 'brows',
     'eyes', 'eyes-happy', 'cheer', 'bang', 'eyes-dizzy', 'mouth-wavy', 'stars'];
-  let body = `${mascot(id, { ballBehind: scene.ballBehind || '' })}${scene.extra(id)}`;
+  let body = `${mascot(id, { ballBehind: scene.ballBehind || '', pose: scene.pose })}${scene.extra(id)}`;
   for (const cls of animated) {
     body = body.replace(new RegExp(`class="([^"]*\\b)${cls}(\\b[^"]*)"`, 'g'), (m, a, b) => (m.includes(' anim') ? m : `class="${a}${cls}${b} anim"`));
   }
@@ -321,7 +356,7 @@ function sceneSvg(scene, { standalone = true } = {}) {
 }
 
 function previewHtml() {
-  const cards = SCENES.map((sc) => `
+  const cards = [READY, ...SCENES].map((sc) => `
       <figure class="card">
         <div class="stage">${sceneSvg(sc, { standalone: false })}</div>
         <figcaption><strong>${sc.title}</strong><span>${sc.dur} s · ${sc.file}.svg</span>
@@ -367,9 +402,9 @@ function previewHtml() {
 
 if (require.main === module) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  for (const scene of SCENES) fs.writeFileSync(path.join(OUT_DIR, `${scene.file}.svg`), sceneSvg(scene));
+  for (const scene of [READY, ...SCENES]) fs.writeFileSync(path.join(OUT_DIR, `${scene.file}.svg`), sceneSvg(scene));
   if (process.argv[2]) fs.writeFileSync(process.argv[2], previewHtml());
   console.log(`Animacije: ${SCENES.map((s) => `${s.file}.svg`).join(', ')}${process.argv[2] ? ` · pregled: ${process.argv[2]}` : ''}`);
 }
 
-module.exports = { SCENES, sceneSvg, previewHtml };
+module.exports = { READY, SCENES, sceneSvg, previewHtml };

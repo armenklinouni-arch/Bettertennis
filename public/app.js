@@ -334,3 +334,48 @@ document.addEventListener('change', (event) => {
     });
   });
 })();
+
+// Maskota (test, samo admin): stoji u return-poziciji i otprilike svakih 20–30 s zaigra jednu od svojih
+// animacija (jednom), pa se vrati u return-poziciju. „×“ je skriva do zatvaranja preglednika.
+(() => {
+  document.addEventListener('DOMContentLoaded', () => {
+    const widget = document.querySelector('[data-mascot]');
+    if (!widget) return;
+    try {
+      if (window.sessionStorage.getItem('bt-mascot-hidden') === '1') {
+        widget.hidden = true;
+        return;
+      }
+    } catch { /* bez pohrane */ }
+    const img = widget.querySelector('.mascot-img');
+    const close = widget.querySelector('.mascot-close');
+    const ready = img.getAttribute('src');
+    const dir = ready.slice(0, ready.lastIndexOf('/') + 1);
+    let anims = {};
+    try { anims = JSON.parse(widget.getAttribute('data-anims') || '{}'); } catch { anims = {}; }
+    const names = Object.keys(anims);
+    let timer = null;
+    let plays = 0;
+    close.addEventListener('click', () => {
+      widget.hidden = true;
+      window.clearTimeout(timer);
+      try { window.sessionStorage.setItem('bt-mascot-hidden', '1'); } catch { /* bez pohrane */ }
+    });
+    // „Manje pokreta“: samo mirna slika, bez animacija.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || names.length === 0) return;
+    names.forEach((n) => { const pre = new Image(); pre.src = `${dir}${n}.svg`; });
+    const schedule = () => { timer = window.setTimeout(play, 20000 + Math.random() * 10000); };
+    function play() {
+      if (document.hidden) return schedule();
+      const name = names[Math.floor(Math.random() * names.length)];
+      plays += 1;
+      // ?v=… da animacija svaki put krene od početka; #jednom = bez petlje
+      img.src = `${dir}${name}.svg?v=${plays}#jednom`;
+      timer = window.setTimeout(() => {
+        img.src = ready;
+        schedule();
+      }, anims[name] + 150);
+    }
+    schedule();
+  });
+})();
