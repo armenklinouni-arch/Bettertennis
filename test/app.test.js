@@ -1472,7 +1472,8 @@ test('Elternkonto sieht nur zugeordnete Spieler und kann nichts verändern', asy
   // Die Seiten enthalten keine Formulare zum Ändern (nur die Spieler-Auswahl per GET und Abmelden)
   for (const p of pages) {
     const posts = [...p.text.matchAll(/<form[^>]*method="post"[^>]*action="([^"]+)"/g)].map((m) => m[1]);
-    assert.deepEqual([...new Set(posts)], ['/logout']);
+    // Einzige Formulare: Abmelden und die persönliche Einstellung „Maskottchen ausblenden“ (ändert keine Daten)
+    assert.deepEqual([...new Set(posts)], ['/logout', '/maskota/sakrij']);
   }
   // Admin kann zuordnen ändern: p2 entfernen → sofort nicht mehr sichtbar
   const acc = db.prepare("SELECT id FROM parent_accounts WHERE username = 'roditelj.citaj'").get();
@@ -4213,38 +4214,26 @@ test('Iznosi: Zeilen nach Status eingefärbt (plaćeno/odobreno/otvoreno/bez tre
 });
 
 // ---------------------------------------------------------------- Maskottchen (Test-Einbau): nur Admin
-test('Maskottchen unten rechts: nur für den Admin; Return-Pose, zufällige Animationen, X zum Ausblenden', async () => {
+test('Maskottchen unten rechts: Return-Pose, zufällige Animationen, X zum Ausblenden; keine Besucher', async () => {
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
   const page = (await admin.request('/admin')).text;
-  const widget = /<div class="mascot-widget" data-mascot data-anims="([^"]+)" data-version="[0-9a-f]+">([\s\S]*?)<\/div>/.exec(page);
+  const widget = /<div class="mascot-widget" data-mascot data-anims="([^"]+)" data-version="[0-9a-f]+">([\s\S]*?)<\/form><\/div>/.exec(page);
   assert.ok(widget, 'Maskottchen fehlt beim Admin');
   const anims = JSON.parse(widget[1].replace(/&quot;/g, '"'));
   assert.deepEqual(Object.keys(anims).sort(), ['forhend', 'poen', 'pogodjen', 'promasaj', 'servis']);
   assert.ok(Object.values(anims).every((ms) => ms >= 2000 && ms <= 4000));
   // Neues Design (Basecap „BT“) in der Ecke
   assert.match(widget[2], /<img class="mascot-img" src="\/static\/img\/maskota-v2\/spremni\.svg\?v=[0-9a-f]+" alt="" width="\d+" height="\d+">/);
-  assert.match(widget[2], /<button type="button" class="mascot-close" aria-label="Sakrij maskotu">×<\/button>/);
+  assert.match(widget[2], /<form method="post" action="\/maskota\/sakrij" class="mascot-close-form"><input type="hidden" name="_csrf" value="[^"]+"><button type="submit" class="mascot-close" aria-label="Sakrij maskotu">×<\/button>$/);
   assert.match(page, /<body class="has-mascot">/);
   // Auch auf anderen Admin-Seiten
   assert.match((await admin.request('/admin/abrechnung')).text, /data-mascot/);
 
-  // Niemand sonst: Besucher, Login, Mitglied, Kinder-Konto, Elternkonto, Trainer
+  // Nicht eingeloggte Besucher sehen es nicht (eingeloggte Konten: eigener Test weiter unten)
   const noMascot = (t) => !/data-mascot|maskota-animacije|maskota-v2|has-mascot/.test(t);
   assert.ok(noMascot((await client().request('/')).text));
   assert.ok(noMascot((await client().request('/login')).text));
-  const pid = makeMember('Maskota Clan', 'maskota.clan');
-  const m = client();
-  await m.login('maskota.clan', 'memberpass1');
-  assert.ok(noMascot((await m.request('/mitglied')).text));
-  await m.post('/mitglied/djeca', { name: 'Maskota Dijete', username: 'maskota.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
-  const k = client();
-  await k.login('maskota.kid', 'kid-pass-123');
-  assert.ok(noMascot((await k.request('/mitglied')).text));
-  await createParentAccount(admin, { name: 'Maskota Roditelj', username: 'maskota.roditelj', password: 'roditelj-pass-1', players: [pid] });
-  const p = client();
-  await p.login('maskota.roditelj', 'roditelj-pass-1');
-  assert.ok(noMascot((await p.request('/roditelj')).text));
 
   // Grafiken vorhanden (Return-Pose wippt in Schleife, „weniger Bewegung“ = stehendes Bild)
   const ready = await client().request('/static/img/maskota-v2/spremni.svg');
@@ -4263,16 +4252,16 @@ test('Maskottchen unten rechts: nur für den Admin; Return-Pose, zufällige Anim
   assert.match(js, /data-mascot/);
   assert.match(js, /20000/);
   assert.match(js, /#jednom/);
-  assert.match(js, /bt-mascot-hidden/);
+  assert.match(js, /mascot-close-form/);
 });
 
 test('Maskottchen: Klick/Tippen auf die Figur startet sofort eine Animation (nicht während einer laufenden); X getrennt', async () => {
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
   const page = (await admin.request('/admin')).text;
-  const widget = /<div class="mascot-widget" data-mascot data-anims="[^"]+" data-version="[0-9a-f]+">([\s\S]*?)<\/div>/.exec(page)[1];
+  const widget = /<div class="mascot-widget" data-mascot data-anims="[^"]+" data-version="[0-9a-f]+">([\s\S]*?)<\/form><\/div>/.exec(page)[1];
   // Eigene Klickfläche nur über der Figur; das X ist ein eigener Knopf danach (liegt darüber)
-  assert.match(widget, /<button type="button" class="mascot-hit" aria-label="Pokreni animaciju maskote"><\/button><button type="button" class="mascot-close" aria-label="Sakrij maskotu">×<\/button>/);
+  assert.match(widget, /<button type="button" class="mascot-hit" aria-label="Pokreni animaciju maskote"><\/button><form method="post" action="\/maskota\/sakrij" class="mascot-close-form"><input type="hidden" name="_csrf" value="[^"]+"><button type="submit" class="mascot-close" aria-label="Sakrij maskotu">×<\/button>$/);
   const css = (await client().request('/static/style.css')).text;
   assert.match(css, /\.mascot-hit \{[^}]*position: absolute;[^}]*pointer-events: auto;[^}]*cursor: pointer;/);
   assert.match(css, /\.mascot-close \{[^}]*z-index: 2;/);
@@ -4389,4 +4378,76 @@ test('Maskottchen: Reihenfolge – erst alle fünf Animationen in zufälliger Re
   const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
   assert.match(js, /bt-mascot-bag/);
   assert.match(js, /btMascotNext\(/);
+});
+
+
+// ---------------------------------------------------------------- Maskottchen für alle eingeloggten Konten, Ausblenden dauerhaft pro Konto
+test('Maskottchen: für alle eingeloggten Konten (Admin, Mitglied, Kind, Eltern, Trainer), nicht für Besucher; „×“ dauerhaft pro Konto', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const has = (t) => /<div class="mascot-widget" data-mascot /.test(t) && /<body class="has-mascot">/.test(t);
+  const pid = makeMember('Svi Maskota', 'svi.maskota');
+  makeMember('Drugi Maskota', 'drugi.maskota');
+  const m = client();
+  await m.login('svi.maskota', 'memberpass1');
+  await m.post('/mitglied/djeca', { name: 'Svi Dijete', username: 'svi.kid', password: 'kid-pass-123' }, '/mitglied/djeca');
+  const k = client();
+  await k.login('svi.kid', 'kid-pass-123');
+  await createParentAccount(admin, { name: 'Svi Roditelj', username: 'svi.roditelj', password: 'roditelj-pass-1', players: [pid] });
+  const p = client();
+  await p.login('svi.roditelj', 'roditelj-pass-1');
+  await admin.post('/admin/treneri', { name: 'Svi Trener', username: 'svi.trener', password: 'trener-pass-1', rate_individual: '20', rate_group: '30', active: '1' }, '/admin/treneri/neu');
+  const t = client();
+  await t.login('svi.trener', 'trener-pass-1');
+  // Überall gleiches Verhalten (gleiches Widget mit allen Animationen)
+  for (const [c, path] of [[admin, '/admin'], [m, '/mitglied'], [m, '/mitglied/abrechnung'], [k, '/mitglied'], [p, '/roditelj'], [p, '/roditelj/finansije'], [t, '/trener']]) {
+    const text = (await c.request(path)).text;
+    assert.ok(has(text), path);
+    assert.match(text, /data-anims="\{&quot;servis&quot;:3000,&quot;forhend&quot;:2600,&quot;promasaj&quot;:4000,&quot;poen&quot;:3200,&quot;pogodjen&quot;:3600\}"/);
+  }
+  // Besucher nicht
+  for (const path of ['/', '/login', '/zaboravljena-lozinka']) assert.ok(!/data-mascot|has-mascot/.test((await client().request(path)).text), path);
+  assert.equal((await client().post('/maskota/sakrij', {}, '/login')).status, 302);
+
+  // „×“: Mitglied blendet aus → bleibt aus, auch nach neuem Login; andere Konten sehen es weiter
+  const hide = await m.post('/maskota/sakrij', {}, '/mitglied');
+  assert.equal(hide.status, 302);
+  assert.equal(hide.location, '/mitglied');
+  assert.ok(!has((await m.request('/mitglied')).text));
+  const m2 = client();
+  await m2.login('svi.maskota', 'memberpass1');
+  const again = (await m2.request('/mitglied')).text;
+  assert.ok(!has(again));
+  assert.equal(db.prepare("SELECT mascot_hidden FROM account_prefs WHERE kind = 'user' AND account_id = ?").get(pid).mascot_hidden, 1);
+  const other = client();
+  await other.login('drugi.maskota', 'memberpass1');
+  assert.ok(has((await other.request('/mitglied')).text));
+  assert.ok(has((await k.request('/mitglied')).text)); // Kinder-Konto entscheidet selbst
+  // Wieder einblenden über den Fußbereich
+  assert.match(again, /<form method="post" action="\/maskota\/prikazi" class="mascot-show-form">[\s\S]*?Prikaži maskotu<\/button><\/form>/);
+  await m2.post('/maskota/prikazi', {}, '/mitglied');
+  assert.ok(has((await m2.request('/mitglied')).text));
+  // Im Hintergrund (Skript): 204 ohne Weiterleitung; auch für Trainer und Elternkonto
+  for (const c of [t, p, k]) {
+    const token = await c.csrf(c === t ? '/trener' : c === p ? '/roditelj' : '/mitglied');
+    const res = await fetch(base + '/maskota/sakrij', {
+      method: 'POST', redirect: 'manual',
+      headers: { cookie: c.cookie, 'content-type': 'application/x-www-form-urlencoded', 'x-requested-with': 'fetch' },
+      body: new URLSearchParams({ _csrf: token }).toString(),
+    });
+    assert.equal(res.status, 204);
+  }
+  assert.ok(!has((await t.request('/trener')).text));
+  assert.ok(!has((await p.request('/roditelj')).text));
+  assert.ok(!has((await k.request('/mitglied')).text));
+  // Fremde Rücksprungadressen werden nicht übernommen
+  const evil = await m2.request('/maskota/sakrij', { method: 'POST', form: { _csrf: await m2.csrf('/mitglied'), back: 'https://evil.example/' } });
+  assert.equal(evil.location, '/mitglied');
+  // Gelöschtes Konto: Einstellung wird mitgelöscht (keine Übernahme durch neue Konten mit gleicher Nummer)
+  const kidId = db.prepare("SELECT id FROM users WHERE username = 'svi.kid'").get().id;
+  await m2.post(`/mitglied/djeca/${kidId}/obrisi`, {}, '/mitglied/djeca');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM account_prefs WHERE kind = 'user' AND account_id = ?").get(kidId).n, 0);
+  // Skript schickt „×“ im Hintergrund ab
+  const js = (await client().request('/static/app.js')).text;
+  assert.match(js, /x-requested-with/i);
 });

@@ -188,13 +188,16 @@ Tests: `npm test`
   „lozinka promijenjena“. Einträge älter als 12 Monate werden automatisch gelöscht. Tabelle `activity_log`;
   das Protokoll beginnt mit diesem Update (frühere Änderungen werden nicht nachgetragen).
 
-## Maskottchen (Test, nur Admin)
+## Maskottchen
 
-- Unten rechts steht klein das Maskottchen (auf dem Handy kleiner), nur für den Admin – Mitglieder, Kinder- und
-  Elternkonten, Trainer und Besucher sehen es nicht. Klicks gehen durch die Figur hindurch (nur das „×“ ist
-  klickbar), unten auf jeder Seite ist Platz, damit nichts verdeckt bleibt.
+- Unten rechts steht klein das Maskottchen (auf dem Handy kleiner) – für **alle eingeloggten Konten** (Admin,
+  Mitglieder, Kinder-Konten, Elternkonten, Trainer); nicht eingeloggte Besucher sehen es nicht. Klicks gehen durch die
+  Figur hindurch (nur die Figur selbst und das „×“ sind klickbar), unten auf jeder Seite ist Platz. Liegt beim Scrollen
+  ein Knopf, Link, Eingabefeld oder eine Tabelle darunter, wird es halb durchsichtig und Klicks gehen ganz durch.
+- **„×“** blendet es für das eigene Konto dauerhaft aus (gespeichert in `account_prefs`, gilt auch nach dem nächsten
+  Login und auf anderen Geräten); unten im Fußbereich erscheint dann **„Prikaži maskotu“** zum Wiedereinblenden.
 - Zwischen den Animationen steht es in der Return-Position (`spremni.svg`, wippt leicht) und spielt etwa alle
-  20–30 Sekunden zufällig eine der fünf Animationen (`#jednom`). „×“ blendet es bis zum Schließen des Browsers aus.
+  20–30 Sekunden eine der fünf Animationen (`#jednom`).
   Klick/Tippen auf die Figur spielt sofort eine Animation (während einer laufenden passiert nichts). Klick und
   automatische Animationen spielen alle fünf in zufälliger Reihenfolge, bevor sich eine wiederholt – nie zweimal
   dieselbe hintereinander (Stand pro Browser-Sitzung gemerkt, auch beim Seitenwechsel);

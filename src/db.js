@@ -165,6 +165,20 @@ CREATE TABLE IF NOT EXISTS parent_account_players (
 );
 
 -- Linkovi za novu lozinku („Zaboravljena lozinka“): čuva se samo hash tokena; jednokratni, ističu nakon 60 min.
+-- Lične postavke računa (npr. maskota sakrivena). kind: user | trainer | parent (kao kod sesija).
+CREATE TABLE IF NOT EXISTS account_prefs (
+  kind          TEXT NOT NULL,
+  account_id    INTEGER NOT NULL,
+  mascot_hidden INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (kind, account_id)
+);
+CREATE TRIGGER IF NOT EXISTS prefs_users_delete AFTER DELETE ON users
+  BEGIN DELETE FROM account_prefs WHERE kind = 'user' AND account_id = OLD.id; END;
+CREATE TRIGGER IF NOT EXISTS prefs_trainers_delete AFTER DELETE ON trainers
+  BEGIN DELETE FROM account_prefs WHERE kind = 'trainer' AND account_id = OLD.id; END;
+CREATE TRIGGER IF NOT EXISTS prefs_parents_delete AFTER DELETE ON parent_accounts
+  BEGIN DELETE FROM account_prefs WHERE kind = 'parent' AND account_id = OLD.id; END;
+
 -- Dnevnik aktivnosti (samo za čitanje; zapisi stariji od 12 mjeseci se brišu automatski).
 CREATE TABLE IF NOT EXISTS activity_log (
   id         INTEGER PRIMARY KEY,

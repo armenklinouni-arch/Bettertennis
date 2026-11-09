@@ -7,7 +7,7 @@ const express = require('express');
 const { html, raw } = require('../html');
 const { layout, csrfField, errorList } = require('../views');
 const {
-  verifyPassword, hashPassword, DUMMY_HASH, homeFor, startSession, endSession, endSessionsFor,
+  verifyPassword, hashPassword, DUMMY_HASH, homeFor, startSession, endSession, endSessionsFor, accountKey,
 } = require('../auth');
 const { logActivity } = require('../activity');
 const { isPlaceholderEmail, needsEmailPrompt } = require('../db');
@@ -491,6 +491,23 @@ module.exports = function publicRoutes(db, {
     res.flash('success', `Nova lozinka je sačuvana. Prijavi se korisničkim imenom ${account.username}.`);
     res.redirect('/login');
   });
+
+  // Maskota: „×“ sakriva, „Prikaži maskotu“ ponovo prikazuje – trajno za ovaj račun (i nakon sljedeće prijave).
+  const setMascotHidden = db.prepare(
+    `INSERT INTO account_prefs (kind, account_id, mascot_hidden) VALUES (?, ?, ?)
+     ON CONFLICT(kind, account_id) DO UPDATE SET mascot_hidden = excluded.mascot_hidden`
+  );
+  const mascotPref = (hidden) => (req, res) => {
+    if (!req.user) return res.redirect('/login');
+    const key = accountKey(req.user);
+    setMascotHidden.run(key.kind, key.id, hidden ? 1 : 0);
+    if (req.get('x-requested-with') === 'fetch') return res.status(204).end();
+    const back = typeof req.body.back === 'string' && /^\/(?!\/)/.test(req.body.back) ? req.body.back : null;
+    const ref = (() => { try { const u = new URL(req.get('referer') || '', 'http://x'); return u.host === req.get('host') ? u.pathname + u.search : null; } catch { return null; } })();
+    res.redirect(back || ref || homeFor(req.user));
+  };
+  router.post('/maskota/sakrij', mascotPref(true));
+  router.post('/maskota/prikazi', mascotPref(false));
 
   router.post('/logout', (req, res) => {
     endSession(db, req); // odmah nevažeće – i za kopirani kolačić

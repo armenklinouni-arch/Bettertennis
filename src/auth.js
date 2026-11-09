@@ -194,6 +194,7 @@ function loadUser(db) {
   const trainerStmt = db.prepare('SELECT * FROM trainers WHERE id = ? AND active = 1 AND password_hash IS NOT NULL');
   const parentStmt = db.prepare('SELECT * FROM parent_accounts WHERE id = ? AND active = 1');
   const unread = db.prepare('SELECT COUNT(*) AS n FROM news_recipients WHERE user_id = ? AND read_at IS NULL');
+  const prefs = db.prepare('SELECT mascot_hidden FROM account_prefs WHERE kind = ? AND account_id = ?');
   return (req, res, next) => {
     req.user = null;
     if (req.session.uid) {
@@ -208,8 +209,18 @@ function loadUser(db) {
     }
     // Broj nepročitanih aktuelnosti za oznaku u navigaciji.
     req.unreadNews = req.user && req.user.role === 'member' ? unread.get(req.user.id).n : 0;
+    // Maskota: vidljiva svim prijavljenim računima, osim ako ju je račun sakrio („×“).
+    const key = req.user ? accountKey(req.user) : null;
+    req.mascotHidden = !!(key && (prefs.get(key.kind, key.id) || {}).mascot_hidden);
     next();
   };
+}
+
+// Vrsta i ID prijavljenog računa (kao kod sesija): user (admin, član, dijete), trainer, parent.
+function accountKey(user) {
+  if (user.role === 'trainer') return { kind: 'trainer', id: user.trainer_id };
+  if (user.role === 'parent') return { kind: 'parent', id: user.parent_account_id };
+  return { kind: 'user', id: user.id };
 }
 
 // Zaštita od Cross-Site-Request-Forgery za sve POST zahtjeve.
@@ -335,6 +346,7 @@ module.exports = {
   endSession,
   endSessionsFor,
   loadUser,
+  accountKey,
   csrfProtection,
   requireLogin,
   requireMember,

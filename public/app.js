@@ -352,20 +352,14 @@ window.btMascotNext = function btMascotNext(state, names, random = Math.random) 
   return { name, state: { bag, last: name } };
 };
 
-// Maskota (test, samo admin): stoji u return-poziciji i otprilike svakih 20–30 s zaigra jednu od svojih
-// animacija (jednom), pa se vrati u return-poziciju. „×“ je skriva do zatvaranja preglednika.
+// Maskota (svi prijavljeni računi): stoji u return-poziciji i otprilike svakih 20–30 s zaigra jednu od svojih
+// animacija (jednom), pa se vrati u return-poziciju. „×“ je trajno sakriva za ovaj račun (sprema se na serveru).
 (() => {
   document.addEventListener('DOMContentLoaded', () => {
     const widget = document.querySelector('[data-mascot]');
     if (!widget) return;
-    try {
-      if (window.sessionStorage.getItem('bt-mascot-hidden') === '1') {
-        widget.hidden = true;
-        return;
-      }
-    } catch { /* bez pohrane */ }
     const img = widget.querySelector('.mascot-img');
-    const close = widget.querySelector('.mascot-close');
+    const closeForm = widget.querySelector('.mascot-close-form');
     const ready = img.getAttribute('src');
     const dir = ready.slice(0, ready.lastIndexOf('/') + 1);
     let anims = {};
@@ -380,11 +374,49 @@ window.btMascotNext = function btMascotNext(state, names, random = Math.random) 
     const BAG_KEY = 'bt-mascot-bag';
     let bagState = {};
     try { bagState = JSON.parse(window.sessionStorage.getItem(BAG_KEY) || '{}') || {}; } catch { bagState = {}; }
-    close.addEventListener('click', () => {
-      widget.hidden = true;
-      window.clearTimeout(timer);
-      try { window.sessionStorage.setItem('bt-mascot-hidden', '1'); } catch { /* bez pohrane */ }
-    });
+    // „×“: odmah sakrij i u pozadini spremi izbor (bez JavaScripta obrazac radi normalno).
+    if (closeForm) {
+      closeForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        widget.hidden = true;
+        window.clearTimeout(timer);
+        try {
+          window.fetch(closeForm.action, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' },
+            body: new URLSearchParams(new FormData(closeForm)).toString(),
+            credentials: 'same-origin',
+          }).catch(() => {});
+        } catch { /* bez mreže: barem sakrij na ovoj stranici */ }
+      });
+    }
+    // Ne zaklanja ništa: ako je ispod maskote dugme, link, polje ili tabela, ona postaje providna i klikovi idu kroz nju.
+    const INTERACTIVE = 'a, button, input, select, textarea, label, table, summary, [role="button"], [tabindex]';
+    let checkQueued = false;
+    function checkOverlap() {
+      checkQueued = false;
+      if (widget.hidden) return;
+      const hitEl = widget.querySelector('.mascot-hit');
+      const r = (hitEl || widget).getBoundingClientRect();
+      let covered = false;
+      for (const fx of [0.15, 0.5, 0.85]) {
+        for (const fy of [0.1, 0.5, 0.9]) {
+          const stack = document.elementsFromPoint(r.left + r.width * fx, r.top + r.height * fy);
+          const below = stack.find((el) => !widget.contains(el));
+          if (below && below.closest(INTERACTIVE) && !below.closest('.site-footer')) covered = true;
+        }
+      }
+      widget.classList.toggle('is-faded', covered);
+    }
+    const queueCheck = () => {
+      if (checkQueued) return;
+      checkQueued = true;
+      window.requestAnimationFrame(checkOverlap);
+    };
+    window.addEventListener('scroll', queueCheck, { passive: true });
+    window.addEventListener('resize', queueCheck);
+    checkOverlap();
+
     // „Manje pokreta“: samo mirna slika, bez animacija.
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || names.length === 0) return;
     names.forEach((n) => { const pre = new Image(); pre.src = `${dir}${n}.svg?v=${version}`; });
