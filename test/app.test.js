@@ -4280,3 +4280,32 @@ test('Maskottchen: Klick/Tippen auf die Figur startet sofort eine Animation (nic
   assert.match(js, /mascot-hit/);
   assert.match(js, /if \(playing\) return;/);
 });
+
+// ---------------------------------------------------------------- Maskottchen Design 2: Vorschau im Admin-Bereich
+test('Maskottchen Design 2 (Basecap): Vorschau-Seite nur für Admin; alle Animationen + Return-Position; Ecke unverändert', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const page = await admin.request('/admin/maskota');
+  assert.equal(page.status, 200);
+  assert.match(page.text, /<h1>Novi dizajn maskote – pregled<\/h1>/);
+  for (const f of ['maskota', 'spremni', 'servis', 'forhend', 'promasaj', 'poen', 'pogodjen']) {
+    assert.match(page.text, new RegExp(`<img src="/static/img/maskota-v2/${f}\\.svg"`), f);
+    const svg = await client().request(`/static/img/maskota-v2/${f}.svg`);
+    assert.equal(svg.status, 200, f);
+    assert.match(svg.text, /<tspan fill="#ffffff">B<\/tspan><tspan fill="#7fbf35">T<\/tspan>/, `${f}: „BT“ auf der Kappe`);
+    assert.match(svg.text, /prefers-reduced-motion: reduce/, f);
+  }
+  // Gleiche Bewegungen wie bisher (gleiche animierte Teile), Return-Position wippt
+  const ready = (await client().request('/static/img/maskota-v2/spremni.svg')).text;
+  assert.match(ready, /bt-maskota2-spremni-sway/);
+  assert.match((await client().request('/static/img/maskota-v2/servis.svg')).text, /bt-maskota2-servis-armr/);
+  // Die Figur in der Ecke bleibt vorerst beim bisherigen Design
+  assert.match(page.text, /<img class="mascot-img" src="\/static\/img\/maskota-animacije\/spremni\.svg"/);
+  // Nicht im Menü; nur Admin
+  assert.doesNotMatch(page.text, /<nav[^>]*>[\s\S]*href="\/admin\/maskota"[\s\S]*<\/nav>/);
+  makeMember('Maskota Pregled Clan', 'maskota.pregled');
+  const m = client();
+  await m.login('maskota.pregled', 'memberpass1');
+  assert.equal((await m.request('/admin/maskota')).status, 403);
+  assert.equal((await client().request('/admin/maskota')).status, 302);
+});

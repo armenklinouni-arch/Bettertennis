@@ -189,6 +189,35 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     }
   });
 
+  // ---------------------------------------------------------------- Maskota: pregled novog dizajna (samo admin, nije u meniju)
+  const MASCOT_V2 = [
+    ['spremni', 'Return-pozicija (između animacija)'], ['servis', 'Servis'], ['forhend', 'Forhend'],
+    ['promasaj', 'Promašaj'], ['poen', 'Poen!'], ['pogodjen', 'Pogođen'],
+  ];
+  router.get('/maskota', (req, res) => {
+    res.send(String(layout(req, {
+      title: 'Maskota – novi dizajn',
+      wide: true,
+      body: html`
+      <div class="page-head"><div>
+        <h1>Novi dizajn maskote – pregled</h1>
+        <p class="muted">Kapa naopako s „BT“, namiguje i široko se smije, bijele strip-rukavice, znojnica i patike u bojama
+          logotipa. Iste animacije i return-pozicija kao do sada. Maskota u uglu ekrana za sada ostaje u starom dizajnu.</p>
+      </div></div>
+      <div class="mascot-preview">
+        <figure class="card mascot-preview-main">
+          <img src="/static/img/maskota-v2/maskota.svg" alt="Nova maskota BetterTennis" width="380" height="344">
+          <figcaption><strong>Mirna slika</strong></figcaption>
+        </figure>
+        ${MASCOT_V2.map(([file, label]) => html`<figure class="card">
+          <img src="/static/img/maskota-v2/${file}.svg" alt="${label}" width="380" height="344">
+          <figcaption><strong>${label}</strong> <span class="muted small">${file}.svg</span></figcaption>
+        </figure>`)}
+      </div>
+      <p class="muted small">Uz podešavanje „manje pokreta“ (prefers-reduced-motion) prikazuje se mirna slika.</p>`,
+    })));
+  });
+
   // ---------------------------------------------------------------- Interessenten
   router.get('/interessenten', (req, res) => {
     const filter = LEAD_STATUSES.includes(req.query.status) ? req.query.status : '';

@@ -25,6 +25,9 @@ const smallBall = (cls) => `
 // tako da se tačke okretanja (transform-origin) zadaju direktno u koordinatama crteža.
 // Return-pozicija (čeka lopticu): koljena savijena, reket objema rukama ispred tijela.
 const READY_LEGS = `<path d="M96 214 L82 231 L90 246 M142 216 L158 231 L150 246" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+const READY_HANDS_V1 = `
+      <circle cx="146" cy="236" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>
+      <circle cx="127" cy="234" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>`;
 const READY_FRONT = `
     <g class="ready-arms">
       <g transform="translate(150 238) rotate(-80) scale(0.62) translate(-214 -138)">
@@ -38,28 +41,72 @@ const READY_FRONT = `
         </g>
       </g>
       <path d="M190 144 C206 184 184 228 148 236 M48 156 C40 198 90 236 128 234" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>
-      <circle cx="146" cy="236" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>
-      <circle cx="127" cy="234" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>
+${READY_HANDS_V1}
     </g>`;
 
-function mascot(id, { ballBehind = '', pose = 'default' } = {}) {
+// ---------------------------------------------------------------- Dizajn 2 (kapa naopako, rukavice, patike)
+const NAVY_LIGHT = '#2a5378';
+const SHADE = '#7da21c';
+// Bijela strip-rukavica (crta se oko 0,0; manžeta pokazuje prema ruci – ugao u stepenima).
+const glove = (x, y, angle) => `
+      <g transform="translate(${x} ${y}) rotate(${angle})">
+        <rect x="-8" y="6" width="16" height="7" rx="3" fill="#ffffff" stroke="${NAVY}" stroke-width="3"/>
+        <path d="M-10 2 C-13 -6 -8 -13 0 -13 C8 -13 13 -6 10 2 C9 7 -9 7 -10 2 Z" fill="#ffffff" stroke="${NAVY}" stroke-width="3.2"/>
+        <path d="M-10 -1 C-15 -3 -16 4 -11 5" fill="#ffffff" stroke="${NAVY}" stroke-width="3"/>
+        <path d="M-3 -9 V-3 M2 -9 V-3 M7 -7 V-2" stroke="${NAVY}" stroke-width="1.6" stroke-linecap="round" opacity="0.55"/>
+        <path d="M4 -10 C7 -10 9 -8 9 -5" stroke="#d9e2ea" stroke-width="2" fill="none" stroke-linecap="round"/>
+      </g>`;
+// Znojnica (zelena traka na zglobu).
+const wristband = (x1, y1, x2, y2) => `
+      <path d="M${x1} ${y1} L${x2} ${y2}" stroke="${NAVY}" stroke-width="13" stroke-linecap="round"/>
+      <path d="M${x1} ${y1} L${x2} ${y2}" stroke="${GREEN}" stroke-width="9" stroke-linecap="round"/>
+      <path d="M${x1} ${y1} L${x2} ${y2}" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.8"/>`;
+// Patike u bojama logotipa (tamnoplave, bijeli đon, zelena linija, bijele pertle).
+const SNEAKERS_V2 = `
+      <g stroke="${NAVY}" stroke-width="4" stroke-linejoin="round" fill="${NAVY}">
+        <path d="M64 258 C64 245 75 238 92 238 C101 238 105 243 107 250 L109 258 Z"/>
+        <path d="M133 258 L135 250 C137 243 141 238 150 238 C167 238 178 245 178 258 Z"/>
+      </g>
+      <path d="M66 257 H107 M135 257 H176" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+      <path d="M70 250 C80 245 92 247 102 243 M140 243 C150 247 162 245 172 250" stroke="${GREEN}" stroke-width="4" stroke-linecap="round" fill="none"/>
+      <path d="M84 241 l4 4 M90 240 l4 4 M146 240 l-4 4 M152 241 l-4 4" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+      <ellipse cx="80" cy="246" rx="6" ry="2.5" fill="#ffffff" opacity="0.25"/><ellipse cx="160" cy="245" rx="6" ry="2.5" fill="#ffffff" opacity="0.25"/>`;
+// Kapa naopako: štitnik pozadi, otvor s kopčom naprijed, „BT“ na kapi.
+const CAP_BRIM_V2 = `
+      <path d="M150 76 C168 60 200 54 224 58 C226 66 214 76 196 84 C186 88 174 92 166 94 Z" fill="${GREEN}" stroke="${NAVY}" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M160 74 C178 64 200 60 218 62" stroke="#ffffff" stroke-width="2.5" fill="none" opacity="0.5" stroke-linecap="round"/>
+      <path d="M170 92 C188 86 208 78 222 66" stroke="#5e9b21" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+const CAP_V2 = `
+      <path d="M36 128 C32 30 204 30 200 128 C164 112 72 112 36 128 Z" fill="${NAVY}" stroke="${NAVY}" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M118 56 C102 72 96 96 98 116 M118 56 C134 72 140 96 138 116" stroke="${NAVY_LIGHT}" stroke-width="2.5" fill="none"/>
+      <path d="M58 96 C70 74 92 62 110 60" stroke="#ffffff" stroke-width="6" fill="none" opacity="0.18" stroke-linecap="round"/>
+      <path d="M38 126 C74 110 162 110 198 126" stroke="${GREEN}" stroke-width="4" fill="none"/>
+      <path d="M100 121 C100 104 136 104 136 121 C126 116 110 116 100 121 Z" fill="#d4e83a" stroke="${NAVY}" stroke-width="3"/>
+      <path d="M103 117 H133" stroke="${NAVY}" stroke-width="3" stroke-linecap="round"/>
+      <rect x="114" y="113" width="8" height="6" rx="1.5" fill="#c9d3dc" stroke="${NAVY}" stroke-width="1.5"/>
+      <circle cx="118" cy="54" r="5" fill="${GREEN}" stroke="${NAVY}" stroke-width="2.5"/>
+      <text x="118" y="97" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="21" font-weight="900" letter-spacing="1"><tspan fill="#ffffff">B</tspan><tspan fill="${GREEN}">T</tspan></text>`;
+const READY_V2_HANDS = `${wristband(158, 236, 165, 236)}${glove(146, 236, -90)}${glove(127, 234, 90)}`;
+
+function mascot(id, { ballBehind = '', pose = 'default', design = 1 } = {}) {
   const ready = pose === 'ready';
+  const v2 = design === 2;
   return `
   <ellipse class="shadow" cx="122" cy="266" rx="70" ry="8" fill="${NAVY}" opacity="0.12"/>
   ${ballBehind}
   <g class="fig">
     <g class="legs">
       ${ready ? READY_LEGS : `<path d="M96 210 L90 244 M142 212 L150 244" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>`}
-      <g stroke="${NAVY}" stroke-width="4" stroke-linejoin="round" fill="#ffffff">
+      ${v2 ? SNEAKERS_V2 : `<g stroke="${NAVY}" stroke-width="4" stroke-linejoin="round" fill="#ffffff">
         <path d="M66 258 C66 246 76 240 92 240 C100 240 104 244 106 250 L108 258 Z"/>
         <path d="M134 258 L136 250 C138 244 142 240 150 240 C166 240 176 246 176 258 Z"/>
       </g>
       <path d="M68 258 H108 M134 258 H176" stroke="${NAVY}" stroke-width="5" stroke-linecap="round"/>
-      <path d="M74 251 C82 247 92 249 100 246 M142 246 C150 249 160 247 168 251" stroke="${GREEN}" stroke-width="4" stroke-linecap="round" fill="none"/>
+      <path d="M74 251 C82 247 92 249 100 246 M142 246 C150 249 160 247 168 251" stroke="${GREEN}" stroke-width="4" stroke-linecap="round" fill="none"/>`}
     </g>
     ${ready ? '' : `<g class="arm-l">
       <path d="M48 150 C30 140 24 122 30 104" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>
-      <circle cx="30" cy="100" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>
+      ${v2 ? glove(30, 98, 12) : `<circle cx="30" cy="100" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>`}
     </g>
     <g class="arm-r">
       <g transform="translate(217 108) rotate(22) scale(0.86) translate(-214 -138)">
@@ -73,22 +120,40 @@ function mascot(id, { ballBehind = '', pose = 'default' } = {}) {
         </g>
       </g>
       <path d="M190 138 C204 132 212 122 216 110" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>
-      <circle cx="217" cy="106" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>
+      ${v2 ? `${wristband(212, 121, 214, 115)}${glove(217, 104, 18)}` : `<circle cx="217" cy="106" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>`}
     </g>`}
     <g class="body"${ready ? ' transform="translate(0 6)"' : ''}>
+      ${v2 ? CAP_BRIM_V2 : ''}
       <circle cx="118" cy="142" r="76" fill="url(#${id}-ball)" stroke="${NAVY}" stroke-width="5"/>
       <g clip-path="url(#${id}-clip)" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.95">
         <path d="M50 96 C82 120 84 168 54 196"/>
         <path d="M186 92 C156 116 152 168 184 196"/>
       </g>
-      <path d="M50 108 C84 86 154 86 188 108 L184 124 C152 104 86 104 54 124 Z" fill="${NAVY}"/>
+      ${v2 ? `<g clip-path="url(#${id}-clip)">
+        <circle cx="96" cy="118" r="82" fill="none" stroke="${SHADE}" stroke-width="44" opacity="0.32"/>
+        <ellipse cx="62" cy="152" rx="6" ry="16" fill="#ffffff" opacity="0.35"/>
+      </g>
+      <circle cx="118" cy="142" r="76" fill="none" stroke="${NAVY}" stroke-width="5"/>
+      ${CAP_V2}` : `<path d="M50 108 C84 86 154 86 188 108 L184 124 C152 104 86 104 54 124 Z" fill="${NAVY}"/>
       <path d="M54 115 C88 96 150 96 186 115" stroke="${GREEN}" stroke-width="4" fill="none"/>
       <path d="M186 108 C198 100 206 104 208 112 C200 112 194 116 190 120 Z" fill="${NAVY}"/>
-      <path d="M188 116 C200 120 204 128 200 136 C194 130 188 128 184 124 Z" fill="${NAVY}"/>
+      <path d="M188 116 C200 120 204 128 200 136 C194 130 188 128 184 124 Z" fill="${NAVY}"/>`}
       <g class="brows" stroke="${NAVY}" stroke-width="5" stroke-linecap="round" fill="none">
-        <path d="M74 132 C82 126 92 126 100 130"/>
-        <path d="M130 126 C138 120 150 120 158 126"/>
+        ${v2 ? '<path d="M72 138 C80 136 92 138 100 142"/><path d="M130 128 C138 120 150 120 160 126"/>'
+    : '<path d="M74 132 C82 126 92 126 100 130"/><path d="M130 126 C138 120 150 120 158 126"/>'}
       </g>
+      ${v2 ? `<g class="eyes">
+        <path d="M74 154 Q88 164 102 152" stroke="${NAVY}" stroke-width="5" stroke-linecap="round" fill="none"/>
+        <path d="M76 150 l-5 -3 M100 149 l4 -4" stroke="${NAVY}" stroke-width="3" stroke-linecap="round"/>
+        <ellipse cx="144" cy="148" rx="15" ry="18" fill="#ffffff" stroke="${NAVY}" stroke-width="3.5"/>
+        <path d="M133 156 C138 164 150 165 156 158" stroke="#d9e2ea" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <g class="pupils">
+          <circle cx="147" cy="151" r="8.5" fill="${NAVY}"/>
+          <circle cx="150" cy="147" r="3.2" fill="#ffffff"/>
+          <circle cx="144" cy="155" r="1.5" fill="#ffffff"/>
+        </g>
+      </g>
+      <g class="eyes-v1-unused" display="none">` : ''}
       <g class="eyes">
         <ellipse cx="88" cy="150" rx="15" ry="18" fill="#ffffff" stroke="${NAVY}" stroke-width="3.5"/>
         <ellipse cx="144" cy="148" rx="15" ry="18" fill="#ffffff" stroke="${NAVY}" stroke-width="3.5"/>
@@ -98,7 +163,7 @@ function mascot(id, { ballBehind = '', pose = 'default' } = {}) {
           <circle cx="95" cy="150" r="3" fill="#ffffff"/>
           <circle cx="151" cy="148" r="3" fill="#ffffff"/>
         </g>
-      </g>
+      </g>${v2 ? '</g>' : ''}
       <g class="eyes-happy alt" stroke="${NAVY}" stroke-width="5" stroke-linecap="round" fill="none">
         <path d="M74 156 Q88 138 102 156"/>
         <path d="M130 154 Q144 136 158 154"/>
@@ -111,18 +176,23 @@ function mascot(id, { ballBehind = '', pose = 'default' } = {}) {
       </g>
       <ellipse cx="68" cy="176" rx="9" ry="6" fill="#f2957a" opacity="0.55"/>
       <ellipse cx="166" cy="174" rx="9" ry="6" fill="#f2957a" opacity="0.55"/>
-      <g class="mouth">
+      ${v2 ? `<g class="mouth">
+        <path d="M74 170 C82 214 152 216 166 166 C136 178 104 180 74 170 Z" fill="${NAVY}" stroke="${NAVY}" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M81 174 C104 183 138 182 159 172 L157 180 C136 189 104 190 83 182 Z" fill="#ffffff"/>
+        <path d="M100 200 C110 190 134 190 144 198 C134 206 110 207 100 200 Z" fill="#f26b6b"/>
+        <path d="M70 168 C72 164 76 163 79 166 M161 163 C164 160 168 161 169 165" stroke="${NAVY}" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      </g>` : `<g class="mouth">
         <path d="M80 174 C92 204 142 206 158 172 C138 182 102 184 80 174 Z" fill="${NAVY}" stroke="${NAVY}" stroke-width="3" stroke-linejoin="round"/>
         <path d="M86 177 C104 184 136 183 152 176 L150 181 C134 187 104 188 88 182 Z" fill="#ffffff"/>
         <path d="M104 194 C112 188 128 188 134 194 C126 199 112 199 104 194 Z" fill="#f26b6b"/>
-      </g>
+      </g>`}
       <g class="mouth-o alt">
         <ellipse cx="120" cy="184" rx="10" ry="12" fill="${NAVY}"/>
         <ellipse cx="120" cy="189" rx="6" ry="4" fill="#f26b6b"/>
       </g>
       <path class="mouth-wavy alt" d="M92 184 q7 -7 14 0 t14 0 t14 0 t14 0" stroke="${NAVY}" stroke-width="5" stroke-linecap="round" fill="none"/>
     </g>
-    ${ready ? READY_FRONT : ''}
+    ${ready ? (v2 ? READY_FRONT.replace(READY_HANDS_V1, READY_V2_HANDS) : READY_FRONT) : ''}
   </g>`;
 }
 
@@ -332,15 +402,15 @@ const SCENES = [
   },
 ];
 
-function sceneSvg(scene, { standalone = true } = {}) {
-  const id = `bt-maskota-${scene.file}`;
+function sceneSvg(scene, { standalone = true, design = 1 } = {}) {
+  const id = `bt-maskota${design === 2 ? '2' : ''}-${scene.file}`;
   const css = `${baseCss(id, scene.dur)}
     ${scene.css(id)}`
     // svi animirani dijelovi dobijaju zajedničke postavke (trajanje, petlja)
     .replace(/\n\s*\n/g, '\n');
   const animated = ['arm-r', 'arm-l', 'fig', 'body', 'shadow', 'tb', 'swoosh', 'swoosh2', 'pupils', 'question', 'mouth', 'mouth-o', 'brows',
     'eyes', 'eyes-happy', 'cheer', 'bang', 'eyes-dizzy', 'mouth-wavy', 'stars'];
-  let body = `${mascot(id, { ballBehind: scene.ballBehind || '', pose: scene.pose })}${scene.extra(id)}`;
+  let body = `${mascot(id, { ballBehind: scene.ballBehind || '', pose: scene.pose, design })}${scene.extra(id)}`;
   for (const cls of animated) {
     body = body.replace(new RegExp(`class="([^"]*\\b)${cls}(\\b[^"]*)"`, 'g'), (m, a, b) => (m.includes(' anim') ? m : `class="${a}${cls}${b} anim"`));
   }
@@ -400,11 +470,18 @@ function previewHtml() {
 `;
 }
 
+// Mirna slika (bez animacije) za dizajn 2.
+const STILL = { file: 'maskota', title: 'Mirna slika', label: 'BetterTennis maskota', dur: 1, extra: () => '', css: () => '' };
+const OUT_DIR_V2 = path.join(__dirname, '..', 'public', 'img', 'maskota-v2');
+
 if (require.main === module) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   for (const scene of [READY, ...SCENES]) fs.writeFileSync(path.join(OUT_DIR, `${scene.file}.svg`), sceneSvg(scene));
+  // Dizajn 2 (kapa naopako, rukavice, patike) – isti pokreti, zaseban folder
+  fs.mkdirSync(OUT_DIR_V2, { recursive: true });
+  for (const scene of [STILL, READY, ...SCENES]) fs.writeFileSync(path.join(OUT_DIR_V2, `${scene.file}.svg`), sceneSvg(scene, { design: 2 }));
   if (process.argv[2]) fs.writeFileSync(process.argv[2], previewHtml());
   console.log(`Animacije: ${SCENES.map((s) => `${s.file}.svg`).join(', ')}${process.argv[2] ? ` · pregled: ${process.argv[2]}` : ''}`);
 }
 
-module.exports = { READY, SCENES, sceneSvg, previewHtml };
+module.exports = { READY, SCENES, STILL, sceneSvg, previewHtml };

@@ -508,6 +508,14 @@ body.has-mascot .site-footer { padding-bottom: 150px; }
 }
 @media print { .mascot-widget { display: none; } }
 
+/* Admin: pregled novog dizajna maskote */
+.mascot-preview { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; align-items: start; }
+.mascot-preview figure { margin: 0; padding: 0; overflow: hidden; }
+.mascot-preview img { display: block; width: 100%; height: auto; background: linear-gradient(#ffffff, #eef4e8); }
+.mascot-preview figcaption { padding: 8px 12px; }
+.mascot-preview-main { grid-column: span 2; }
+@media (max-width: 700px) { .mascot-preview-main { grid-column: auto; } }
+
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
 
