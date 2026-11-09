@@ -202,7 +202,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       <div class="page-head"><div>
         <h1>Novi dizajn maskote – pregled</h1>
         <p class="muted">Kapa naopako s „BT“, namiguje i široko se smije, bijele strip-rukavice, znojnica i patike u bojama
-          logotipa. Iste animacije i return-pozicija kao do sada. Maskota u uglu ekrana za sada ostaje u starom dizajnu.</p>
+          logotipa. Iste animacije i return-pozicija kao do sada. Ovaj dizajn koristi i maskota u uglu ekrana.</p>
       </div></div>
       <div class="mascot-preview">
         <figure class="card mascot-preview-main">

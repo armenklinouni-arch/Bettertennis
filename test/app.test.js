@@ -4222,14 +4222,15 @@ test('Maskottchen unten rechts: nur für den Admin; Return-Pose, zufällige Anim
   const anims = JSON.parse(widget[1].replace(/&quot;/g, '"'));
   assert.deepEqual(Object.keys(anims).sort(), ['forhend', 'poen', 'pogodjen', 'promasaj', 'servis']);
   assert.ok(Object.values(anims).every((ms) => ms >= 2000 && ms <= 4000));
-  assert.match(widget[2], /<img class="mascot-img" src="\/static\/img\/maskota-animacije\/spremni\.svg" alt="" width="\d+" height="\d+">/);
+  // Neues Design (Basecap „BT“) in der Ecke
+  assert.match(widget[2], /<img class="mascot-img" src="\/static\/img\/maskota-v2\/spremni\.svg" alt="" width="\d+" height="\d+">/);
   assert.match(widget[2], /<button type="button" class="mascot-close" aria-label="Sakrij maskotu">×<\/button>/);
   assert.match(page, /<body class="has-mascot">/);
   // Auch auf anderen Admin-Seiten
   assert.match((await admin.request('/admin/abrechnung')).text, /data-mascot/);
 
   // Niemand sonst: Besucher, Login, Mitglied, Kinder-Konto, Elternkonto, Trainer
-  const noMascot = (t) => !/data-mascot|maskota-animacije|has-mascot/.test(t);
+  const noMascot = (t) => !/data-mascot|maskota-animacije|maskota-v2|has-mascot/.test(t);
   assert.ok(noMascot((await client().request('/')).text));
   assert.ok(noMascot((await client().request('/login')).text));
   const pid = makeMember('Maskota Clan', 'maskota.clan');
@@ -4246,11 +4247,11 @@ test('Maskottchen unten rechts: nur für den Admin; Return-Pose, zufällige Anim
   assert.ok(noMascot((await p.request('/roditelj')).text));
 
   // Grafiken vorhanden (Return-Pose wippt in Schleife, „weniger Bewegung“ = stehendes Bild)
-  const ready = await client().request('/static/img/maskota-animacije/spremni.svg');
+  const ready = await client().request('/static/img/maskota-v2/spremni.svg');
   assert.equal(ready.status, 200);
   assert.match(ready.text, /prefers-reduced-motion: reduce/);
-  assert.match(ready.text, /bt-maskota-spremni-sway/);
-  for (const n of Object.keys(anims)) assert.equal((await client().request(`/static/img/maskota-animacije/${n}.svg`)).status, 200);
+  assert.match(ready.text, /bt-maskota2-spremni-sway/);
+  for (const n of Object.keys(anims)) assert.equal((await client().request(`/static/img/maskota-v2/${n}.svg`)).status, 200);
   // Stil: klein, fest unten rechts, Klicks gehen durch (nur das X ist klickbar), auf dem Handy kleiner, Platz unten
   const css = (await client().request('/static/style.css')).text;
   assert.match(css, /\.mascot-widget \{[^}]*position: fixed;[^}]*right: [^;]+;[^}]*bottom: [^;]+;[^}]*pointer-events: none;/);
@@ -4282,7 +4283,7 @@ test('Maskottchen: Klick/Tippen auf die Figur startet sofort eine Animation (nic
 });
 
 // ---------------------------------------------------------------- Maskottchen Design 2: Vorschau im Admin-Bereich
-test('Maskottchen Design 2 (Basecap): Vorschau-Seite nur für Admin; alle Animationen + Return-Position; Ecke unverändert', async () => {
+test('Maskottchen Design 2 (Basecap): Vorschau-Seite nur für Admin; alle Animationen + Return-Position; auch in der Ecke', async () => {
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
   const page = await admin.request('/admin/maskota');
@@ -4299,8 +4300,8 @@ test('Maskottchen Design 2 (Basecap): Vorschau-Seite nur für Admin; alle Animat
   const ready = (await client().request('/static/img/maskota-v2/spremni.svg')).text;
   assert.match(ready, /bt-maskota2-spremni-sway/);
   assert.match((await client().request('/static/img/maskota-v2/servis.svg')).text, /bt-maskota2-servis-armr/);
-  // Die Figur in der Ecke bleibt vorerst beim bisherigen Design
-  assert.match(page.text, /<img class="mascot-img" src="\/static\/img\/maskota-animacije\/spremni\.svg"/);
+  // Die Figur in der Ecke nutzt jetzt ebenfalls das neue Design
+  assert.match(page.text, /<img class="mascot-img" src="\/static\/img\/maskota-v2\/spremni\.svg"/);
   // Nicht im Menü; nur Admin
   assert.doesNotMatch(page.text, /<nav[^>]*>[\s\S]*href="\/admin\/maskota"[\s\S]*<\/nav>/);
   makeMember('Maskota Pregled Clan', 'maskota.pregled');
