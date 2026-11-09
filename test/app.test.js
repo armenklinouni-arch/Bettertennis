@@ -4347,3 +4347,46 @@ test('Maskottchen in der Ecke: aktuelle Version (Versionsnummer gegen alte Zwisc
   assert.match(await svg('poen'), /bt-maskota2-poen-wink/);
   for (const f of ['servis', 'forhend', 'promasaj', 'pogodjen']) assert.doesNotMatch(await svg(f), /bt-maskota2-\w+-wink/, f);
 });
+
+// ---------------------------------------------------------------- Maskottchen: alle fünf Animationen der Reihe nach (zufällig), keine Wiederholung hintereinander
+test('Maskottchen: Reihenfolge – erst alle fünf Animationen in zufälliger Reihenfolge, nie zweimal dieselbe hintereinander', async () => {
+  const vm = require('node:vm');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  // app.js in einer kleinen Sandbox laden (ohne Browser) und die Reihenfolge-Funktion holen
+  const noop = () => {};
+  const sandbox = {
+    document: { addEventListener: noop, documentElement: { classList: { add: noop } }, querySelectorAll: () => [], querySelector: () => null },
+    window: { matchMedia: () => ({ matches: false }), addEventListener: noop, sessionStorage: { getItem: () => null, setItem: noop } },
+    console,
+  };
+  sandbox.window.window = sandbox.window;
+  vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8'), sandbox);
+  const next = sandbox.window.btMascotNext;
+  assert.equal(typeof next, 'function');
+  const names = ['servis', 'forhend', 'promasaj', 'poen', 'pogodjen'];
+  for (let run = 0; run < 200; run++) {
+    let state = {};
+    const seq = [];
+    for (let i = 0; i < 25; i++) {
+      const r = next(state, names);
+      state = r.state;
+      seq.push(r.name);
+    }
+    // jede Fünfergruppe enthält alle fünf Animationen genau einmal
+    for (let i = 0; i < 25; i += 5) assert.deepEqual([...seq.slice(i, i + 5)].sort(), [...names].sort(), seq.join(','));
+    // nie zweimal dieselbe hintereinander (auch nicht an der Grenze zwischen zwei Runden)
+    for (let i = 1; i < seq.length; i++) assert.notEqual(seq[i], seq[i - 1], seq.join(','));
+  }
+  // Reihenfolge ist wirklich zufällig (nicht immer gleich)
+  const firsts = new Set(Array.from({ length: 60 }, () => next({}, names).name));
+  assert.ok(firsts.size >= 3);
+  // Gespeicherter Stand mit unbekannten Namen wird bereinigt
+  const r = next({ bag: ['alt-unbekannt', 'poen'], last: 'servis' }, names);
+  assert.equal(r.name, 'poen');
+  // Das Maskottchen nutzt die Funktion für Klick und automatische Animationen, Stand wird pro Sitzung gemerkt
+  const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  assert.match(js, /bt-mascot-bag/);
+  assert.match(js, /btMascotNext\(/);
+});

@@ -335,6 +335,23 @@ document.addEventListener('change', (event) => {
   });
 })();
 
+// Redoslijed animacija maskote („vreća“): sve animacije jednom u nasumičnom redu, zatim ponovo izmiješano –
+// nikad ista dvaput zaredom (ni na prelazu između dva kruga). state = { bag: [...preostale], last: 'zadnja' }.
+window.btMascotNext = function btMascotNext(state, names, random = Math.random) {
+  const last = state && typeof state.last === 'string' ? state.last : null;
+  let bag = (state && Array.isArray(state.bag) ? state.bag : []).filter((n) => names.includes(n));
+  if (bag.length === 0) {
+    bag = names.slice();
+    for (let i = bag.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(random() * (i + 1));
+      [bag[i], bag[j]] = [bag[j], bag[i]];
+    }
+    if (bag.length > 1 && bag[0] === last) [bag[0], bag[bag.length - 1]] = [bag[bag.length - 1], bag[0]];
+  }
+  const name = bag.shift();
+  return { name, state: { bag, last: name } };
+};
+
 // Maskota (test, samo admin): stoji u return-poziciji i otprilike svakih 20–30 s zaigra jednu od svojih
 // animacija (jednom), pa se vrati u return-poziciju. „×“ je skriva do zatvaranja preglednika.
 (() => {
@@ -359,6 +376,10 @@ document.addEventListener('change', (event) => {
     let timer = null;
     let plays = 0;
     let playing = false;
+    // Redoslijed (klik i automatski) se pamti za ovu sesiju preglednika, i pri prelasku na drugu stranicu.
+    const BAG_KEY = 'bt-mascot-bag';
+    let bagState = {};
+    try { bagState = JSON.parse(window.sessionStorage.getItem(BAG_KEY) || '{}') || {}; } catch { bagState = {}; }
     close.addEventListener('click', () => {
       widget.hidden = true;
       window.clearTimeout(timer);
@@ -373,7 +394,10 @@ document.addEventListener('change', (event) => {
       if (document.hidden) return schedule();
       window.clearTimeout(timer);
       playing = true;
-      const name = names[Math.floor(Math.random() * names.length)];
+      const pick = window.btMascotNext(bagState, names);
+      bagState = pick.state;
+      try { window.sessionStorage.setItem(BAG_KEY, JSON.stringify(bagState)); } catch { /* bez pohrane */ }
+      const name = pick.name;
       plays += 1;
       // ?v=verzija-broj: uvijek aktuelna grafika i animacija svaki put od početka; #jednom = bez petlje
       img.src = `${dir}${name}.svg?v=${version}-${plays}#jednom`;
