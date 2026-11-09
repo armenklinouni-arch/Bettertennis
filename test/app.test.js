@@ -4217,13 +4217,13 @@ test('Maskottchen unten rechts: nur für den Admin; Return-Pose, zufällige Anim
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
   const page = (await admin.request('/admin')).text;
-  const widget = /<div class="mascot-widget" data-mascot data-anims="([^"]+)">([\s\S]*?)<\/div>/.exec(page);
+  const widget = /<div class="mascot-widget" data-mascot data-anims="([^"]+)" data-version="[0-9a-f]+">([\s\S]*?)<\/div>/.exec(page);
   assert.ok(widget, 'Maskottchen fehlt beim Admin');
   const anims = JSON.parse(widget[1].replace(/&quot;/g, '"'));
   assert.deepEqual(Object.keys(anims).sort(), ['forhend', 'poen', 'pogodjen', 'promasaj', 'servis']);
   assert.ok(Object.values(anims).every((ms) => ms >= 2000 && ms <= 4000));
   // Neues Design (Basecap „BT“) in der Ecke
-  assert.match(widget[2], /<img class="mascot-img" src="\/static\/img\/maskota-v2\/spremni\.svg" alt="" width="\d+" height="\d+">/);
+  assert.match(widget[2], /<img class="mascot-img" src="\/static\/img\/maskota-v2\/spremni\.svg\?v=[0-9a-f]+" alt="" width="\d+" height="\d+">/);
   assert.match(widget[2], /<button type="button" class="mascot-close" aria-label="Sakrij maskotu">×<\/button>/);
   assert.match(page, /<body class="has-mascot">/);
   // Auch auf anderen Admin-Seiten
@@ -4270,7 +4270,7 @@ test('Maskottchen: Klick/Tippen auf die Figur startet sofort eine Animation (nic
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
   const page = (await admin.request('/admin')).text;
-  const widget = /<div class="mascot-widget" data-mascot data-anims="[^"]+">([\s\S]*?)<\/div>/.exec(page)[1];
+  const widget = /<div class="mascot-widget" data-mascot data-anims="[^"]+" data-version="[0-9a-f]+">([\s\S]*?)<\/div>/.exec(page)[1];
   // Eigene Klickfläche nur über der Figur; das X ist ein eigener Knopf danach (liegt darüber)
   assert.match(widget, /<button type="button" class="mascot-hit" aria-label="Pokreni animaciju maskote"><\/button><button type="button" class="mascot-close" aria-label="Sakrij maskotu">×<\/button>/);
   const css = (await client().request('/static/style.css')).text;
@@ -4301,7 +4301,7 @@ test('Maskottchen Design 2 (Basecap): Vorschau-Seite nur für Admin; alle Animat
   assert.match(ready, /bt-maskota2-spremni-sway/);
   assert.match((await client().request('/static/img/maskota-v2/servis.svg')).text, /bt-maskota2-servis-armr/);
   // Die Figur in der Ecke nutzt jetzt ebenfalls das neue Design
-  assert.match(page.text, /<img class="mascot-img" src="\/static\/img\/maskota-v2\/spremni\.svg"/);
+  assert.match(page.text, /<img class="mascot-img" src="\/static\/img\/maskota-v2\/spremni\.svg\?v=[0-9a-f]+"/);
   // Nicht im Menü; nur Admin
   assert.doesNotMatch(page.text, /<nav[^>]*>[\s\S]*href="\/admin\/maskota"[\s\S]*<\/nav>/);
   makeMember('Maskota Pregled Clan', 'maskota.pregled');
@@ -4309,4 +4309,41 @@ test('Maskottchen Design 2 (Basecap): Vorschau-Seite nur für Admin; alle Animat
   await m.login('maskota.pregled', 'memberpass1');
   assert.equal((await m.request('/admin/maskota')).status, 403);
   assert.equal((await client().request('/admin/maskota')).status, 302);
+});
+
+// ---------------------------------------------------------------- Maskottchen: Wartezustand mit beiden Augen offen, immer aktuelle Version
+test('Maskottchen in der Ecke: aktuelle Version (Versionsnummer gegen alte Zwischenspeicher), beide Augen offen, Zwinkern nur beim Jubeln', async () => {
+  const crypto = require('node:crypto');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const page = (await admin.request('/admin')).text;
+  const m = /<div class="mascot-widget" data-mascot data-anims="[^"]+" data-version="([0-9a-f]{10})"><img class="mascot-img" src="\/static\/img\/maskota-v2\/spremni\.svg\?v=([0-9a-f]{10})"/.exec(page);
+  assert.ok(m, 'Ecke ohne Versionsnummer');
+  assert.equal(m[1], m[2]);
+  // Versionsnummer ändert sich mit dem Inhalt der Grafiken
+  const dir = path.join(__dirname, '..', 'public', 'img', 'maskota-v2');
+  const h = crypto.createHash('sha1');
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.svg')).sort()) h.update(fs.readFileSync(path.join(dir, f)));
+  assert.equal(m[1], h.digest('hex').slice(0, 10));
+  // Skript hängt die Version auch an die Animationen
+  const js = (await client().request('/static/app.js')).text;
+  assert.match(js, /data-version/);
+  assert.match(js, /\.svg\?v=\$\{version\}-\$\{plays\}#jednom/);
+
+  const svg = async (f) => (await client().request(`/static/img/maskota-v2/${f}.svg`)).text;
+  // Wartezustand (Return-Position) und Standbild: genau ein Augenpaar, beide offen; Zwinkern versteckt und nicht animiert
+  for (const f of ['spremni', 'maskota']) {
+    const t = await svg(f);
+    const eyes = t.match(/<g class="eyes anim">([\s\S]*?)<g class="pupils/g) || [];
+    assert.equal(eyes.length, 1, `${f}: genau ein Augenpaar`);
+    assert.equal((eyes[0].match(/<ellipse cx="(88|144)" cy="(150|148)" rx="15" ry="18" fill="#ffffff"/g) || []).length, 2, `${f}: beide Augen offen`);
+    assert.doesNotMatch(t, /eyes-v1-unused/);
+    assert.match(t, /\.alt, #[\w-]+ \.fx, #[\w-]+ \.tb \{ opacity: 0; \}/);
+    assert.doesNotMatch(t, /bt-maskota2-\w+-wink/, `${f}: kein Zwinkern`);
+  }
+  // Zwinkern nur beim Jubeln (Poen), nicht beim Aufschlag oder den anderen Szenen
+  assert.match(await svg('poen'), /bt-maskota2-poen-wink/);
+  for (const f of ['servis', 'forhend', 'promasaj', 'pogodjen']) assert.doesNotMatch(await svg(f), /bt-maskota2-\w+-wink/, f);
 });

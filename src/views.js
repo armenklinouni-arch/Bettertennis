@@ -20,11 +20,18 @@ const ASSET_VERSION = (() => {
   return hash.digest('hex').slice(0, 10);
 })();
 
+// Verzija grafika maskote (hash sadržaja): nakon izmjene preglednik ne prikazuje staru verziju iz keša.
+const MASCOT_DIR = path.join(__dirname, '..', 'public', 'img', 'maskota-v2');
+const MASCOT_VERSION = (() => {
+  const hash = crypto.createHash('sha1');
+  for (const f of fs.readdirSync(MASCOT_DIR).filter((x) => x.endsWith('.svg')).sort()) hash.update(fs.readFileSync(path.join(MASCOT_DIR, f)));
+  return hash.digest('hex').slice(0, 10);
+})();
 // Maskota (test): samo za admina, dolje desno – novi dizajn (kapa „BT“, public/img/maskota-v2).
 // Trajanje animacija u ms (vidi scripts/maskota-animacije.js).
 const MASCOT_ANIMS = { servis: 3000, forhend: 2600, promasaj: 4000, poen: 3200, pogodjen: 3600 };
 function mascotWidget() {
-  return html`<div class="mascot-widget" data-mascot data-anims="${JSON.stringify(MASCOT_ANIMS)}"><img class="mascot-img" src="/static/img/maskota-v2/spremni.svg" alt="" width="380" height="360"><button type="button" class="mascot-hit" aria-label="Pokreni animaciju maskote"></button><button type="button" class="mascot-close" aria-label="Sakrij maskotu">×</button></div>`;
+  return html`<div class="mascot-widget" data-mascot data-anims="${JSON.stringify(MASCOT_ANIMS)}" data-version="${MASCOT_VERSION}"><img class="mascot-img" src="/static/img/maskota-v2/spremni.svg?v=${MASCOT_VERSION}" alt="" width="380" height="360"><button type="button" class="mascot-hit" aria-label="Pokreni animaciju maskote"></button><button type="button" class="mascot-close" aria-label="Sakrij maskotu">×</button></div>`;
 }
 
 function layout(req, { title, body, wide = false, fullBleed = false }) {

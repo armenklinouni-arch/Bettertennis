@@ -169,9 +169,7 @@ function mascot(id, { ballBehind = '', pose = 'default', design = 1 } = {}) {
         ${v2 ? '<path d="M74 132 C82 127 92 127 100 131"/><path d="M130 124 C138 116 150 116 160 122"/>'
     : '<path d="M74 132 C82 126 92 126 100 130"/><path d="M130 126 C138 120 150 120 158 126"/>'}
       </g>
-      ${v2 ? `${EYES_V2}
-      <g class="eyes-v1-unused" display="none">` : ''}
-      <g class="eyes">
+      ${v2 ? EYES_V2 : `<g class="eyes">
         <ellipse cx="88" cy="150" rx="15" ry="18" fill="#ffffff" stroke="${NAVY}" stroke-width="3.5"/>
         <ellipse cx="144" cy="148" rx="15" ry="18" fill="#ffffff" stroke="${NAVY}" stroke-width="3.5"/>
         <g class="pupils">
@@ -180,7 +178,7 @@ function mascot(id, { ballBehind = '', pose = 'default', design = 1 } = {}) {
           <circle cx="95" cy="150" r="3" fill="#ffffff"/>
           <circle cx="151" cy="148" r="3" fill="#ffffff"/>
         </g>
-      </g>${v2 ? '</g>' : ''}
+      </g>`}
       <g class="eyes-happy alt" stroke="${NAVY}" stroke-width="5" stroke-linecap="round" fill="none">
         <path d="M74 156 Q88 138 102 156"/>
         <path d="M130 154 Q144 136 158 154"/>
@@ -270,8 +268,6 @@ const SCENES = [
     css: (id, design) => {
       const s = `#${id}`;
       return `
-      ${design === 2 ? `${s} .eyes { animation-name: ${id}-eyes; } ${s} .eyes-wink { animation-name: ${id}-wink; }
-      ${hideBetween(`${id}-eyes`, 62, 74)} ${showBetween(`${id}-wink`, 62, 74)}` : ''}
       ${s} .arm-r { animation-name: ${id}-armr; }
       ${s} .arm-l { animation-name: ${id}-arml; }
       ${s} .tb { animation-name: ${id}-tb; animation-timing-function: linear; }

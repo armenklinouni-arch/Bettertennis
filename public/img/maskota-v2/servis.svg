@@ -12,8 +12,6 @@
     @media (prefers-reduced-motion: reduce) {
       #bt-maskota2-servis *, #bt-maskota2-servis .anim { animation: none !important; }
     }
-      #bt-maskota2-servis .eyes { animation-name: bt-maskota2-servis-eyes; } #bt-maskota2-servis .eyes-wink { animation-name: bt-maskota2-servis-wink; }
-      @keyframes bt-maskota2-servis-eyes { 0% { opacity: 1; } 61.5% { opacity: 1; } 62% { opacity: 0; } 74% { opacity: 0; } 74.5% { opacity: 1; } 100% { opacity: 1; } } @keyframes bt-maskota2-servis-wink { 0% { opacity: 0; } 61.5% { opacity: 0; } 62% { opacity: 1; } 74% { opacity: 1; } 74.5% { opacity: 0; } 100% { opacity: 0; } }
       #bt-maskota2-servis .arm-r { animation-name: bt-maskota2-servis-armr; }
       #bt-maskota2-servis .arm-l { animation-name: bt-maskota2-servis-arml; }
       #bt-maskota2-servis .tb { animation-name: bt-maskota2-servis-tb; animation-timing-function: linear; }
@@ -137,17 +135,6 @@
         <circle cx="150" cy="147" r="3.2" fill="#ffffff"/>
         <circle cx="144" cy="155" r="1.5" fill="#ffffff"/>
       </g>
-      <g class="eyes-v1-unused anim" display="none">
-      <g class="eyes anim">
-        <ellipse cx="88" cy="150" rx="15" ry="18" fill="#ffffff" stroke="#11304c" stroke-width="3.5"/>
-        <ellipse cx="144" cy="148" rx="15" ry="18" fill="#ffffff" stroke="#11304c" stroke-width="3.5"/>
-        <g class="pupils anim">
-          <circle cx="92" cy="154" r="8" fill="#11304c"/>
-          <circle cx="148" cy="152" r="8" fill="#11304c"/>
-          <circle cx="95" cy="150" r="3" fill="#ffffff"/>
-          <circle cx="151" cy="148" r="3" fill="#ffffff"/>
-        </g>
-      </g></g>
       <g class="eyes-happy alt anim" stroke="#11304c" stroke-width="5" stroke-linecap="round" fill="none">
         <path d="M74 156 Q88 138 102 156"/>
         <path d="M130 154 Q144 136 158 154"/>

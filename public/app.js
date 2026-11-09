@@ -354,6 +354,7 @@ document.addEventListener('change', (event) => {
     let anims = {};
     try { anims = JSON.parse(widget.getAttribute('data-anims') || '{}'); } catch { anims = {}; }
     const names = Object.keys(anims);
+    const version = widget.getAttribute('data-version') || '';
     const hit = widget.querySelector('.mascot-hit');
     let timer = null;
     let plays = 0;
@@ -365,7 +366,7 @@ document.addEventListener('change', (event) => {
     });
     // „Manje pokreta“: samo mirna slika, bez animacija.
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || names.length === 0) return;
-    names.forEach((n) => { const pre = new Image(); pre.src = `${dir}${n}.svg`; });
+    names.forEach((n) => { const pre = new Image(); pre.src = `${dir}${n}.svg?v=${version}`; });
     const schedule = () => { timer = window.setTimeout(play, 20000 + Math.random() * 10000); };
     function play() {
       if (playing) return;
@@ -374,8 +375,8 @@ document.addEventListener('change', (event) => {
       playing = true;
       const name = names[Math.floor(Math.random() * names.length)];
       plays += 1;
-      // ?v=… da animacija svaki put krene od početka; #jednom = bez petlje
-      img.src = `${dir}${name}.svg?v=${plays}#jednom`;
+      // ?v=verzija-broj: uvijek aktuelna grafika i animacija svaki put od početka; #jednom = bez petlje
+      img.src = `${dir}${name}.svg?v=${version}-${plays}#jednom`;
       timer = window.setTimeout(() => {
         img.src = ready;
         playing = false;
