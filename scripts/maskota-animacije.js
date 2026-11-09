@@ -13,6 +13,7 @@ const NAVY = '#11304c';
 const GREEN = '#7fbf35';
 const OUT_DIR = path.join(__dirname, '..', 'public', 'img', 'maskota-animacije');
 const VIEWBOX = '0 -64 380 344';
+const VIEWBOX_V2 = '0 -64 380 360'; // duže noge – malo više mjesta dolje
 
 // Mala teniska loptica (crta se oko 0,0 i pomjera se CSS-om).
 const smallBall = (cls) => `
@@ -87,17 +88,43 @@ const CAP_V2 = `
       <circle cx="118" cy="54" r="5" fill="${GREEN}" stroke="${NAVY}" stroke-width="2.5"/>
       <text x="118" y="97" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="21" font-weight="900" letter-spacing="1"><tspan fill="#ffffff">B</tspan><tspan fill="${GREEN}">T</tspan></text>`;
 const READY_V2_HANDS = `${wristband(158, 236, 165, 236)}${glove(146, 236, -90)}${glove(127, 234, 90)}`;
+// Dizajn 2: deblje ruke i noge, duže noge (patike i sjena niže za LEG_V2).
+const LIMB_V2 = 10;
+const LEG_V2 = 16;
+const LEGS_V2 = `<path d="M96 210 L90 ${244 + LEG_V2} M142 212 L150 ${244 + LEG_V2}" stroke="${NAVY}" stroke-width="${LIMB_V2}" stroke-linecap="round" fill="none"/>`;
+const READY_LEGS_V2 = `<path d="M96 214 L80 ${238} L90 ${246 + LEG_V2} M142 216 L160 ${238} L150 ${246 + LEG_V2}" stroke="${NAVY}" stroke-width="${LIMB_V2}" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+// Oči dizajna 2: oba oka otvorena (mirno stanje); namigivanje je poseban izraz za animacije.
+const EYES_V2 = `<g class="eyes">
+        <ellipse cx="88" cy="150" rx="15" ry="18" fill="#ffffff" stroke="${NAVY}" stroke-width="3.5"/>
+        <ellipse cx="144" cy="148" rx="15" ry="18" fill="#ffffff" stroke="${NAVY}" stroke-width="3.5"/>
+        <path d="M77 158 C82 166 94 167 100 160 M133 156 C138 164 150 165 156 158" stroke="#d9e2ea" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <g class="pupils">
+          <circle cx="91" cy="153" r="8.5" fill="${NAVY}"/>
+          <circle cx="147" cy="151" r="8.5" fill="${NAVY}"/>
+          <circle cx="94" cy="149" r="3.2" fill="#ffffff"/><circle cx="150" cy="147" r="3.2" fill="#ffffff"/>
+          <circle cx="88" cy="157" r="1.5" fill="#ffffff"/><circle cx="144" cy="155" r="1.5" fill="#ffffff"/>
+        </g>
+      </g>
+      <g class="eyes-wink alt">
+        <path d="M74 154 Q88 164 102 152" stroke="${NAVY}" stroke-width="5" stroke-linecap="round" fill="none"/>
+        <path d="M76 150 l-5 -3 M100 149 l4 -4" stroke="${NAVY}" stroke-width="3" stroke-linecap="round"/>
+        <ellipse cx="144" cy="148" rx="15" ry="18" fill="#ffffff" stroke="${NAVY}" stroke-width="3.5"/>
+        <path d="M133 156 C138 164 150 165 156 158" stroke="#d9e2ea" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <circle cx="147" cy="151" r="8.5" fill="${NAVY}"/>
+        <circle cx="150" cy="147" r="3.2" fill="#ffffff"/>
+        <circle cx="144" cy="155" r="1.5" fill="#ffffff"/>
+      </g>`;
 
 function mascot(id, { ballBehind = '', pose = 'default', design = 1 } = {}) {
   const ready = pose === 'ready';
   const v2 = design === 2;
   return `
-  <ellipse class="shadow" cx="122" cy="266" rx="70" ry="8" fill="${NAVY}" opacity="0.12"/>
+  <ellipse class="shadow" cx="122" cy="${v2 ? 266 + LEG_V2 : 266}" rx="70" ry="8" fill="${NAVY}" opacity="0.12"/>
   ${ballBehind}
   <g class="fig">
     <g class="legs">
-      ${ready ? READY_LEGS : `<path d="M96 210 L90 244 M142 212 L150 244" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>`}
-      ${v2 ? SNEAKERS_V2 : `<g stroke="${NAVY}" stroke-width="4" stroke-linejoin="round" fill="#ffffff">
+      ${v2 ? (ready ? READY_LEGS_V2 : LEGS_V2) : ready ? READY_LEGS : `<path d="M96 210 L90 244 M142 212 L150 244" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>`}
+      ${v2 ? `<g transform="translate(0 ${LEG_V2})">${SNEAKERS_V2}</g>` : `<g stroke="${NAVY}" stroke-width="4" stroke-linejoin="round" fill="#ffffff">
         <path d="M66 258 C66 246 76 240 92 240 C100 240 104 244 106 250 L108 258 Z"/>
         <path d="M134 258 L136 250 C138 244 142 240 150 240 C166 240 176 246 176 258 Z"/>
       </g>
@@ -105,7 +132,7 @@ function mascot(id, { ballBehind = '', pose = 'default', design = 1 } = {}) {
       <path d="M74 251 C82 247 92 249 100 246 M142 246 C150 249 160 247 168 251" stroke="${GREEN}" stroke-width="4" stroke-linecap="round" fill="none"/>`}
     </g>
     ${ready ? '' : `<g class="arm-l">
-      <path d="M48 150 C30 140 24 122 30 104" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>
+      <path d="M48 150 C30 140 24 122 30 104" stroke="${NAVY}" stroke-width="${v2 ? LIMB_V2 : 7}" stroke-linecap="round" fill="none"/>
       ${v2 ? glove(30, 98, 12) : `<circle cx="30" cy="100" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>`}
     </g>
     <g class="arm-r">
@@ -119,7 +146,7 @@ function mascot(id, { ballBehind = '', pose = 'default', design = 1 } = {}) {
           <path d="M188 34 H240 M186 44 H242 M186 54 H242 M188 64 H240 M194 74 H234"/>
         </g>
       </g>
-      <path d="M190 138 C204 132 212 122 216 110" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" fill="none"/>
+      <path d="M190 138 C204 132 212 122 216 110" stroke="${NAVY}" stroke-width="${v2 ? LIMB_V2 : 7}" stroke-linecap="round" fill="none"/>
       ${v2 ? `${wristband(212, 121, 214, 115)}${glove(217, 104, 18)}` : `<circle cx="217" cy="106" r="9" fill="#ffffff" stroke="${NAVY}" stroke-width="4"/>`}
     </g>`}
     <g class="body"${ready ? ' transform="translate(0 6)"' : ''}>
@@ -139,20 +166,10 @@ function mascot(id, { ballBehind = '', pose = 'default', design = 1 } = {}) {
       <path d="M186 108 C198 100 206 104 208 112 C200 112 194 116 190 120 Z" fill="${NAVY}"/>
       <path d="M188 116 C200 120 204 128 200 136 C194 130 188 128 184 124 Z" fill="${NAVY}"/>`}
       <g class="brows" stroke="${NAVY}" stroke-width="5" stroke-linecap="round" fill="none">
-        ${v2 ? '<path d="M72 138 C80 136 92 138 100 142"/><path d="M130 128 C138 120 150 120 160 126"/>'
+        ${v2 ? '<path d="M74 132 C82 127 92 127 100 131"/><path d="M130 124 C138 116 150 116 160 122"/>'
     : '<path d="M74 132 C82 126 92 126 100 130"/><path d="M130 126 C138 120 150 120 158 126"/>'}
       </g>
-      ${v2 ? `<g class="eyes">
-        <path d="M74 154 Q88 164 102 152" stroke="${NAVY}" stroke-width="5" stroke-linecap="round" fill="none"/>
-        <path d="M76 150 l-5 -3 M100 149 l4 -4" stroke="${NAVY}" stroke-width="3" stroke-linecap="round"/>
-        <ellipse cx="144" cy="148" rx="15" ry="18" fill="#ffffff" stroke="${NAVY}" stroke-width="3.5"/>
-        <path d="M133 156 C138 164 150 165 156 158" stroke="#d9e2ea" stroke-width="3" fill="none" stroke-linecap="round"/>
-        <g class="pupils">
-          <circle cx="147" cy="151" r="8.5" fill="${NAVY}"/>
-          <circle cx="150" cy="147" r="3.2" fill="#ffffff"/>
-          <circle cx="144" cy="155" r="1.5" fill="#ffffff"/>
-        </g>
-      </g>
+      ${v2 ? `${EYES_V2}
       <g class="eyes-v1-unused" display="none">` : ''}
       <g class="eyes">
         <ellipse cx="88" cy="150" rx="15" ry="18" fill="#ffffff" stroke="${NAVY}" stroke-width="3.5"/>
@@ -192,7 +209,7 @@ function mascot(id, { ballBehind = '', pose = 'default', design = 1 } = {}) {
       </g>
       <path class="mouth-wavy alt" d="M92 184 q7 -7 14 0 t14 0 t14 0 t14 0" stroke="${NAVY}" stroke-width="5" stroke-linecap="round" fill="none"/>
     </g>
-    ${ready ? (v2 ? READY_FRONT.replace(READY_HANDS_V1, READY_V2_HANDS) : READY_FRONT) : ''}
+    ${ready ? (v2 ? READY_FRONT.replace(READY_HANDS_V1, READY_V2_HANDS).replace('stroke-width="7" stroke-linecap="round" fill="none"/>', `stroke-width="${LIMB_V2}" stroke-linecap="round" fill="none"/>`) : READY_FRONT) : ''}
   </g>`;
 }
 
@@ -205,14 +222,15 @@ const defs = (id) => `
   </defs>`;
 
 // Zajednički CSS: tačke okretanja, skriveni dodaci, petlja / jednom, „manje pokreta“.
-function baseCss(id, dur) {
+function baseCss(id, dur, design = 1) {
+  const legDy = design === 2 ? LEG_V2 : 0;
   const s = `#${id}`;
   return `
     ${s} .arm-r { transform-origin: 190px 138px; }
     ${s} .arm-l { transform-origin: 48px 150px; }
-    ${s} .fig { transform-origin: 122px 262px; }
+    ${s} .fig { transform-origin: 122px ${262 + legDy}px; }
     ${s} .body { transform-origin: 118px 142px; }
-    ${s} .shadow { transform-origin: 122px 266px; }
+    ${s} .shadow { transform-origin: 122px ${266 + legDy}px; }
     ${s} .alt, ${s} .fx, ${s} .tb { opacity: 0; }
     ${s} .anim { animation-duration: ${dur}s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; animation-fill-mode: both; }
     ${s}.jednom .anim, #jednom:target ~ .scene .anim { animation-iteration-count: 1; }
@@ -249,9 +267,11 @@ const SCENES = [
     extra: (id) => `
       <path class="fx swoosh" d="M70 30 C100 -24 176 -30 214 8" stroke="${GREEN}" stroke-width="7" stroke-linecap="round" fill="none"/>
       ${smallBall('tb')}`,
-    css: (id) => {
+    css: (id, design) => {
       const s = `#${id}`;
       return `
+      ${design === 2 ? `${s} .eyes { animation-name: ${id}-eyes; } ${s} .eyes-wink { animation-name: ${id}-wink; }
+      ${hideBetween(`${id}-eyes`, 62, 74)} ${showBetween(`${id}-wink`, 62, 74)}` : ''}
       ${s} .arm-r { animation-name: ${id}-armr; }
       ${s} .arm-l { animation-name: ${id}-arml; }
       ${s} .tb { animation-name: ${id}-tb; animation-timing-function: linear; }
@@ -333,7 +353,7 @@ const SCENES = [
         <path d="M200 6 l3 7 7 1 -5 5 1 7 -6 -4 -6 4 1 -7 -5 -5 7 -1 Z" fill="#f3c623"/>
         <circle cx="30" cy="80" r="4" fill="#f3c623"/><circle cx="214" cy="56" r="4" fill="${GREEN}"/><circle cx="76" cy="18" r="3" fill="${NAVY}"/>
       </g>`,
-    css: (id) => {
+    css: (id, design) => {
       const s = `#${id}`;
       return `
       ${s} .arm-r { animation-name: ${id}-armr; }
@@ -351,7 +371,8 @@ const SCENES = [
       ${kf(`${id}-tb`, 'transform', [[0, tr(400, 50)], [4, tr(360, 58)], [12, tr(300, 64)], [18, tr(276, 66)], [24, tr(330, 10)], [30, tr(420, -50)], [100, tr(420, -50)]])}
       ${kf(`${id}-tb-o`, 'opacity', [[0, 1], [29, 1], [30, 0], [99, 0], [100, 1]])}
       ${hideBetween(`${id}-eyes`, 34, 86)}
-      ${showBetween(`${id}-happy`, 34, 86)}
+      ${design === 2 ? `${showBetween(`${id}-happy`, 34, 64)} ${s} .eyes-wink { animation-name: ${id}-wink; } ${showBetween(`${id}-wink`, 64, 86)}`
+    : showBetween(`${id}-happy`, 34, 86)}
       ${kf(`${id}-cheer`, 'transform', [[0, 'scale(0.3)'], [38, 'scale(0.3)'], [46, 'scale(1.12)'], [52, 'scale(1)'], [84, `${tr(0, -6)} scale(1)`], [100, 'scale(0.3)']])}
       ${showBetween(`${id}-cheer-o`, 40, 86)}`;
     },
@@ -404,17 +425,17 @@ const SCENES = [
 
 function sceneSvg(scene, { standalone = true, design = 1 } = {}) {
   const id = `bt-maskota${design === 2 ? '2' : ''}-${scene.file}`;
-  const css = `${baseCss(id, scene.dur)}
-    ${scene.css(id)}`
+  const css = `${baseCss(id, scene.dur, design)}
+    ${scene.css(id, design)}`
     // svi animirani dijelovi dobijaju zajedničke postavke (trajanje, petlja)
     .replace(/\n\s*\n/g, '\n');
   const animated = ['arm-r', 'arm-l', 'fig', 'body', 'shadow', 'tb', 'swoosh', 'swoosh2', 'pupils', 'question', 'mouth', 'mouth-o', 'brows',
-    'eyes', 'eyes-happy', 'cheer', 'bang', 'eyes-dizzy', 'mouth-wavy', 'stars'];
+    'eyes', 'eyes-happy', 'eyes-wink', 'cheer', 'bang', 'eyes-dizzy', 'mouth-wavy', 'stars'];
   let body = `${mascot(id, { ballBehind: scene.ballBehind || '', pose: scene.pose, design })}${scene.extra(id)}`;
   for (const cls of animated) {
     body = body.replace(new RegExp(`class="([^"]*\\b)${cls}(\\b[^"]*)"`, 'g'), (m, a, b) => (m.includes(' anim') ? m : `class="${a}${cls}${b} anim"`));
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" id="${id}" viewBox="${VIEWBOX}" width="380" height="344" role="img" aria-label="${scene.label}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" id="${id}" viewBox="${design === 2 ? VIEWBOX_V2 : VIEWBOX}" width="380" height="${design === 2 ? 360 : 344}" role="img" aria-label="${scene.label}">
   <title>${scene.label}</title>
   <style>${css}
   </style>${defs(id)}

@@ -206,11 +206,11 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       </div></div>
       <div class="mascot-preview">
         <figure class="card mascot-preview-main">
-          <img src="/static/img/maskota-v2/maskota.svg" alt="Nova maskota BetterTennis" width="380" height="344">
+          <img src="/static/img/maskota-v2/maskota.svg" alt="Nova maskota BetterTennis" width="380" height="360">
           <figcaption><strong>Mirna slika</strong></figcaption>
         </figure>
         ${MASCOT_V2.map(([file, label]) => html`<figure class="card">
-          <img src="/static/img/maskota-v2/${file}.svg" alt="${label}" width="380" height="344">
+          <img src="/static/img/maskota-v2/${file}.svg" alt="${label}" width="380" height="360">
           <figcaption><strong>${label}</strong> <span class="muted small">${file}.svg</span></figcaption>
         </figure>`)}
       </div>

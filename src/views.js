@@ -24,7 +24,7 @@ const ASSET_VERSION = (() => {
 // Trajanje animacija u ms (vidi scripts/maskota-animacije.js).
 const MASCOT_ANIMS = { servis: 3000, forhend: 2600, promasaj: 4000, poen: 3200, pogodjen: 3600 };
 function mascotWidget() {
-  return html`<div class="mascot-widget" data-mascot data-anims="${JSON.stringify(MASCOT_ANIMS)}"><img class="mascot-img" src="/static/img/maskota-v2/spremni.svg" alt="" width="380" height="344"><button type="button" class="mascot-hit" aria-label="Pokreni animaciju maskote"></button><button type="button" class="mascot-close" aria-label="Sakrij maskotu">×</button></div>`;
+  return html`<div class="mascot-widget" data-mascot data-anims="${JSON.stringify(MASCOT_ANIMS)}"><img class="mascot-img" src="/static/img/maskota-v2/spremni.svg" alt="" width="380" height="360"><button type="button" class="mascot-hit" aria-label="Pokreni animaciju maskote"></button><button type="button" class="mascot-close" aria-label="Sakrij maskotu">×</button></div>`;
 }
 
 function layout(req, { title, body, wide = false, fullBleed = false }) {

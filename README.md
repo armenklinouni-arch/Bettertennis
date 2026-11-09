@@ -199,7 +199,8 @@ Tests: `npm test`
   nur die Figur selbst ist klickbar, der Rest des Bildes lässt Klicks durch.
   Bei „weniger Bewegung“ (prefers-reduced-motion) bleibt es ein stehendes Bild.
 - Grafiken: `public/img/maskota-v2/` (aktuelles Design; bisheriges Design in `public/img/maskota-animacije/`; Generator: `node scripts/maskota-animacije.js`).
-- **Neues Design (Vorschau):** Basecap verkehrt herum mit „BT“, zwinkernd und breit lachend, weiße Comic-Handschuhe,
+- **Neues Design:** Basecap verkehrt herum mit „BT“, breit lachend (in Ruhe beide Augen offen; kurzes Zwinkern nach
+  gelungenem Aufschlag und beim Jubeln), kräftige Arme und längere Beine, weiße Comic-Handschuhe,
   Schweißband, Sneakers in Logo-Farben, leichte Schatten – gleiche Animationen und Return-Position.
   Grafiken in `public/img/maskota-v2/`, Vorschau nur für den Admin unter **`/admin/maskota`** (nicht im Menü).
   Die Figur in der Ecke nutzt dieses neue Design.
