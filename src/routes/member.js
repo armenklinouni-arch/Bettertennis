@@ -92,7 +92,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
           ? html`<a class="summary-tile" href="/mitglied/abrechnung?monat=${month}">
               <span class="label">Iznos za ${D.monthLabel(month)}</span>
               <span class="value">${formatMoney(statement.total)}</span>
-              <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount}`} · ${paymentBadge(statement)}</span>
+              <span class="hint">${statement.manual ? '' : `Termini: ${statement.lessonCount} · `}${paymentBadge(statement)}</span>
             </a>`
           : html`<a class="summary-tile" href="/mitglied/abrechnung?monat=${month}">
               <span class="label">Iznos za ${D.monthLabel(month)}</span>
@@ -218,8 +218,8 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
         ? html`<div class="summary-tile big">
             <span class="label">${statement.paid || statement.noTraining ? 'Iznos za mjesec' : 'Za platiti na kraju mjeseca'} · ${paymentBadge(statement)}</span>
             <span class="value">${formatMoney(statement.total)}</span>
-            <span class="hint">${statement.manual ? 'Ručni obračun' : `Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}`}${
-              req.user.hourly_rate_cents ? ` · ${formatMoney(req.user.hourly_rate_cents)} po satu` : ''}</span>
+            ${statement.manual ? '' : html`<span class="hint">Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}${
+              req.user.hourly_rate_cents ? ` · ${formatMoney(req.user.hourly_rate_cents)} po satu` : ''}</span>`}
           </div>
           ${statementTable(statement)}`
         : html`<div class="summary-tile big pending-tile">

@@ -19,6 +19,8 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      - „Prema rasporedu“: Termine werden automatisch berechnet
      - „Raspored s prikazom, bez obračuna“: Termine werden in der Abrechnung angezeigt, aber nicht berechnet
      - „Ručni unos“: Termine erscheinen nicht, der Betrag wird nur manuell als Posten eingetragen
+       (Mitglieder und Elternkonten sehen dabei nur die Stavke und „Ukupno“ – keinen Hinweis auf die Abrechnungsart;
+       der Admin sieht sie weiterhin)
    - **Grupe**: feste Trainingsgruppen (z. B. „Grupa 1“ … „Grupa 10“) mit 2–8 Mitgliedern anlegen,
      bearbeiten, löschen. Beim Anlegen eines Termins wählt man die Gruppe aus und ihre Mitglieder
      bekommen automatisch ein Häkchen in der Spielerliste (einzelne Häkchen lassen sich wieder entfernen; Trainingsart wird auf Gruppentraining gesetzt).

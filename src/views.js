@@ -280,6 +280,8 @@ function billingMark(l) {
 // lessonAmountUrl (samo admin, „Prikaz bez obračuna“): adresa za unos iznosa pojedinog termina.
 function statementTable(statement, {
   adminDelete, req, adjustmentDates = false, attendance = false, billingMarks = false, lessonAmountUrl = null,
+  // Samo admin: red „Treninzi – Ručni obračun – vidi stavke“ (članovi i roditelji vide samo stavke i Ukupno).
+  showManualRow = false,
 } = {}) {
   const showStatus = attendance && statement.mode !== 'manual';
   const showMarks = billingMarks && statement.mode === 'schedule';
@@ -341,7 +343,7 @@ function statementTable(statement, {
         ${statement.noTraining
           ? html`<tr class="no-training"><td>Bez treninga u ovom mjesecu</td><td>Iznos za mjesec: 0 KM</td>${extra()}<td class="num">${formatMoney(0)}</td>${del()}</tr>`
           : statement.mode === 'manual'
-          ? html`<tr><td>Treninzi</td><td>Ručni obračun – vidi stavke</td>${extra()}<td class="num"></td>${del()}</tr>`
+          ? (showManualRow ? html`<tr><td>Treninzi</td><td>Ručni obračun – vidi stavke</td>${extra()}<td class="num"></td>${del()}</tr>` : '')
           : statement.mode === 'display' && statement.display && statement.display.override !== null
             ? html`<tr><td>Treninzi (ručno određen iznos)</td><td>Termini: ${statement.lessonCount} · ${formatHours(statement.hours)} · zbir po terminima: ${formatMoney(statement.display.autoTotal)}</td>${extra()}<td class="num">${formatMoney(statement.lessonsTotal)}</td>${del()}</tr>`
           : statement.mode === 'display' && statement.display && statement.display.amounts > 0

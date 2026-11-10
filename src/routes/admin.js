@@ -1631,7 +1631,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
         računaju kao zbir iznosa po terminima.</p>` : ''}
       ${st.mode === 'manual' ? '' : html`<p class="muted small attendance-summary">Status u mjesecu: ${attendanceSummary(withLiveAttendance(st.lessons)) || 'još nije unesen'}</p>`}
       ${statementTable({ ...st, lessons: withLiveAttendance(st.lessons) }, {
-        adminDelete: !st.closed, req, attendance: true, billingMarks: true,
+        adminDelete: !st.closed, req, attendance: true, billingMarks: true, showManualRow: true,
         lessonAmountUrl: st.mode === 'display' && !st.closed ? (l) => `/admin/abrechnung/${member.id}/termin/${l.id}?monat=${month}` : null,
       })}
       ${st.mode === 'display' && !st.closed ? html`<section class="card" id="iznos-treninga">

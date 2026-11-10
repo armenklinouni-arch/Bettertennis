@@ -127,7 +127,7 @@ module.exports = function parentPortalRoutes(db) {
       <section class="card player-statement" data-player="${player.id}">
         <h2>${player.name} · ${D.monthLabel(month)}</h2>
         ${st.released
-          ? html`<p class="muted small">${st.manual ? 'Ručni obračun' : `Termini: ${st.lessonCount} · ${formatHours(st.hours)}`} · ${paymentBadge(st)}</p>
+          ? html`<p class="muted small">${st.manual ? '' : `Termini: ${st.lessonCount} · ${formatHours(st.hours)} · `}${paymentBadge(st)}</p>
             ${statementTable(detail(st), { adjustmentDates: true })}`
           : html`<p class="notice">Obračun u pripremi – stavke i iznos bit će vidljivi kad ih škola odobri.</p>`}
       </section>`)}

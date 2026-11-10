@@ -312,7 +312,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   await setMode('manual');
   const manualBill = await member.request('/mitglied/abrechnung?monat=2026-10');
   assert.match(manualBill.text, /15,50/); // 10 KM Grundgebühr + 5,50 KM Posten
-  assert.match(manualBill.text, /Ručni obračun/);
+  assert.doesNotMatch(manualBill.text, /Ručni obračun|vidi stavke/); // Mitglied sieht nur Stavke und Ukupno
   // Admin kann den Obračun wieder „u pripremu“ setzen und erneut freigeben
   await admin.post(`/admin/abrechnung/${lea.id}/odobri`, { month: '2026-10', released: '0' }, '/admin/abrechnung?monat=2026-10');
   assert.match((await member.request('/mitglied/abrechnung?monat=2026-10')).text, /Obračun u pripremi/);
@@ -4585,4 +4585,47 @@ test('Formular: serverseitige Prüfung (Längen, E-Mail), reiner Text im Admin-B
   assert.doesNotMatch(list, /<img src=x|<script>alert|<b>fett/);
   const log = (await admin.request('/admin/dnevnik?oblast=Zainteresovani')).text;
   assert.doesNotMatch(log, /<img src=x/);
+});
+
+
+// ---------------------------------------------------------------- Ručni obračun: Mitglied/Elternkonto sehen nur Stavke + Ukupno
+test('Ručni obračun: Mitglieder und Elternkonten sehen keinen Hinweis und keine Zeile „Treninzi – vidi stavke“, nur Stavke und Ukupno; Admin sieht die Art', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const id = makeMember('Rucni Clan', 'rucni.clan', { fee: 0, rate: 4000 });
+  const month = '2026-10';
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '13:05', 60, 4000)").run(id);
+  const detailUrl = `/admin/abrechnung/${id}?monat=${month}`;
+  await admin.post(`/admin/abrechnung/${id}/nacin`, { month, billing_mode: 'manual' }, detailUrl);
+  await admin.post(`/admin/abrechnung/${id}/posten`, { month, description: 'Paušal oktobar', amount: '70,00' }, detailUrl);
+  await admin.post(`/admin/abrechnung/${id}/posten`, { month, description: 'Lopte', amount: '5,00' }, detailUrl);
+  await admin.post(`/admin/abrechnung/${id}/odobri`, { month, released: '1' }, `/admin/abrechnung?monat=${month}`);
+  const statementOf = (t) => /<table class="statement">([\s\S]*?)<\/table>/.exec(t)[1];
+  const rows = (t) => [...statementOf(t).matchAll(/<tr[^>]*>\s*<td>([^<]*)</g)].map((x) => x[1].trim()).filter(Boolean);
+
+  // Mitglied: Monatsbetrag und Startseite
+  const m = client();
+  await m.login('rucni.clan', 'memberpass1');
+  const bill = (await m.request(`/mitglied/abrechnung?monat=${month}`)).text;
+  assert.doesNotMatch(bill, /Ručni obračun|vidi stavke/);
+  assert.deepEqual(rows(bill), ['Paušal oktobar', 'Lopte', 'Ukupno Oktobar 2026']);
+  assert.match(statementOf(bill), new RegExp(`Ukupno Oktobar 2026</td><td></td><td class="num">${formatMoney(7500)}`));
+  assert.doesNotMatch((await m.request('/mitglied')).text, /Ručni obračun/);
+  // Elternkonto
+  await createParentAccount(admin, { name: 'Rucni Roditelj', username: 'rucni.roditelj', password: 'roditelj-pass-1', players: [id] });
+  const p = client();
+  await p.login('rucni.roditelj', 'roditelj-pass-1');
+  const fin = (await p.request(`/roditelj/finansije?monat=${month}`)).text;
+  assert.doesNotMatch(fin, /Ručni obračun|vidi stavke/);
+  assert.deepEqual(rows(fin), ['Paušal oktobar', 'Lopte', 'Ukupno Oktobar 2026']);
+  // Admin sieht weiterhin die eingestellte Art
+  const det = (await admin.request(detailUrl)).text;
+  assert.match(det, /ručni obračun/i);
+  assert.match(det, /Treninzi<\/td><td>Ručni obračun – vidi stavke<\/td>/);
+  assert.match((await admin.request(`/admin/abrechnung?monat=${month}`)).text, /ručni obračun/);
+  // Andere Arten unverändert: „Prema rasporedu“ zeigt weiter die Zeile „Realizovani treninzi“
+  await admin.post(`/admin/abrechnung/${id}/nacin`, { month, billing_mode: 'schedule' }, detailUrl);
+  const sched = (await m.request(`/mitglied/abrechnung?monat=${month}`)).text;
+  assert.match(sched, /Realizovani treninzi<\/td><td>Termini: 1/);
+  assert.match(sched, /Termini: 1 · 1 h/);
 });
