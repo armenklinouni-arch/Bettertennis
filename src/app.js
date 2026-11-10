@@ -7,6 +7,7 @@ const { sessionSecret } = require('./db');
 const { closeElapsedMonths } = require('./billing');
 const D = require('./dates');
 const { createResendMailer } = require('./mailer');
+const { ORIGIN: TURNSTILE_ORIGIN } = require('./turnstile');
 const { BACKUP_EMAIL_DEFAULT } = require('./backup');
 const publicRoutes = require('./routes/public');
 const memberRoutes = require('./routes/member');
@@ -25,8 +26,12 @@ function createApp(db, {
   secret, secureCookies = false, trustProxy = false, publicHomepage = true,
   mailer = createResendMailer({ apiKey: process.env.RESEND_API_KEY }), appUrl = 'http://localhost:3000',
   backupEmail = BACKUP_EMAIL_DEFAULT, mailDelayMs = 600, notifyEmail = NOTIFY_EMAIL_DEFAULT,
+  // Javni obrazac: Cloudflare Turnstile (bez ključeva isključeno) i najviše 5 prijava po IP adresi na sat.
+  turnstile = {}, leadLimit = { max: 5, windowMs: 60 * 60 * 1000 },
 } = {}) {
   const app = express();
+  // Cloudflare (Turnstile) se dozvoljava u CSP-u samo kad je ključ podešen.
+  const turnstileCsp = !!turnstile.siteKey;
   // Öffentliche Startseite (Početna): standardmäßig an. Mit PUBLIC_HOMEPAGE=0 führt „/“ direkt zum Login.
   app.locals.publicHomepage = publicHomepage;
   app.disable('x-powered-by');
@@ -38,7 +43,7 @@ function createApp(db, {
     res.setHeader('Referrer-Policy', 'same-origin');
     res.setHeader(
       'Content-Security-Policy',
-      "default-src 'self'; img-src 'self' data: https://unsplash.com https://images.unsplash.com; style-src 'self'; script-src 'self'; form-action 'self'; frame-ancestors 'none'"
+      `default-src 'self'; img-src 'self' data: https://unsplash.com https://images.unsplash.com; style-src 'self'; script-src 'self'${turnstileCsp ? ` ${TURNSTILE_ORIGIN}` : ''}; ${turnstileCsp ? `frame-src ${TURNSTILE_ORIGIN}; connect-src 'self' ${TURNSTILE_ORIGIN}; ` : ''}form-action 'self'; frame-ancestors 'none'`
     );
     next();
   });
@@ -63,6 +68,7 @@ function createApp(db, {
 
   app.use('/', publicRoutes(db, {
     loginLimiter: createLoginLimiter(), resetLimiter: createLoginLimiter({ maxAttempts: 20 }), resetEmailLimiter: createLoginLimiter({ maxAttempts: 3 }), mailer, appUrl,
+    turnstile, leadLimiter: createLoginLimiter({ maxAttempts: leadLimit.max, windowMs: leadLimit.windowMs }),
   }));
   app.use('/mitglied', memberRoutes(db, { mailer, notifyEmail }));
   app.use('/trener', trainerPortalRoutes(db));

@@ -10,6 +10,7 @@ const {
   verifyPassword, hashPassword, DUMMY_HASH, homeFor, startSession, endSession, endSessionsFor, accountKey,
 } = require('../auth');
 const { logActivity } = require('../activity');
+const { verifyTurnstile, SCRIPT_URL: TURNSTILE_SCRIPT } = require('../turnstile');
 const { isPlaceholderEmail, needsEmailPrompt } = require('../db');
 
 const LEVELS = ['Početnik', 'Povratnik', 'Napredni', 'Takmičar'];
@@ -103,7 +104,11 @@ function safeNext(next, fallback) {
 
 module.exports = function publicRoutes(db, {
   loginLimiter, resetLimiter, resetEmailLimiter, mailer, appUrl = '',
+  turnstile = {}, leadLimiter = null,
 }) {
+  // Turnstile je uključen čim je podešen bar jedan ključ; bez oba ključa obrazac radi kao do sada.
+  // (Samo jedan ključ = pogrešna postavka → sigurnije ništa ne spremati.)
+  const turnstileOn = !!(turnstile.siteKey || turnstile.secretKey);
   const router = express.Router();
 
   function homePage(req, { values = {}, errors = [] } = {}) {
@@ -212,8 +217,10 @@ module.exports = function publicRoutes(db, {
             <input type="checkbox" name="consent" value="1" required${values.consent ? ' checked' : ''}>
             <span>Slažem se da se moji podaci sačuvaju radi kontakta. *</span>
           </label>
+          ${turnstile.siteKey ? html`<div class="span-2 turnstile-box"><div class="cf-turnstile" data-sitekey="${turnstile.siteKey}" data-appearance="interaction-only" data-theme="light"></div></div>` : ''}
           <div class="span-2"><button class="btn btn-accent btn-lg" type="submit">Prijavi se bez obaveze</button></div>
         </form>
+        ${turnstile.siteKey ? html`<script src="${TURNSTILE_SCRIPT}" async defer></script>` : ''}
       </section>
       </div>
       </div>`,
@@ -227,36 +234,69 @@ module.exports = function publicRoutes(db, {
     res.send(String(homePage(req)));
   });
 
-  router.post('/anmeldung', (req, res) => {
-    const values = {
-      name: str(req.body.name, 120),
-      email: str(req.body.email, 200),
-      phone: str(req.body.phone, 50),
-      level: LEVELS.includes(req.body.level) ? req.body.level : LEVELS[0],
-      availability: str(req.body.availability, 300),
-      message: str(req.body.message, 2000),
-      consent: req.body.consent === '1',
-    };
+  // Maksimalne dužine polja javnog obrasca (provjera na serveru – predugo se odbija, ne skraćuje se tiho).
+  const LEAD_LIMITS = [['name', 120, 'Ime'], ['email', 200, 'E-mail'], ['phone', 50, 'Broj telefona'], ['availability', 300, 'Termini'], ['message', 2000, 'Poruka']];
+  // E-mail: jedno @, bez razmaka i znakova kao < > " ' ( ) , ; : \ , domen s tačkom.
+  const LEAD_EMAIL_RE = /^[^\s@<>"'(),;:\\]+@[^\s@<>"'(),;:\\]+\.[^\s@<>"'(),;:\\]{2,}$/;
+  const raw = (v) => (typeof v === 'string' ? v.trim() : '');
 
-    // Honeypot: botovi popunjavaju skriveno polje – tiho ignorisati.
-    if (str(req.body.website)) return res.redirect('/danke');
+  router.post('/anmeldung', async (req, res, next) => {
+    try {
+      const values = {
+        name: raw(req.body.name),
+        email: raw(req.body.email),
+        phone: raw(req.body.phone),
+        level: LEVELS.includes(req.body.level) ? req.body.level : LEVELS[0],
+        availability: raw(req.body.availability),
+        message: raw(req.body.message),
+        consent: req.body.consent === '1',
+      };
 
-    const errors = [];
-    if (!values.name) errors.push('Molimo upiši svoje ime.');
-    if (!EMAIL_RE.test(values.email)) errors.push('Molimo upiši ispravnu e-mail adresu.');
-    if (!values.phone) errors.push('Molimo upiši broj telefona.');
-    else if (!isValidPhone(values.phone)) errors.push('Molimo upiši ispravan broj telefona.');
-    if (!values.consent) errors.push('Molimo potvrdi saglasnost za kontakt.');
-    if (errors.length) {
-      res.status(400);
-      return res.send(String(homePage(req, { values, errors })));
+      // Honeypot: botovi popunjavaju skriveno polje – tiho ignorisati.
+      if (str(req.body.website)) return res.redirect('/danke');
+
+      // Najviše 5 prijava po IP adresi na sat.
+      const ipKey = `lead:${req.ip}`;
+      if (leadLimiter && leadLimiter.isBlocked(ipKey)) {
+        res.status(429);
+        return res.send(String(homePage(req, { values, errors: ['Previše prijava s ove adrese. Molimo pokušajte ponovo za sat vremena.'] })));
+      }
+
+      const errors = [];
+      for (const [field, max, label] of LEAD_LIMITS) {
+        if (values[field].length > max) errors.push(`${label} je predugo (najviše ${max} znakova).`);
+      }
+      if (!values.name) errors.push('Molimo upiši svoje ime.');
+      if (!LEAD_EMAIL_RE.test(values.email) || !EMAIL_RE.test(values.email)) errors.push('Molimo upiši ispravnu e-mail adresu.');
+      if (!values.phone) errors.push('Molimo upiši broj telefona.');
+      else if (!isValidPhone(values.phone)) errors.push('Molimo upiši ispravan broj telefona.');
+      if (!values.consent) errors.push('Molimo potvrdi saglasnost za kontakt.');
+      if (errors.length) {
+        res.status(400);
+        return res.send(String(homePage(req, { values, errors })));
+      }
+
+      // Cloudflare Turnstile: bez tokena koji Cloudflare potvrdi ništa se ne sprema.
+      if (turnstileOn) {
+        const human = await verifyTurnstile({
+          secretKey: turnstile.secretKey, token: req.body['cf-turnstile-response'], ip: req.ip, fetch: turnstile.fetch,
+        });
+        if (!human) {
+          res.status(400);
+          return res.send(String(homePage(req, { values, errors: ['Sigurnosna provjera nije uspjela. Molimo pokušajte ponovo.'] })));
+        }
+      }
+
+      // Parametrizovan upit (?) – unos se nikad ne ugrađuje u SQL, pa SQL-injection nije moguć.
+      db.prepare(
+        'INSERT INTO leads (name, email, phone, level, availability, message) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(values.name, values.email, values.phone, values.level, values.availability || null, values.message || null);
+      if (leadLimiter) leadLimiter.fail(ipKey); // broji spremljene prijave
+      logActivity(db, req, 'Zainteresovani', `nova prijava – ${values.name} (${values.email}${values.phone ? `, ${values.phone}` : ''})`);
+      res.redirect('/danke');
+    } catch (err) {
+      next(err);
     }
-
-    db.prepare(
-      'INSERT INTO leads (name, email, phone, level, availability, message) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(values.name, values.email, values.phone, values.level, values.availability || null, values.message || null);
-    logActivity(db, req, 'Zainteresovani', `nova prijava – ${values.name} (${values.email}${values.phone ? `, ${values.phone}` : ''})`);
-    res.redirect('/danke');
   });
 
   router.get('/danke', (req, res) => {

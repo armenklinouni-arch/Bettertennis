@@ -521,6 +521,9 @@ body.has-mascot .site-footer { padding-bottom: 150px; }
 .mascot-preview-main { grid-column: span 2; }
 @media (max-width: 700px) { .mascot-preview-main { grid-column: auto; } }
 
+/* Cloudflare Turnstile im Formular (nur sichtbar, wenn eine Prüfung nötig ist) */
+.turnstile-box:empty, .turnstile-box .cf-turnstile:empty { display: none; }
+
 /* Bildschirmbreite Seiten ohne Container (nur die Startseite nutzt das). */
 main.main-full { flex: 1; }
 

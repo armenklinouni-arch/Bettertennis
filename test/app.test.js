@@ -33,7 +33,8 @@ before(async () => {
   db = openDatabase(':memory:');
   ensureAdmin(db, { email: 'admin@test.de', password: 'adminpass123' });
   // Hauptinstanz mit eingeschalteter Startseite (deren Tests bleiben so erhalten).
-  const app = createApp(db, { secret: 'test-secret', publicHomepage: true, mailer: testMailer, appUrl: 'https://bettertennis.net', mailDelayMs: 0 });
+  // Großzügige Formular-Begrenzung, damit die vielen Formular-Tests nicht an die 5er-Grenze stoßen (eigener Test prüft die echte Grenze).
+  const app = createApp(db, { secret: 'test-secret', publicHomepage: true, mailer: testMailer, appUrl: 'https://bettertennis.net', mailDelayMs: 0, leadLimit: { max: 1000, windowMs: 60 * 60 * 1000 } });
   await new Promise((resolve) => {
     server = app.listen(0, resolve);
   });
@@ -4450,4 +4451,138 @@ test('Maskottchen: für alle eingeloggten Konten (Admin, Mitglied, Kind, Eltern,
   // Skript schickt „×“ im Hintergrund ab
   const js = (await client().request('/static/app.js')).text;
   assert.match(js, /x-requested-with/i);
+});
+
+// ---------------------------------------------------------------- Öffentliches Formular: Turnstile, Begrenzung, Eingabeprüfung
+test('Formular: Cloudflare Turnstile – ohne gültigen, bei Cloudflare geprüften Token wird nichts gespeichert; max. 5 Einträge pro IP und Stunde', async () => {
+  const d = openDatabase(':memory:');
+  const calls = [];
+  let mode = 'ok';
+  const fakeFetch = async (url, opts) => {
+    calls.push({ url, body: Object.fromEntries(new URLSearchParams(opts.body)) });
+    if (mode === 'down') throw new Error('Netzwerk weg');
+    const token = new URLSearchParams(opts.body).get('response');
+    return { ok: true, json: async () => ({ success: token === 'dobar-token', 'error-codes': token === 'dobar-token' ? [] : ['invalid-input-response'] }) };
+  };
+  const app = createApp(d, {
+    secret: 's', publicHomepage: true, trustProxy: true, mailer: testMailer,
+    turnstile: { siteKey: 'test-site-key', secretKey: 'test-secret-key', fetch: fakeFetch },
+  });
+  const srv = await new Promise((r) => { const x = app.listen(0, () => r(x)); });
+  const url = `http://127.0.0.1:${srv.address().port}`;
+  let cookie = '';
+  const req = async (path, { form, ip = '203.0.113.7' } = {}) => {
+    const res = await fetch(url + path, {
+      method: form ? 'POST' : 'GET', redirect: 'manual',
+      headers: { cookie, 'x-forwarded-for': ip, ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
+      body: form ? new URLSearchParams(form).toString() : undefined,
+    });
+    const set = res.headers.get('set-cookie');
+    if (set) cookie = set.split(';')[0];
+    return { status: res.status, location: res.headers.get('location'), text: await res.text(), csp: res.headers.get('content-security-policy') };
+  };
+  const leads = () => d.prepare('SELECT COUNT(*) AS n FROM leads').get().n;
+  try {
+    const home = await req('/');
+    // Widget (Managed / nur bei Bedarf sichtbar) und Cloudflare-Skript; Secret Key nie im HTML
+    assert.match(home.text, /<div class="cf-turnstile" data-sitekey="test-site-key" data-appearance="interaction-only" data-theme="light"><\/div>/);
+    assert.match(home.text, /<script src="https:\/\/challenges\.cloudflare\.com\/turnstile\/v0\/api\.js" async defer><\/script>/);
+    assert.ok(!home.text.includes('test-secret-key'));
+    assert.match(home.csp, /script-src 'self' https:\/\/challenges\.cloudflare\.com/);
+    assert.match(home.csp, /frame-src https:\/\/challenges\.cloudflare\.com/);
+    const csrf = /name="_csrf" value="([^"]+)"/.exec(home.text)[1];
+    const base = { _csrf: csrf, name: 'Turnstile Test', email: 'ts@example.ba', phone: '061 111 222', consent: '1' };
+
+    // Ohne Token → nichts gespeichert, Cloudflare gar nicht erst gefragt
+    let r = await req('/anmeldung', { form: base });
+    assert.equal(r.status, 400);
+    assert.match(r.text, /Sigurnosna provjera nije uspjela\. Molimo pokušajte ponovo\./);
+    assert.equal(leads(), 0);
+    assert.equal(calls.length, 0);
+    // Falscher Token → Cloudflare sagt nein → nichts gespeichert
+    r = await req('/anmeldung', { form: { ...base, 'cf-turnstile-response': 'los-token' } });
+    assert.equal(r.status, 400);
+    assert.equal(leads(), 0);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, 'https://challenges.cloudflare.com/turnstile/v0/siteverify');
+    assert.deepEqual(calls[0].body, { secret: 'test-secret-key', response: 'los-token', remoteip: '203.0.113.7' });
+    // Cloudflare nicht erreichbar → sicherheitshalber nichts gespeichert
+    mode = 'down';
+    r = await req('/anmeldung', { form: { ...base, 'cf-turnstile-response': 'dobar-token' } });
+    assert.equal(r.status, 400);
+    assert.equal(leads(), 0);
+    mode = 'ok';
+    // Gültiger Token → gespeichert
+    r = await req('/anmeldung', { form: { ...base, 'cf-turnstile-response': 'dobar-token' } });
+    assert.equal(r.status, 302);
+    assert.equal(r.location, '/danke');
+    assert.equal(leads(), 1);
+
+    // Begrenzung: höchstens 5 Einträge pro IP-Adresse und Stunde
+    for (let i = 2; i <= 5; i++) {
+      r = await req('/anmeldung', { form: { ...base, name: `Turnstile ${i}`, 'cf-turnstile-response': 'dobar-token' } });
+      assert.equal(r.status, 302, `Eintrag ${i}`);
+    }
+    assert.equal(leads(), 5);
+    const callsBefore = calls.length;
+    r = await req('/anmeldung', { form: { ...base, name: 'Turnstile 6', 'cf-turnstile-response': 'dobar-token' } });
+    assert.equal(r.status, 429);
+    assert.match(r.text, /Previše prijava s ove adrese\. Molimo pokušajte ponovo za sat vremena\./);
+    assert.equal(leads(), 5);
+    assert.equal(calls.length, callsBefore); // gesperrte Anfrage wird gar nicht erst geprüft
+    // Andere IP-Adresse ist nicht betroffen
+    r = await req('/anmeldung', { form: { ...base, name: 'Druga adresa', 'cf-turnstile-response': 'dobar-token' }, ip: '198.51.100.9' });
+    assert.equal(r.status, 302);
+    assert.equal(leads(), 6);
+    // Nach einer Stunde wieder möglich
+    await atTime(new Date(Date.now() + 61 * 60 * 1000).toISOString(), async () => {
+      r = await req('/anmeldung', { form: { ...base, name: 'Nakon sata', 'cf-turnstile-response': 'dobar-token' } });
+      assert.equal(r.status, 302);
+    });
+    assert.equal(leads(), 7);
+  } finally {
+    srv.close();
+  }
+});
+
+test('Formular: serverseitige Prüfung (Längen, E-Mail), reiner Text im Admin-Bereich, sicher gegen SQL-Injection', async () => {
+  const c = client();
+  const ok = { name: 'Provjera Unosa', email: 'unos@example.ba', phone: '061 222 333', consent: '1' };
+  const post = (form) => c.post('/anmeldung', form, '/');
+  const count = () => db.prepare('SELECT COUNT(*) AS n FROM leads').get().n;
+  const before = count();
+  // Zu lange Felder werden abgelehnt (nicht still abgeschnitten)
+  for (const [field, max, label] of [['name', 120, 'Ime'], ['email', 200, 'E-mail'], ['phone', 50, 'Broj telefona'], ['availability', 300, 'Termini'], ['message', 2000, 'Poruka']]) {
+    const long = field === 'email' ? `${'a'.repeat(max)}@example.ba` : field === 'phone' ? '1'.repeat(max + 1) : 'x'.repeat(max + 1);
+    const r = await post({ ...ok, [field]: long });
+    assert.equal(r.status, 400, field);
+    assert.match(r.text, new RegExp(`${label} je predugo \\(najviše ${max} znakova\\)\\.`), field);
+  }
+  // Ungültige E-Mail-Adressen
+  for (const email of ['bez-at.ba', 'a@b', 'x <y>@example.ba', 'x"y@example.ba', 'a@@b.ba', 'a b@example.ba']) {
+    const r = await post({ ...ok, email });
+    assert.equal(r.status, 400, email);
+    assert.match(r.text, /ispravnu e-mail adresu/, email);
+  }
+  // Unbekannte Stufe wird nicht übernommen
+  assert.equal(count(), before);
+  await post({ ...ok, name: 'Nivo Test', level: '<b>hack</b>' });
+  assert.notEqual(db.prepare("SELECT level FROM leads WHERE name = 'Nivo Test'").get().level, '<b>hack</b>');
+  // SQL-Injection: wird als normaler Text gespeichert, Tabelle bleibt unversehrt
+  const sqlName = "Robert'); DROP TABLE leads;--";
+  assert.equal((await post({ ...ok, name: sqlName, message: "' OR '1'='1" })).status, 302);
+  const row = db.prepare('SELECT * FROM leads WHERE name = ?').get(sqlName);
+  assert.equal(row.message, "' OR '1'='1");
+  assert.ok(count() >= before + 2);
+  // Eingeschleuster Code erscheint im Admin-Bereich nur als Text
+  await post({ ...ok, name: '<img src=x onerror=alert(1)>', message: '<script>alert("x")</script>', availability: '"><b>fett</b>' });
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const list = (await admin.request('/admin/interessenten')).text;
+  assert.match(list, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(list, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;/);
+  assert.match(list, /&quot;&gt;&lt;b&gt;fett&lt;\/b&gt;/);
+  assert.doesNotMatch(list, /<img src=x|<script>alert|<b>fett/);
+  const log = (await admin.request('/admin/dnevnik?oblast=Zainteresovani')).text;
+  assert.doesNotMatch(log, /<img src=x/);
 });

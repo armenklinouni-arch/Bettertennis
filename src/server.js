@@ -69,8 +69,15 @@ console.log(sessionSecretEnv
   ? 'Anmeldungen: Schlüssel aus SESSION_SECRET.'
   : 'Anmeldungen: fester Schlüssel aus der Datenbank (bleibt über Neustarts gleich).');
 
+// Cloudflare Turnstile für das öffentliche Formular (Railway → Variables): TURNSTILE_SITE_KEY und TURNSTILE_SECRET_KEY.
+const turnstile = { siteKey: cleanEnv('TURNSTILE_SITE_KEY'), secretKey: cleanEnv('TURNSTILE_SECRET_KEY') };
+if (turnstile.siteKey && turnstile.secretKey) console.log('Formular: Cloudflare Turnstile aktiv.');
+else if (turnstile.siteKey || turnstile.secretKey) console.error('ACHTUNG: Nur einer der beiden Turnstile-Schlüssel ist gesetzt – das Formular nimmt so keine Einträge an. Bitte TURNSTILE_SITE_KEY und TURNSTILE_SECRET_KEY setzen.');
+else console.warn('Hinweis: TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY nicht gesetzt – das Formular ist nicht durch Turnstile geschützt.');
+
 const app = createApp(db, {
   secret: sessionSecretEnv || undefined,
+  turnstile,
   secureCookies: production,
   // Hinter einem Proxy (z. B. Railway) die echte Besucher-IP verwenden (wichtig für die Login-Sperre).
   trustProxy: process.env.TRUST_PROXY === '1' || !!process.env.RAILWAY_ENVIRONMENT,

@@ -210,6 +210,17 @@ Tests: `npm test`
   Grafiken in `public/img/maskota-v2/`, Vorschau nur für den Admin unter **`/admin/maskota`** (nicht im Menü).
   Die Figur in der Ecke nutzt dieses neue Design.
 
+## Schutz des Formulars auf der Startseite
+
+- **Cloudflare Turnstile** (Widget-Modus „Managed“, nur sichtbar, wenn Cloudflare eine Prüfung verlangt): Der Token wird
+  auf dem Server bei Cloudflare geprüft, bevor ein Eintrag gespeichert wird. Ohne gültigen Token, bei Fehlern oder wenn
+  Cloudflare nicht erreichbar ist, wird nichts gespeichert. Aktiv, sobald `TURNSTILE_SITE_KEY` und `TURNSTILE_SECRET_KEY`
+  in Railway gesetzt sind (ohne beide Schlüssel ist das Formular ungeschützt – Hinweis im Log).
+- **Begrenzung:** höchstens 5 gespeicherte Einträge pro IP-Adresse und Stunde (danach „Previše prijava …“).
+- **Prüfung auf dem Server:** Ime ≤ 120, E-mail ≤ 200, Telefon ≤ 50, Termini ≤ 300, Poruka ≤ 2000 Zeichen (zu lang →
+  abgelehnt), gültiges E-Mail-Format, Telefon, Nivo nur aus der Liste. Im Admin-Bereich wird alles als reiner Text
+  angezeigt (HTML wird maskiert). Gespeichert wird mit parametrisierter Abfrage (kein SQL-Injection möglich).
+
 ## Wochenfreigabe (Trainingsplan)
 
 - Jede Woche (Mo–So) ist entweder **versteckt** oder **freigegeben**. Mitglieder und Kinder-Konten sehen Termine
@@ -371,6 +382,8 @@ Lokal gehen keine Daten verloren, solange der Ordner `data/` nicht gelöscht wir
 | `MAIL_FROM`      | Absender der E-Mails | `BetterTennis <no-reply@bettertennis.net>` |
 | `APP_URL`        | Adresse der Seite für Links in E-Mails | `https://bettertennis.net` (Railway) |
 | `BACKUP_EMAIL`   | Empfänger der wöchentlichen Backup-Mail | `bettertennis.net@gmail.com` |
+| `TURNSTILE_SITE_KEY` | Cloudflare Turnstile – öffentlicher Schlüssel (Formular Startseite) | – (ohne: kein Turnstile) |
+| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile – geheimer Schlüssel (nur Server) | – |
 | `NOTIFY_EMAIL`   | Empfänger der Mail bei neuen Privatstunden-Anfragen | `bettertennis.net@gmail.com` |
 | `TZ`             | Zeitzone für „heute“ und Wochenbeginn                             | `Europe/Berlin`       |
 
