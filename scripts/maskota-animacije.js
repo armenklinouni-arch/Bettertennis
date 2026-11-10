@@ -426,12 +426,12 @@ function sceneSvg(scene, { standalone = true, design = 1 } = {}) {
     // svi animirani dijelovi dobijaju zajedničke postavke (trajanje, petlja)
     .replace(/\n\s*\n/g, '\n');
   const animated = ['arm-r', 'arm-l', 'fig', 'body', 'shadow', 'tb', 'swoosh', 'swoosh2', 'pupils', 'question', 'mouth', 'mouth-o', 'brows',
-    'eyes', 'eyes-happy', 'eyes-wink', 'cheer', 'bang', 'eyes-dizzy', 'mouth-wavy', 'stars'];
-  let body = `${mascot(id, { ballBehind: scene.ballBehind || '', pose: scene.pose, design })}${scene.extra(id)}`;
+    'eyes', 'eyes-happy', 'eyes-wink', 'cheer', 'bang', 'eyes-dizzy', 'mouth-wavy', 'stars', 'mirror-glass', 'net', 'mirror-me', 'mfig'];
+  let body = scene.build ? scene.build(id, design) : `${mascot(id, { ballBehind: scene.ballBehind || '', pose: scene.pose, design })}${scene.extra(id)}`;
   for (const cls of animated) {
     body = body.replace(new RegExp(`class="([^"]*\\b)${cls}(\\b[^"]*)"`, 'g'), (m, a, b) => (m.includes(' anim') ? m : `class="${a}${cls}${b} anim"`));
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" id="${id}" viewBox="${design === 2 ? VIEWBOX_V2 : VIEWBOX}" width="380" height="${design === 2 ? 360 : 344}" role="img" aria-label="${scene.label}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" id="${id}" viewBox="${scene.viewBox || (design === 2 ? VIEWBOX_V2 : VIEWBOX)}" width="${scene.width || 380}" height="${scene.height || (design === 2 ? 360 : 344)}" role="img" aria-label="${scene.label}">
   <title>${scene.label}</title>
   <style>${css}
   </style>${defs(id)}
@@ -488,6 +488,72 @@ function previewHtml() {
 }
 
 // Mirna slika (bez animacije) za dizajn 2.
+// „Me vs Me“ (samo dizajn 2): ogledalo, odraz iskoči, mreža, razmjena udaraca, original osvoji poen.
+// Dvostruko šira slika (lijevo više mjesta); original stoji desno na istom mjestu kao inače.
+// Odraz je ista maskota, zrcaljena (scale(-1 1)) – tačke okretanja ostaju u lokalnim koordinatama.
+const MEVSME = {
+  file: 'mevsme', title: 'Me vs Me', label: 'Maskota igra protiv svog odraza iz ogledala i osvoji poen', dur: 7.6,
+  viewBox: '-380 -64 760 360', width: 760, height: 360,
+  build: (id, design) => `
+  <defs>
+    <linearGradient id="${id}-glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef7ff"/><stop offset="0.5" stop-color="#c9e2f5"/><stop offset="1" stop-color="#9fc4e0"/>
+    </linearGradient>
+  </defs>
+  <g class="mirror-glass fx">
+    <ellipse cx="-35" cy="279" rx="26" ry="5" fill="${NAVY}" opacity="0.15"/>
+    <path d="M-35 214 V274 M-52 278 H-18" stroke="${NAVY}" stroke-width="6" stroke-linecap="round"/>
+    <ellipse cx="-35" cy="168" rx="32" ry="48" fill="url(#${id}-glass)" stroke="${NAVY}" stroke-width="6"/>
+    <ellipse cx="-35" cy="168" rx="25" ry="41" fill="none" stroke="${GREEN}" stroke-width="2.5" opacity="0.8"/>
+    <path d="M-50 140 L-40 128 M-52 158 L-30 134 M-45 190 L-26 168" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.85"/>
+  </g>
+  <g class="net fx">
+    <path d="M-50 226 V281 M-20 226 V281" stroke="${NAVY}" stroke-width="5" stroke-linecap="round"/>
+    <rect x="-48" y="230" width="26" height="46" fill="#ffffff" fill-opacity="0.55" stroke="${NAVY}" stroke-width="1.5"/>
+    <path d="M-48 241 H-22 M-48 252 H-22 M-48 263 H-22 M-41 230 V276 M-35 230 V276 M-29 230 V276" stroke="${NAVY}" stroke-width="1.2" opacity="0.6"/>
+    <rect x="-53" y="223" width="36" height="7" rx="2" fill="#ffffff" stroke="${NAVY}" stroke-width="2"/>
+  </g>
+  <g class="mirror-me fx">
+    <g transform="translate(-70 0) scale(-1 1)">
+      <g class="mfig">${mascot(id, { design })}
+      </g>
+    </g>
+  </g>
+  <g class="me">${mascot(id, { design })}
+  </g>
+  ${smallBall('tb')}`,
+  css: (id) => {
+    const s = `#${id}`;
+    return `
+    ${s} .mfig { transform-origin: 122px 278px; }
+    ${s} .mirror-glass { animation-name: ${id}-glass, ${id}-glass-o; transform-origin: -35px 278px; }
+    ${s} .net { animation-name: ${id}-net, ${id}-net-o; transform-origin: -35px 280px; }
+    ${s} .mirror-me { animation-name: ${id}-mirror-o; }
+    ${s} .mirror-me .mfig { animation-name: ${id}-jump; }
+    ${s} .tb { animation-name: ${id}-tb, ${id}-tb-o; animation-timing-function: linear; }
+    ${s} .me .arm-r { animation-name: ${id}-me-arm; }
+    ${s} .mirror-me .arm-r { animation-name: ${id}-mirror-arm; }
+    ${s} .me .pupils { animation-name: ${id}-look; }
+    ${s} .me .fig { animation-name: ${id}-joy; }
+    ${s} .me .eyes { animation-name: ${id}-eyes; }
+    ${s} .me .eyes-happy { animation-name: ${id}-happy; }
+    ${kf(`${id}-glass`, 'transform', [[0, 'scale(0.2)'], [2, 'scale(0.2)'], [6, 'scale(1.08)'], [9, 'scale(1)'], [76, 'scale(1)'], [81, 'scale(0.2)'], [100, 'scale(0.2)']])}
+    ${showBetween(`${id}-glass-o`, 2.5, 80)}
+    ${kf(`${id}-net`, 'transform', [[0, 'scaleY(0)'], [19, 'scaleY(0)'], [23, 'scaleY(1)'], [76, 'scaleY(1)'], [80, 'scaleY(0)'], [100, 'scaleY(0)']])}
+    ${showBetween(`${id}-net-o`, 19, 80)}
+    ${kf(`${id}-mirror-o`, 'opacity', [[0, 0], [9, 0], [10, 1], [72, 1], [79, 0], [100, 0]])}
+    ${kf(`${id}-jump`, 'transform', [[0, `${tr(-156, -62)} scale(0.35)`], [9, `${tr(-156, -62)} scale(0.35)`], [13, `${tr(-79, -89)} scale(0.8)`], [17, `${tr(0, -24)} scale(1)`], [19, 'scale(1.05, 0.92)'], [21, 'none'], [72, 'none'], [79, `${tr(-156, -62)} scale(0.35)`], [100, `${tr(-156, -62)} scale(0.35)`]])}
+    ${kf(`${id}-tb`, 'transform', [[0, tr(240, 30)], [24, tr(240, 30)], [26, tr(234, 33)], [31, tr(100, -30)], [36, tr(-170, -30)], [41, tr(-304, 33)], [46, tr(-170, -28)], [51, tr(100, -28)], [56, tr(234, 33)], [61, tr(100, -24)], [66, tr(-150, -10)], [70, tr(-290, 72)], [74, tr(-420, 120)], [100, tr(-420, 120)]])}
+    ${kf(`${id}-tb-o`, 'opacity', [[0, 0], [23, 0], [24, 1], [73, 1], [74, 0], [100, 0]])}
+    ${kf(`${id}-me-arm`, 'transform', [[0, 'none'], [20, rot(22)], [26, rot(-6)], [30, rot(-38)], [38, 'none'], [50, rot(22)], [56, rot(-6)], [60, rot(-42)], [68, 'none'], [100, 'none']])}
+    ${kf(`${id}-mirror-arm`, 'transform', [[0, 'none'], [35, rot(22)], [41, rot(-6)], [45, rot(-38)], [52, 'none'], [64, rot(25)], [70, rot(-50)], [76, rot(-20)], [100, 'none']])}
+    ${kf(`${id}-look`, 'transform', [[0, 'none'], [4, tr(-5, 0)], [22, tr(-5, 0)], [26, tr(3, -5)], [36, tr(-5, -4)], [56, tr(3, -5)], [68, tr(-6, -2)], [78, tr(-6, 0)], [86, 'none'], [100, 'none']])}
+    ${kf(`${id}-joy`, 'transform', [[0, 'none'], [80, 'none'], [85, 'scale(1.16)'], [90, 'scale(1.12)'], [96, 'none'], [100, 'none']])}
+    ${hideBetween(`${id}-eyes`, 80, 94)}
+    ${showBetween(`${id}-happy`, 80, 94)}`;
+  },
+};
+
 const STILL = { file: 'maskota', title: 'Mirna slika', label: 'BetterTennis maskota', dur: 1, extra: () => '', css: () => '' };
 const OUT_DIR_V2 = path.join(__dirname, '..', 'public', 'img', 'maskota-v2');
 
@@ -496,9 +562,9 @@ if (require.main === module) {
   for (const scene of [READY, ...SCENES]) fs.writeFileSync(path.join(OUT_DIR, `${scene.file}.svg`), sceneSvg(scene));
   // Dizajn 2 (kapa naopako, rukavice, patike) – isti pokreti, zaseban folder
   fs.mkdirSync(OUT_DIR_V2, { recursive: true });
-  for (const scene of [STILL, READY, ...SCENES]) fs.writeFileSync(path.join(OUT_DIR_V2, `${scene.file}.svg`), sceneSvg(scene, { design: 2 }));
+  for (const scene of [STILL, READY, ...SCENES, MEVSME]) fs.writeFileSync(path.join(OUT_DIR_V2, `${scene.file}.svg`), sceneSvg(scene, { design: 2 }));
   if (process.argv[2]) fs.writeFileSync(process.argv[2], previewHtml());
   console.log(`Animacije: ${SCENES.map((s) => `${s.file}.svg`).join(', ')}${process.argv[2] ? ` · pregled: ${process.argv[2]}` : ''}`);
 }
 
-module.exports = { READY, SCENES, STILL, sceneSvg, previewHtml };
+module.exports = { READY, SCENES, STILL, MEVSME, sceneSvg, previewHtml };

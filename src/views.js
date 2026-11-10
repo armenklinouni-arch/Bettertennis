@@ -29,7 +29,7 @@ const MASCOT_VERSION = (() => {
 })();
 // Maskota (test): samo za admina, dolje desno – novi dizajn (kapa „BT“, public/img/maskota-v2).
 // Trajanje animacija u ms (vidi scripts/maskota-animacije.js).
-const MASCOT_ANIMS = { servis: 3000, forhend: 2600, promasaj: 4000, poen: 3200, pogodjen: 3600 };
+const MASCOT_ANIMS = { servis: 3000, forhend: 2600, promasaj: 4000, poen: 3200, pogodjen: 3600, mevsme: 7600 };
 function mascotWidget(req) {
   return html`<div class="mascot-widget" data-mascot data-anims="${JSON.stringify(MASCOT_ANIMS)}" data-version="${MASCOT_VERSION}"><img class="mascot-img" src="/static/img/maskota-v2/spremni.svg?v=${MASCOT_VERSION}" alt="" width="380" height="360"><button type="button" class="mascot-hit" aria-label="Pokreni animaciju maskote"></button><form method="post" action="/maskota/sakrij" class="mascot-close-form">${csrfField(req)}<button type="submit" class="mascot-close" aria-label="Sakrij maskotu">×</button></form></div>`;
 }

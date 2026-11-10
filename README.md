@@ -199,12 +199,17 @@ Tests: `npm test`
 - **„×“** blendet es für das eigene Konto dauerhaft aus (gespeichert in `account_prefs`, gilt auch nach dem nächsten
   Login und auf anderen Geräten); unten im Fußbereich erscheint dann **„Prikaži maskotu“** zum Wiedereinblenden.
 - Zwischen den Animationen steht es in der Return-Position (`spremni.svg`, wippt leicht) und spielt etwa alle
-  20–30 Sekunden eine der fünf Animationen (`#jednom`).
+  20–30 Sekunden eine der sechs Animationen (`#jednom`).
   Klick/Tippen auf die Figur spielt sofort eine Animation (während einer laufenden passiert nichts). Klick und
-  automatische Animationen spielen alle fünf in zufälliger Reihenfolge, bevor sich eine wiederholt – nie zweimal
+  automatische Animationen spielen alle sechs in zufälliger Reihenfolge, bevor sich eine wiederholt – nie zweimal
   dieselbe hintereinander (Stand pro Browser-Sitzung gemerkt, auch beim Seitenwechsel);
   nur die Figur selbst ist klickbar, der Rest des Bildes lässt Klicks durch.
   Bei „weniger Bewegung“ (prefers-reduced-motion) bleibt es ein stehendes Bild.
+- **„Me vs Me“** (`mevsme.svg`, 7,6 s): ein Spiegel erscheint, das Spiegelbild springt heraus, ein kleines Netz
+  erscheint, beide spielen sich den Ball zu, das Original macht den Punkt, Spiegelbild, Netz und Spiegel verschwinden,
+  der Ball freut sich (kurz größer) und steht wieder in der Return-Position. Für diese Szene wird das Bild kurz doppelt
+  so breit nach links (`.is-wide`, gleiche Höhe, Figur bleibt an ihrem Platz) – nur wenn dort unten kein Knopf, Link,
+  Eingabefeld oder keine Tabelle liegt; sonst kommt eine andere Animation und „Me vs Me“ bleibt als nächste dran.
 - Grafiken: `public/img/maskota-v2/` (aktuelles Design; bisheriges Design in `public/img/maskota-animacije/`; Generator: `node scripts/maskota-animacije.js`).
 - **Neues Design:** Basecap verkehrt herum mit „BT“, breit lachend (im Wartezustand beide Augen offen; kurzes Zwinkern nur
   beim Jubeln nach „Poen!“; Grafiken mit Versionsnummer, damit nie eine alte Fassung aus dem Browser-Speicher erscheint), kräftige Arme und längere Beine, weiße Comic-Handschuhe,

@@ -4222,8 +4222,8 @@ test('Maskottchen unten rechts: Return-Pose, zufällige Animationen, X zum Ausbl
   const widget = /<div class="mascot-widget" data-mascot data-anims="([^"]+)" data-version="[0-9a-f]+">([\s\S]*?)<\/form><\/div>/.exec(page);
   assert.ok(widget, 'Maskottchen fehlt beim Admin');
   const anims = JSON.parse(widget[1].replace(/&quot;/g, '"'));
-  assert.deepEqual(Object.keys(anims).sort(), ['forhend', 'poen', 'pogodjen', 'promasaj', 'servis']);
-  assert.ok(Object.values(anims).every((ms) => ms >= 2000 && ms <= 4000));
+  assert.deepEqual(Object.keys(anims).sort(), ['forhend', 'mevsme', 'poen', 'pogodjen', 'promasaj', 'servis']);
+  assert.ok(Object.values(anims).every((ms) => ms >= 2000 && ms <= 8000));
   // Neues Design (Basecap „BT“) in der Ecke
   assert.match(widget[2], /<img class="mascot-img" src="\/static\/img\/maskota-v2\/spremni\.svg\?v=[0-9a-f]+" alt="" width="\d+" height="\d+">/);
   assert.match(widget[2], /<form method="post" action="\/maskota\/sakrij" class="mascot-close-form"><input type="hidden" name="_csrf" value="[^"]+"><button type="submit" class="mascot-close" aria-label="Sakrij maskotu">×<\/button>$/);
@@ -4404,7 +4404,7 @@ test('Maskottchen: für alle eingeloggten Konten (Admin, Mitglied, Kind, Eltern,
   for (const [c, path] of [[admin, '/admin'], [m, '/mitglied'], [m, '/mitglied/abrechnung'], [k, '/mitglied'], [p, '/roditelj'], [p, '/roditelj/finansije'], [t, '/trener']]) {
     const text = (await c.request(path)).text;
     assert.ok(has(text), path);
-    assert.match(text, /data-anims="\{&quot;servis&quot;:3000,&quot;forhend&quot;:2600,&quot;promasaj&quot;:4000,&quot;poen&quot;:3200,&quot;pogodjen&quot;:3600\}"/);
+    assert.match(text, /data-anims="\{&quot;servis&quot;:3000,&quot;forhend&quot;:2600,&quot;promasaj&quot;:4000,&quot;poen&quot;:3200,&quot;pogodjen&quot;:3600,&quot;mevsme&quot;:7600\}"/);
   }
   // Besucher nicht
   for (const path of ['/', '/login', '/zaboravljena-lozinka']) assert.ok(!/data-mascot|has-mascot/.test((await client().request(path)).text), path);
@@ -4628,4 +4628,47 @@ test('Ručni obračun: Mitglieder und Elternkonten sehen keinen Hinweis und kein
   const sched = (await m.request(`/mitglied/abrechnung?monat=${month}`)).text;
   assert.match(sched, /Realizovani treninzi<\/td><td>Termini: 1/);
   assert.match(sched, /Termini: 1 · 1 h/);
+});
+
+
+// ---------------------------------------------------------------- Maskottchen: neue Animation „Me vs Me“
+test('Maskottchen „Me vs Me“: Spiegel, Spiegelbild, Netz, Ballwechsel, Original macht den Punkt; ≤ 8 s; breiter nur wenn Platz frei', async () => {
+  const svg = (await client().request('/static/img/maskota-v2/mevsme.svg'));
+  assert.equal(svg.status, 200);
+  const t = svg.text;
+  // Doppelt so breit nach links; das Original steht rechts an derselben Stelle wie sonst
+  assert.match(t, /viewBox="-380 -64 760 360" width="760" height="360"/);
+  assert.match(t, /<g class="me[ "]/);
+  assert.match(t, /<g class="mirror-me[ "][\s\S]*?transform="translate\(-70 0\) scale\(-1 1\)"/);
+  assert.match(t, /class="mirror-glass[ "]/);
+  assert.match(t, /class="net[ "]/);
+  assert.match(t, /class="tb[ "]/);
+  // Dauer höchstens 8 s, flüssig: nur transform/opacity werden animiert
+  const dur = Number(/animation-duration: ([\d.]+)s;/.exec(t)[1]);
+  assert.ok(dur <= 8 && dur >= 6, String(dur));
+  const props = [...t.matchAll(/@keyframes [\w-]+ \{([^@]*)\}/g)].flatMap((m) => [...m[1].matchAll(/\{ ([\w-]+):/g)].map((x) => x[1]));
+  assert.ok(props.length > 10);
+  assert.deepEqual([...new Set(props)].sort(), ['opacity', 'transform']);
+  // Ablauf: Spiegelbild + Netz + Spiegel verschwinden, Original wird kurz größer (Freude)
+  assert.match(t, /bt-maskota2-mevsme-mirror-o/);
+  assert.match(t, /bt-maskota2-mevsme-joy/);
+  assert.match(t, /prefers-reduced-motion: reduce/);
+
+  // Teil der wechselnden Animationen (Klick und automatisch)
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const page = (await admin.request('/admin')).text;
+  const anims = JSON.parse(/data-anims="([^"]+)"/.exec(page)[1].replace(/&quot;/g, '"'));
+  assert.equal(anims.mevsme, 7600);
+  // Breiter Modus nur für diese Szene; Klickfläche/X bleiben auf dem Original
+  const css = (await client().request('/static/style.css')).text;
+  assert.match(css, /\.mascot-widget\.is-wide \{[^}]*width: 320px;/);
+  assert.match(css, /@media \(max-width: 700px\) \{[^@]*\.mascot-widget\.is-wide \{[^}]*width: 216px;/);
+  assert.match(css, /\.mascot-widget\.is-wide \.mascot-hit \{/);
+  const js = (await client().request('/static/app.js')).text;
+  assert.match(js, /is-wide/);
+  assert.match(js, /WIDE_ANIMS/);
+  assert.match(js, /wideAreaFree/);
+  // Vorschau-Seite zeigt sie ebenfalls
+  assert.match((await admin.request('/admin/maskota')).text, /<img src="\/static\/img\/maskota-v2\/mevsme\.svg"/);
 });

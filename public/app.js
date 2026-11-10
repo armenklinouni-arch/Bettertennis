@@ -421,23 +421,61 @@ window.btMascotNext = function btMascotNext(state, names, random = Math.random) 
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || names.length === 0) return;
     names.forEach((n) => { const pre = new Image(); pre.src = `${dir}${n}.svg?v=${version}`; });
     const schedule = () => { timer = window.setTimeout(play, 20000 + Math.random() * 10000); };
+    // Šire scene („Me vs Me“): slika je dvostruko šira i ide ulijevo uz donji rub. Igra se samo ako u tom
+    // dodatnom prostoru nema dugmeta, linka, polja ili tabele – inače dolazi druga animacija, a ova ostaje prva na redu.
+    const WIDE_ANIMS = ['mevsme'];
+    function wideAreaFree() {
+      const r = widget.getBoundingClientRect();
+      const left = r.right - r.width * 2;
+      if (left < 0) return false;
+      for (const fx of [0.05, 0.3, 0.55, 0.8, 0.98]) {
+        for (const fy of [0.35, 0.6, 0.85]) {
+          const stack = document.elementsFromPoint(left + r.width * fx, r.top + r.height * fy);
+          const below = stack.find((el) => !widget.contains(el));
+          if (below && below.closest(INTERACTIVE)) return false;
+        }
+      }
+      return true;
+    }
     function play() {
       if (playing) return;
       if (document.hidden) return schedule();
       window.clearTimeout(timer);
+      const prevLast = bagState.last;
+      let pick = window.btMascotNext(bagState, names);
+      if (WIDE_ANIMS.includes(pick.name) && !wideAreaFree()) {
+        const others = names.filter((n) => !WIDE_ANIMS.includes(n));
+        if (others.length === 0) return schedule();
+        const alt = window.btMascotNext({ bag: pick.state.bag, last: prevLast }, others);
+        pick = { name: alt.name, state: { bag: [pick.name, ...pick.state.bag.filter((n) => n !== alt.name)], last: alt.name } };
+      }
       playing = true;
-      const pick = window.btMascotNext(bagState, names);
       bagState = pick.state;
       try { window.sessionStorage.setItem(BAG_KEY, JSON.stringify(bagState)); } catch { /* bez pohrane */ }
       const name = pick.name;
+      const wide = WIDE_ANIMS.includes(name);
       plays += 1;
       // ?v=verzija-broj: uvijek aktuelna grafika i animacija svaki put od početka; #jednom = bez petlje
-      img.src = `${dir}${name}.svg?v=${version}-${plays}#jednom`;
-      timer = window.setTimeout(() => {
-        img.src = ready;
-        playing = false;
-        schedule();
-      }, anims[name] + 150);
+      const src = `${dir}${name}.svg?v=${version}-${plays}#jednom`;
+      const start = () => {
+        if (wide) widget.classList.add('is-wide');
+        img.src = src;
+        timer = window.setTimeout(() => {
+          img.src = ready;
+          if (wide) {
+            // široki okvir tek kad je mirna slika učitana – bez kratkog treptaja u pogrešnoj veličini
+            const narrow = () => { widget.classList.remove('is-wide'); queueCheck(); };
+            if (img.complete) narrow(); else { img.addEventListener('load', narrow, { once: true }); window.setTimeout(narrow, 400); }
+          }
+          playing = false;
+          schedule();
+        }, anims[name] + 150);
+      };
+      if (!wide) return start();
+      // široka slika prvo dekodirana, pa okvir i slika zamijenjeni zajedno
+      const pre = new Image();
+      pre.src = src;
+      (pre.decode ? pre.decode() : Promise.resolve()).catch(() => {}).then(start);
     }
     // Klik/tap na maskotu: odmah jedna animacija (dok jedna traje, klik ne radi ništa).
     if (hit) hit.addEventListener('click', () => { if (playing) return; play(); });

@@ -192,7 +192,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
   // ---------------------------------------------------------------- Maskota: pregled novog dizajna (samo admin, nije u meniju)
   const MASCOT_V2 = [
     ['spremni', 'Return-pozicija (između animacija)'], ['servis', 'Servis'], ['forhend', 'Forhend'],
-    ['promasaj', 'Promašaj'], ['poen', 'Poen!'], ['pogodjen', 'Pogođen'],
+    ['promasaj', 'Promašaj'], ['poen', 'Poen!'], ['pogodjen', 'Pogođen'], ['mevsme', 'Me vs Me'],
   ];
   router.get('/maskota', (req, res) => {
     res.send(String(layout(req, {
