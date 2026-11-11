@@ -275,7 +275,7 @@ function billingMark(l) {
 }
 
 // Mjesečni obračun kao tabela (samo informativno).
-// adjustmentDates: uz stavke prikaži datum unosa (koristi roditeljski račun; članski i admin prikaz ostaju isti).
+// adjustmentDates: uz stavke prikaži datum unosa (samo admin; članovi i roditelji vide samo „Dodatna stavka“).
 // attendance / billingMarks: dodatne kolone samo za admina (status prisustva; kvačica za obračun kod „Prema rasporedu“).
 // lessonAmountUrl (samo admin, „Prikaz bez obračuna“): adresa za unos iznosa pojedinog termina.
 function statementTable(statement, {
