@@ -22,6 +22,9 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
        (Mitglieder und Elternkonten sehen dabei nur die Stavke und „Ukupno“ – keinen Hinweis auf die Abrechnungsart;
        der Admin sieht sie weiterhin)
 
+     Mitglieder und Elternkonten sehen in der Monatstabelle nur die Spalten **„Stavka“** und **„Iznos“** und die Summe;
+     die Spalte **„Detalji“** (z. B. „Termini: 3 · 4,5 h“, „Dodatna stavka · Eintragungsdatum“) sieht nur der Admin.
+
      Voreinstellung: Jeder Monat, für den noch keine Abrechnungsart gespeichert wurde, steht auf **„Ručni unos“**.
      Monate mit gespeicherter Art bleiben unverändert; umstellen geht jederzeit mit „Sačuvaj za …“.
    - **Grupe**: feste Trainingsgruppen (z. B. „Grupa 1“ … „Grupa 10“) mit 2–8 Mitgliedern anlegen,
@@ -255,7 +258,7 @@ Tests: `npm test`
   Die Auswahl wird **nicht gespeichert** (nur in der Adresse); ohne Auswahl sind alle Spieler einbezogen.
   Wie bei Mitgliedern zählt ein Monat erst, wenn der Admin ihn freigegeben hat („Obračun u pripremi“).
   Unter der Auswahl stehen für jeden ausgewählten Spieler die einzelnen Posten des Monats (Grundgebühr, Trainings
-  mit Datum/Uhrzeit/Betrag, Zusatzposten als „Dodatna stavka“ ohne Eintragungsdatum – das Datum sieht nur der Admin unter Iznosi → Detalji), seine Summe und am Ende die Gesamtsumme der Auswahl.
+  mit Datum/Uhrzeit/Betrag, Zusatzposten), seine Summe und am Ende die Gesamtsumme der Auswahl.
 - Elternkonten sehen ausschließlich ihre zugeordneten Spieler und können nichts ändern.
 
 ## E-Mail und „Passwort vergessen“

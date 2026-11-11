@@ -324,7 +324,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   await setMode('display');
   const displayBill = await member.request('/mitglied/abrechnung?monat=2026-10');
   assert.match(displayBill.text, /15,50/);
-  assert.match(displayBill.text, /samo prikaz, bez obračuna/);
+  assert.match(displayBill.text, /Realizovani treninzi<\/td><td class="num">–/); // nicht berechnet (ohne Spalte „Detalji“)
   assert.match(displayBill.text, /17:30–19:00/);
   // Andere Monate bleiben unberührt
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM billing_months WHERE user_id = ? AND month != '2026-10' AND closed = 0").get(lea.id).n, 0);
@@ -1539,12 +1539,12 @@ test('Elternkonto Finanzen: einzelne Posten (Datum, Betrag) je ausgewähltem Spi
   assert.match(s1, /Detalj Prvi/);
   assert.match(s1, /Mjesečna osnovna članarina[\s\S]*?10,00\sKM/);
   assert.match(s1, /Utorak, 06\.10\.2026\., 14:10–15:10 h[\s\S]*?40,00\sKM/);
-  assert.match(s1, /Četvrtak, 08\.10\.2026\., 14:20–15:20 h[\s\S]*?Otkazan[\s\S]*?0,00\sKM/);
-  assert.match(s1, /Mašina za loptice<\/td>\s*<td>Dodatna stavka<\/td>[\s\S]*?15,50\sKM/);
+  assert.match(s1, /<tr class="is-cancelled">\s*<td>[^<]*Četvrtak, 08\.10\.2026\., 14:20–15:20 h[\s\S]*?0,00\sKM/);
+  assert.match(s1, /Mašina za loptice<\/td>\s*<td class="num">15,50\sKM/);
   assert.doesNotMatch(s1, /03\.10\.2026\./);
   assert.match(s1, /Ukupno Oktobar 2026[\s\S]*?65,50\sKM/); // 10 + 40 + 15,50
   // Spieler 2: nur Posten
-  assert.match(s2, /Turnirska kotizacija<\/td>\s*<td>Dodatna stavka<\/td>[\s\S]*?25,00\sKM/);
+  assert.match(s2, /Turnirska kotizacija<\/td>\s*<td class="num">25,00\sKM/);
   assert.doesNotMatch(s2, /12\.10\.2026\./);
   assert.match(s2, /Ukupno Oktobar 2026[\s\S]*?25,00\sKM/);
   // Gesamtsumme der ausgewählten Spieler (oben und unter den Posten)
@@ -4629,7 +4629,7 @@ test('Ručni obračun: Mitglieder und Elternkonten sehen keinen Hinweis und kein
   const bill = (await m.request(`/mitglied/abrechnung?monat=${month}`)).text;
   assert.doesNotMatch(bill, /Ručni obračun|vidi stavke/);
   assert.deepEqual(rows(bill), ['Paušal oktobar', 'Lopte', 'Ukupno Oktobar 2026']);
-  assert.match(statementOf(bill), new RegExp(`Ukupno Oktobar 2026</td><td></td><td class="num">${formatMoney(7500)}`));
+  assert.match(statementOf(bill), new RegExp(`Ukupno Oktobar 2026</td><td class="num">${formatMoney(7500)}`));
   assert.doesNotMatch((await m.request('/mitglied')).text, /Ručni obračun/);
   // Elternkonto
   await createParentAccount(admin, { name: 'Rucni Roditelj', username: 'rucni.roditelj', password: 'roditelj-pass-1', players: [id] });
@@ -4646,8 +4646,8 @@ test('Ručni obračun: Mitglieder und Elternkonten sehen keinen Hinweis und kein
   // Andere Arten unverändert: „Prema rasporedu“ zeigt weiter die Zeile „Realizovani treninzi“
   await admin.post(`/admin/abrechnung/${id}/nacin`, { month, billing_mode: 'schedule' }, detailUrl);
   const sched = (await m.request(`/mitglied/abrechnung?monat=${month}`)).text;
-  assert.match(sched, /Realizovani treninzi<\/td><td>Termini: 1/);
-  assert.match(sched, /Termini: 1 · 1 h/);
+  assert.match(sched, /Realizovani treninzi<\/td><td class="num">40,00\sKM/);
+  assert.doesNotMatch(statementOf(sched), /Termini: 1 · 1 h/); // ohne Spalte „Detalji“ (Hinweis über der Tabelle bleibt)
 });
 
 
@@ -4742,7 +4742,7 @@ test('Abrechnungsart: Monate ohne gespeicherte Art sind „Ručni unos“; gespe
 });
 
 // ---------------------------------------------------------------- Stavke: Eintragungsdatum nur für den Admin
-test('Stavke: Elternkonten und Mitglieder sehen nur „Dodatna stavka“ ohne Datum; der Admin sieht das Eintragungsdatum', async () => {
+test('Stavke: Elternkonten und Mitglieder sehen kein Eintragungsdatum; der Admin sieht es', async () => {
   const id = makeMember('Datum Stavka', 'datum.stavka', { fee: 0 });
   const month = '2026-10';
   db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents, created_at) VALUES (?, ?, 'Kotizacija datum', 4200, '2026-10-04 08:30:00')").run(id, month);
@@ -4756,17 +4756,56 @@ test('Stavke: Elternkonten und Mitglieder sehen nur „Dodatna stavka“ ohne Da
   const p = client();
   await p.login('roditelj.datum', 'roditelj-pass-1');
   const fin = (await p.request(`/roditelj/finansije?monat=${month}`)).text;
-  assert.match(fin, /Kotizacija datum<\/td>\s*<td>Dodatna stavka<\/td>/);
-  assert.match(fin, /Popust datum<\/td>\s*<td>Odobrenje<\/td>/);
+  assert.match(fin, /Kotizacija datum<\/td>\s*<td class="num">/);
+  assert.match(fin, /Popust datum<\/td>\s*<td class="num">/);
+  assert.doesNotMatch(fin, /Dodatna stavka|Odobrenje/);
   assert.doesNotMatch(fin, /04\.10\.2026\.|05\.10\.2026\./);
   // Mitglied: wie bisher ohne Datum
   const m = client();
   await m.login('datum.stavka', 'memberpass1');
   const own = (await m.request(`/mitglied/abrechnung?monat=${month}`)).text;
-  assert.match(own, /Kotizacija datum<\/td>\s*<td>Dodatna stavka<\/td>/);
+  assert.match(own, /Kotizacija datum<\/td>\s*<td class="num">/);
   assert.doesNotMatch(own, /04\.10\.2026\.|05\.10\.2026\./);
   // Admin (Iznosi → Detalji): mit Eintragungsdatum
   const det = (await admin.request(`/admin/abrechnung/${id}?monat=${month}`)).text;
   assert.match(det, /Kotizacija datum<\/td>\s*<td>Dodatna stavka · 04\.10\.2026\.<\/td>/);
   assert.match(det, /Popust datum<\/td>\s*<td>Odobrenje · 05\.10\.2026\.<\/td>/);
+});
+
+// ---------------------------------------------------------------- Iznosi: Spalte „Detalji“ nur für den Admin
+test('Iznosi: Mitglieder und Elternkonten sehen nur „Stavka“ und „Iznos“ (ohne „Detalji“); der Admin sieht „Detalji“ wie bisher', async () => {
+  const id = makeMember('Bez Detalja', 'bez.detalja', { fee: 1200, rate: 4000 });
+  const month = '2026-10';
+  useSchedule(id);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '07:15', 60, 4000)").run(id);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents, cancelled) VALUES (?, '2026-10-08', '07:15', 60, 4000, 1)").run(id);
+  db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents, created_at) VALUES (?, ?, 'Lopte detalji', 800, '2026-10-04 08:30:00')").run(id, month);
+  db.prepare('INSERT INTO payments (user_id, month, released) VALUES (?, ?, 1)').run(id, month);
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await createParentAccount(admin, { name: 'Roditelj Detalji', username: 'roditelj.detalji', password: 'roditelj-pass-1', players: [id] });
+  const table = (t) => /<table class="statement">([\s\S]*?)<\/table>/.exec(t)[1];
+  const cellCounts = (t) => [...table(t).matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((r) => (r[1].match(/<t[dh][\s>]/g) || []).length);
+
+  const m = client();
+  await m.login('bez.detalja', 'memberpass1');
+  const p = client();
+  await p.login('roditelj.detalji', 'roditelj-pass-1');
+  const own = table((await m.request(`/mitglied/abrechnung?monat=${month}`)).text);
+  const fin = table((await p.request(`/roditelj/finansije?monat=${month}`)).text);
+  for (const t of [own, fin]) {
+    assert.match(t, /<thead><tr><th>Stavka<\/th><th class="num">Iznos<\/th><\/tr><\/thead>/);
+    assert.doesNotMatch(t, /Detalji|Dodatna stavka|Termini: |60 min|Realizovan ·|Otkazan ·/);
+    assert.deepEqual([...new Set(cellCounts(`<table class="statement">${t}</table>`))], [2]); // jede Zeile: Stavka + Iznos
+    assert.match(t, /Lopte detalji<\/td>\s*<td class="num">8,00\sKM/);
+    assert.match(t, /Realizovani treninzi<\/td><td class="num">40,00\sKM/);
+    assert.match(t, /Ukupno Oktobar 2026<\/td><td class="num">60,00\sKM/); // 12 + 40 + 8
+  }
+
+  // Admin: Spalte „Detalji“ wie bisher
+  const det = (await admin.request(`/admin/abrechnung/${id}?monat=${month}`)).text;
+  assert.match(table(det), /<th>Stavka<\/th><th>Detalji<\/th>/);
+  assert.match(det, /Lopte detalji<\/td>\s*<td>Dodatna stavka · 04\.10\.2026\.<\/td>/);
+  assert.match(det, /Realizovani treninzi<\/td><td>Termini: 1 · 1 h<\/td>/);
+  assert.match(det, /Otkazan · 60 min/);
 });
