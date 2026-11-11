@@ -21,6 +21,9 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      - „Ručni unos“: Termine erscheinen nicht, der Betrag wird nur manuell als Posten eingetragen
        (Mitglieder und Elternkonten sehen dabei nur die Stavke und „Ukupno“ – keinen Hinweis auf die Abrechnungsart;
        der Admin sieht sie weiterhin)
+
+     Voreinstellung: Jeder Monat, für den noch keine Abrechnungsart gespeichert wurde, steht auf **„Ručni unos“**.
+     Monate mit gespeicherter Art bleiben unverändert; umstellen geht jederzeit mit „Sačuvaj za …“.
    - **Grupe**: feste Trainingsgruppen (z. B. „Grupa 1“ … „Grupa 10“) mit 2–8 Mitgliedern anlegen,
      bearbeiten, löschen. Beim Anlegen eines Termins wählt man die Gruppe aus und ihre Mitglieder
      bekommen automatisch ein Häkchen in der Spielerliste (einzelne Häkchen lassen sich wieder entfernen; Trainingsart wird auf Gruppentraining gesetzt).
@@ -67,8 +70,8 @@ Terminen oder anderen Monaten verändern ihn nicht mehr; der Admin sieht nur ein
 Plan seither geändert hat. Will der Admin einen vergangenen Monat bewusst ändern, klickt er auf
 „Retroaktivno izmijeni ovaj mjesec“, nimmt die Änderungen vor und schließt den Monat mit „Zaključaj mjesec ponovo“
 wieder ab. Bestehende Daten: Beim ersten Start nach dem Update werden alle vergangenen Monate genau so
-abgeschlossen, wie sie bis dahin berechnet wurden; laufende und künftige Monate übernehmen die bisherige
-Abrechnungsart des Mitglieds, bis man sie für einen Monat ändert.
+abgeschlossen, wie sie bis dahin berechnet wurden; laufende und künftige Monate ohne gespeicherte
+Abrechnungsart stehen auf „Ručni unos“ (früher gewählter Prikaz bez obračuna eines Mitglieds gilt weiter), bis man sie für einen Monat ändert.
 
 ## Starten
 

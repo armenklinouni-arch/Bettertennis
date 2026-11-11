@@ -13,10 +13,12 @@ const BILLING_MODES = {
 };
 const BILLING_MODE_SHORT = { schedule: 'prema rasporedu', display: 'prikaz bez obračuna', manual: 'ručni obračun' };
 
-// Ranije je način obračuna bio jedan za člana (users.billing_mode). Ta vrijednost se više ne mijenja
-// i služi samo kao polazna vrijednost za mjesece koji još nemaju vlastitu postavku.
+// Mjesec bez sačuvanog načina obračuna: „Ručni unos“. Ranije je način bio jedan za člana (users.billing_mode,
+// više se ne mijenja); ondje izričito izabran „prikaz bez obračuna“ i dalje vrijedi. „schedule“ je bila samo
+// automatska vrijednost kolone, pa takvi mjeseci sada počinju s „Ručni unos“.
+const DEFAULT_MODE = 'manual';
 function billingMode(user) {
-  return BILLING_MODES[user.billing_mode] ? user.billing_mode : 'schedule';
+  return user.billing_mode === 'display' ? 'display' : DEFAULT_MODE;
 }
 
 // Članovi vide plaćanja samo za tekući mjesec i tri mjeseca unazad.

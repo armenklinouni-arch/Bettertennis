@@ -184,6 +184,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   assert.equal(created.status, 302);
   const lea = db.prepare('SELECT * FROM users WHERE email = ?').get('lea@example.de');
   assert.equal(lea.hourly_rate_cents, 4000);
+  useSchedule(lea.id); // Oktober: „Prema rasporedu“ gespeichert
   assert.equal(db.prepare('SELECT status FROM leads WHERE id = ?').get(lead.id).status, 'član');
 
   // Wöchentliche Termine anlegen: 4 × 90 Minuten ab Montag, 5.10.2026
@@ -326,8 +327,8 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   assert.match(displayBill.text, /samo prikaz, bez obračuna/);
   assert.match(displayBill.text, /17:30–19:00/);
   // Andere Monate bleiben unberührt
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM billing_months WHERE user_id = ? AND month != '2026-10' AND mode != 'schedule'").get(lea.id).n, 0);
-  assert.match((await admin.request(`/admin/abrechnung/${lea.id}?monat=2026-11`)).text, /value="schedule" selected/);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM billing_months WHERE user_id = ? AND month != '2026-10' AND closed = 0").get(lea.id).n, 0);
+  assert.match((await admin.request(`/admin/abrechnung/${lea.id}?monat=2026-11`)).text, /value="manual" selected/);
   await setMode('schedule');
 
   // Plaćeno / nije plaćeno: standardmäßig offen, Admin markiert als bezahlt
@@ -532,6 +533,7 @@ test('Finansije: prihodi (uplate članova + ručno), rashodi (treneri + ručno),
   const month = '2027-01';
   const m1 = db.prepare('INSERT INTO users (name, username, email, password_hash, hourly_rate_cents) VALUES (?, ?, ?, ?, 5000)')
     .run('Jasmin', 'jasmin', 'jasmin@fin-test.de', hashPassword('memberpass1')).lastInsertRowid;
+  useSchedule(m1, month);
   const t = db.prepare("INSERT INTO trainers (name, rate_individual_cents, rate_group_cents) VALUES ('Fin Trener', 2000, 3000)").run().lastInsertRowid;
   // 2 × 60 min à 50 KM = 100 KM Mitgliedsbetrag; Trainer 2 × 20 KM = 40 KM
   for (const d of ['2027-01-05', '2027-01-12']) {
@@ -697,6 +699,7 @@ test('Abrechnungsart pro Monat; abgeschlossene Monate bleiben eingefroren, auße
     .run(hashPassword('memberpass1')).lastInsertRowid;
   const lesson = (date) => db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, ?, '10:00', 60, 4000)").run(id, date);
   lesson('2026-08-04'); lesson('2026-09-01'); lesson('2026-09-08'); lesson('2026-10-06'); lesson('2026-11-03');
+  useSchedule(id, ['2026-08', '2026-09', '2026-11']); // in diesen Monaten „Prema rasporedu“ gespeichert
   const { monthlyStatement, closeElapsedMonths } = require('../src/billing');
   const mona = () => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const page = (month) => admin.request(`/admin/abrechnung/${id}?monat=${month}`);
@@ -846,6 +849,13 @@ test('Masseneinpflege: mehrere Mitglieder auf einmal mit Benutzername und Zufall
   assert.equal(single.status, 302);
 });
 
+// Hilfsfunktion: für Mitglieder „Prema rasporedu“ für einen Monat speichern (Voreinstellung ist „Ručni unos“)
+function useSchedule(ids, months = ['2026-10']) {
+  for (const id of [].concat(ids)) {
+    for (const m of [].concat(months)) db.prepare("INSERT OR IGNORE INTO billing_months (user_id, month, mode) VALUES (?, ?, 'schedule')").run(id, m);
+  }
+}
+
 // Hilfsfunktion: Mitglied direkt anlegen
 function makeMember(name, username, { fee = 0, rate = 4000 } = {}) {
   return db.prepare('INSERT INTO users (name, username, email, password_hash, hourly_rate_cents, monthly_fee_cents) VALUES (?, ?, ?, ?, ?, ?)')
@@ -940,6 +950,7 @@ test('Kind-Konto hat keinerlei Zugriff auf Finanzen (Beträge, Zahlungen, Abrech
 test('Ein Mitglied sieht niemals Daten oder Kinder-Konten eines anderen Mitglieds', async () => {
   const aId = makeMember('Alma Prva', 'alma.prva', { fee: 1500 });
   const bId = makeMember('Bojan Drugi', 'bojan.drugi', { fee: 8800 });
+  useSchedule([aId, bId]);
   db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '11:00', 60, 4000)").run(aId);
   db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '13:00', 90, 6600)").run(bId);
   db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, '2026-10', 'Bojanova stavka', 1234)").run(bId);
@@ -1280,6 +1291,7 @@ function setupFamily(prefix) {
   const p2 = makeMember(`${prefix} Drugi`, `${prefix}.drugi`);
   const p3 = makeMember(`${prefix} Treci`, `${prefix}.treci`);
   const stranger = makeMember(`${prefix} Stranac`, `${prefix}.stranac`, { fee: 9900 });
+  useSchedule([p1, p2, p3, stranger], ['2026-09', '2026-10', '2026-11']);
   const lesson = (uid, date, time, price) => db.prepare(
     "INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, ?, ?, 60, ?)"
   ).run(uid, date, time, price);
@@ -1492,6 +1504,7 @@ test('Elternkonto Finanzen: einzelne Posten (Datum, Betrag) je ausgewähltem Spi
   const p1 = makeMember('Detalj Prvi', 'detalj.prvi', { fee: 1000 });
   const p2 = makeMember('Detalj Drugi', 'detalj.drugi');
   const p3 = makeMember('Detalj Treci', 'detalj.treci');
+  useSchedule([p1, p2, p3], ['2026-10', '2026-11']);
   const lesson = (uid, date, time, price, cancelled = 0) => db.prepare(
     'INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents, cancelled) VALUES (?, ?, ?, 60, ?, ?)'
   ).run(uid, date, time, price, cancelled);
@@ -2455,6 +2468,7 @@ test('Termini → Uredi: Status (Dokumentation) und Berechnung pro Spieler; Stat
   const a = makeMember('Status Prvi', 'status.prvi', { rate: 4000 });
   const b = makeMember('Status Drugi', 'status.drugi', { rate: 4000 });
   const c = makeMember('Status Treci', 'status.treci', { rate: 4000 });
+  useSchedule([a, b, c]);
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
   // C rechnet im Oktober mit „Raspored s prikazom, bez obračuna“ ab
@@ -2544,6 +2558,7 @@ test('Iznosi → Detalji: Status je Einheit, Haken bei „Prema rasporedu“, Mo
   const a = makeMember('Pregled Prvi', 'pregled.prvi', { rate: 3000 });
   const d = makeMember('Pregled Prikaz', 'pregled.prikaz', { rate: 3000 });
   const r = makeMember('Pregled Rucno', 'pregled.rucno', { rate: 3000 });
+  useSchedule([a, d, r]);
   const add = (uid, date, extra = {}) => db.prepare(
     `INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents, attendance, attendance_note, billable)
      VALUES (?, ?, '10:00', 60, 3000, ?, ?, ?)`
@@ -2952,6 +2967,7 @@ test('Termin-Status: „Planiran“ bis zur Endzeit (Sarajevo), danach automatis
   const { monthlyStatement } = require('../src/billing');
   const { releaseWeek } = require('../src/weeks');
   const id = makeMember('Status Clan', 'status.clan', { rate: 4000 });
+  useSchedule(id);
   const add = (date, start, dur, cancelled = 0) => db.prepare(
     'INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents, cancelled) VALUES (?, ?, ?, ?, 4000, ?)'
   ).run(id, date, start, dur, cancelled).lastInsertRowid;
@@ -3633,6 +3649,7 @@ test('Kinder-Konten: in Termini nicht auswählbar; Kinder-Konto zeigt die Termin
   await admin.login('admin@test.de', 'adminpass123');
   const parentId = makeMember('Roditelj Racun', 'rod.racun', { rate: 4000 });
   const otherId = makeMember('Drugi Igrac', 'drugi.igrac', { rate: 4000 });
+  useSchedule([parentId, otherId], ['2026-10', '2026-11']);
   const m = client();
   await m.login('rod.racun', 'memberpass1');
   await m.post('/mitglied/djeca', { name: 'Dijete Racun', username: 'dijete.racun', password: 'kid-pass-123' }, '/mitglied/djeca');
@@ -3901,7 +3918,7 @@ test('Dnevnik aktivnosti: Einträge mit alt → neu aus allen Bereichen; Passwö
   assert.match(t, /Iznosi: Ali Hadžić, Oktobar 2026 označeno kao plaćeno, datum uplate 27\.10\.2026/);
   assert.match(t, /Iznosi: Ali Hadžić, Oktobar 2026 – Datum uplate: 27\.10\.2026 → 28\.10\.2026/);
   assert.match(t, /Iznosi: Ali Hadžić, Oktobar 2026 – stavka dodana: Lopte, 5,00 KM/);
-  assert.match(t, /Iznosi: Ali Hadžić, Oktobar 2026 – Način obračuna: prema rasporedu → prikaz bez obračuna/);
+  assert.match(t, /Iznosi: Ali Hadžić, Oktobar 2026 – Način obračuna: ručni obračun → prikaz bez obračuna/);
 
   // Termini: anlegen, Preis ändern, absagen
   await admin.post('/admin/termine', { kind: 'individual', user_id: String(ali), date: '2026-10-20', start_time: '18:05', duration_min: '60', court: '', price: '40', repeat: '1' }, '/admin/termine');
@@ -4145,6 +4162,7 @@ test('Bez treninga: Warnung bei realisierten Terminen; abgeschlossener Monat ges
   const admin = client();
   await admin.login('admin@test.de', 'adminpass123');
   const id = makeMember('Ima Treninga', 'ima.treninga', { fee: 1000 });
+  useSchedule(id);
   db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '09:05', 60, 4000)").run(id);
   const month = '2026-10';
   const listUrl = `/admin/abrechnung?monat=${month}`;
@@ -4671,4 +4689,52 @@ test('Maskottchen „Me vs Me“: Spiegel, Spiegelbild, Netz, Ballwechsel, Origi
   assert.match(js, /wideAreaFree/);
   // Vorschau-Seite zeigt sie ebenfalls
   assert.match((await admin.request('/admin/maskota')).text, /<img src="\/static\/img\/maskota-v2\/mevsme\.svg"/);
+});
+
+// ---------------------------------------------------------------- Voreinstellung der Abrechnungsart: „Ručni unos“
+test('Abrechnungsart: Monate ohne gespeicherte Art sind „Ručni unos“; gespeicherte Monate bleiben; Umstellen jederzeit möglich', async () => {
+  const { monthlyStatement } = require('../src/billing');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const id = makeMember('Voreinst Clan', 'voreinst.clan', { fee: 1000, rate: 4000 });
+  const user = () => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-06', '13:10', 60, 4000)").run(id);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-11-03', '13:10', 60, 4000)").run(id);
+  const url = (m) => `/admin/abrechnung/${id}?monat=${m}`;
+  const selected = (t) => /<option value="(\w+)" selected>/.exec(/<select name="billing_mode">([\s\S]*?)<\/select>/.exec(t)[1])[1];
+
+  // Ohne gespeicherte Art: aktueller und künftige Monate stehen auf „Ručni unos“, Termine werden nicht berechnet
+  for (const m of ['2026-10', '2026-11', '2027-01']) assert.equal(selected((await admin.request(url(m))).text), 'manual', m);
+  assert.equal(monthlyStatement(db, user(), '2026-10').mode, 'manual');
+  assert.equal(monthlyStatement(db, user(), '2026-10').total, 1000); // nur Grundgebühr
+  // Es wird dabei nichts gespeichert – nur die Voreinstellung
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM billing_months WHERE user_id = ? AND month >= ?').get(id, '2026-10').n, 0);
+
+  // Umstellen wie bisher: „Prema rasporedu“ und „Raspored s prikazom, bez obračuna“
+  await admin.post(`/admin/abrechnung/${id}/nacin`, { month: '2026-10', billing_mode: 'schedule' }, url('2026-10'));
+  assert.equal(selected((await admin.request(url('2026-10'))).text), 'schedule');
+  assert.equal(monthlyStatement(db, user(), '2026-10').total, 5000);
+  await admin.post(`/admin/abrechnung/${id}/nacin`, { month: '2026-11', billing_mode: 'display' }, url('2026-11'));
+  assert.equal(selected((await admin.request(url('2026-11'))).text), 'display');
+  // Andere Monate ohne gespeicherte Art bleiben bei „Ručni unos“
+  assert.equal(selected((await admin.request(url('2026-12'))).text), 'manual');
+  // Zurück auf „Ručni unos“ geht ebenfalls
+  await admin.post(`/admin/abrechnung/${id}/nacin`, { month: '2026-11', billing_mode: 'manual' }, url('2026-11'));
+  assert.equal(selected((await admin.request(url('2026-11'))).text), 'manual');
+  assert.equal(db.prepare('SELECT mode FROM billing_months WHERE user_id = ? AND month = ?').get(id, '2026-11').mode, 'manual');
+
+  // Bereits gespeicherte Monate bleiben genau so (auch ein gespeichertes „Prema rasporedu“)
+  const other = makeMember('Gespeichert Clan', 'gespeichert.clan', { fee: 0, rate: 4000 });
+  db.prepare("INSERT INTO billing_months (user_id, month, mode) VALUES (?, '2026-10', 'schedule'), (?, '2026-12', 'display')").run(other, other);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-10-07', '13:10', 60, 4000)").run(other);
+  const otherUser = db.prepare('SELECT * FROM users WHERE id = ?').get(other);
+  assert.equal(monthlyStatement(db, otherUser, '2026-10').mode, 'schedule');
+  assert.equal(monthlyStatement(db, otherUser, '2026-10').total, 4000);
+  assert.equal(selected((await admin.request(`/admin/abrechnung/${other}?monat=2026-12`)).text), 'display');
+  assert.equal(selected((await admin.request(`/admin/abrechnung/${other}?monat=2026-11`)).text), 'manual');
+  // Abgeschlossene (gespeicherte) Monate werden nicht neu berechnet
+  const closedSnap = JSON.stringify({ mode: 'schedule', total: 4000, lessons: [], adjustments: [], lessonCount: 1, hours: 1, fee: 0, lessonsTotal: 4000 });
+  db.prepare("INSERT INTO billing_months (user_id, month, mode, closed, snapshot, closed_at) VALUES (?, '2026-08', 'schedule', 1, ?, '2026-09-01 00:00:00')").run(other, closedSnap);
+  assert.equal(monthlyStatement(db, otherUser, '2026-08').mode, 'schedule');
+  assert.equal(monthlyStatement(db, otherUser, '2026-08').total, 4000);
 });
