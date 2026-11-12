@@ -208,6 +208,9 @@ tr.is-inactive td { color: var(--muted); }
 .tab.is-active { background: var(--surface); border-color: var(--border); color: var(--text); }
 .seen-count { margin: 10px 0; }
 .seen-table td { vertical-align: middle; }
+.seen-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.seen-by { color: var(--muted); font-size: 0.85rem; }
+.seen-parents { margin-top: 20px; }
 .tag-none { background: #e7e9ec; color: #4b5563; font-weight: 600; }
 tr.is-no-training td { color: var(--muted); }
 tr.is-no-training td strong { color: var(--muted); }

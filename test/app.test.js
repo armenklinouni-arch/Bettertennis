@@ -4965,8 +4965,8 @@ test('Ko je pogledao: Aufrufe von Wochenplan und Beträgen werden gespeichert; A
   assert.match(t, /Pogledalo: <strong>3<\/strong> od <strong>4<\/strong>/);
   const row = (html, id) => new RegExp(`<tr data-player="${id}"[^>]*>([\\s\\S]*?)</tr>`).exec(html)[1];
   assert.match(row(t, a), /Pogled Ana[\s\S]*tag-yes">Pogledao 08\.12\.2026\. 19:00</);
-  assert.match(row(t, b), /Pogled Bero[\s\S]*tag-yes">Pogledao 09\.12\.2026\. 16:00[\s\S]*Dječiji račun: Pogled Klinac/);
-  assert.match(row(t, c), /Pogled Cica[\s\S]*tag-yes">Pogledao 10\.12\.2026\. 20:15[\s\S]*Roditeljski račun: Pogled Roditelj/);
+  assert.match(row(t, b), /Pogled Bero[\s\S]*tag-yes">Pogledao 09\.12\.2026\. 16:00<\/span> <span class="seen-by">dječiji račun: Pogled Klinac<\/span>/);
+  assert.match(row(t, c), /Pogled Cica[\s\S]*tag-yes">Pogledao 10\.12\.2026\. 20:15<\/span> <span class="seen-by">roditelj: Pogled Roditelj<\/span>/);
   assert.match(row(t, d), /Pogled Dino[\s\S]*tag-no">Nije pogledao</);
   // Wochen wechseln
   assert.match(t, /href="\/admin\/ko-je-pogledao\?prikaz=raspored&amp;woche=2026-11-30"/);
@@ -4980,7 +4980,7 @@ test('Ko je pogledao: Aufrufe von Wochenplan und Beträgen werden gespeichert; A
   assert.match(iz, /Pogledalo: <strong>\d+<\/strong> od <strong>\d+<\/strong>/);
   assert.match(row(iz, a), /Pogled Ana[\s\S]*tag-yes">Pogledao 20\.10\.2026\. 07:45</);
   assert.match(row(iz, b), /tag-no">Nije pogledao</);
-  assert.match(row(iz, c), /tag-yes">Pogledao 21\.10\.2026\. 21:00[\s\S]*Roditeljski račun: Pogled Roditelj/);
+  assert.match(row(iz, c), /tag-yes">Pogledao 21\.10\.2026\. 21:00<\/span> <span class="seen-by">roditelj: Pogled Roditelj<\/span>/);
   assert.match(row(iz, d), /tag-no">Nije pogledao</);
   assert.match(iz, /href="\/admin\/ko-je-pogledao\?monat=2026-09&amp;prikaz=iznosi"/);
   // Ungültige Eingaben: Standardansicht, kein Fehler
@@ -5005,4 +5005,67 @@ test('Ko je pogledao: Aufrufe von Wochenplan und Beträgen werden gespeichert; A
   db.prepare("INSERT INTO page_views (kind, period, player_id, viewer_type, viewer_id, at) VALUES ('raspored', '2026-06-01', ?, 'clan', ?, '2026-06-02T10:00:00.000Z'), ('raspored', '2026-07-13', ?, 'clan', ?, '2026-07-15T10:00:00.000Z')").run(d, d, d, d);
   await admin.request('/admin/ko-je-pogledao');
   assert.deepEqual(db.prepare('SELECT period FROM page_views WHERE player_id = ? ORDER BY period').all(d).map((r) => r.period), ['2026-07-13']);
+});
+
+// ---------------------------------------------------------------- „Ko je pogledao“: jedes Konto mit Datum; Abschnitt „Roditeljski računi“
+test('Ko je pogledao: pro Spieler jedes Konto mit Datum/Uhrzeit (sam igrač, roditelj, dječiji račun); Abschnitt „Roditeljski računi“', async () => {
+  const { releaseWeek } = require('../src/weeks');
+  const week = '2026-12-21';
+  releaseWeek(db, week);
+  const e = makeMember('Svi Eldin', 'svi.eldin');
+  const f = makeMember('Svi Fata', 'svi.fata');
+  for (const uid of [e, f]) db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-12-22', '12:05', 60, 4000)").run(uid);
+  db.prepare("INSERT INTO payments (user_id, month, released) VALUES (?, '2026-10', 1), (?, '2026-10', 1)").run(e, f);
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await createParentAccount(admin, { name: 'Porodica Svi', username: 'porodica.svi', password: 'roditelj-pass-1', players: [e, f] });
+  await createParentAccount(admin, { name: 'Porodica Nista', username: 'porodica.nista', password: 'roditelj-pass-1', players: [f] });
+  const pa = db.prepare("SELECT id FROM parent_accounts WHERE username = 'porodica.svi'").get().id;
+  const pn = db.prepare("SELECT id FROM parent_accounts WHERE username = 'porodica.nista'").get().id;
+
+  // E selbst, sein Kinder-Konto und das Elternkonto schauen den Wochenplan an; F niemand selbst
+  const me = client();
+  await me.login('svi.eldin', 'memberpass1');
+  await me.post('/mitglied/djeca', { name: 'Svi Mali', username: 'svi.mali', password: 'mali-pass-12' }, '/mitglied/djeca');
+  const kid = client();
+  await kid.login('svi.mali', 'mali-pass-12');
+  const p = client();
+  await p.login('porodica.svi', 'roditelj-pass-1');
+  await atTime('2026-12-21T08:10:00', () => me.request(`/mitglied?woche=${week}`));
+  await atTime('2026-12-22T17:20:00', () => kid.request(`/mitglied?woche=${week}`));
+  await atTime('2026-12-23T19:30:00', () => p.request(`/roditelj?woche=${week}`));
+  await atTime('2026-10-22T09:00:00', () => p.request('/roditelj/finansije?monat=2026-10'));
+  await atTime('2026-10-23T11:15:00', () => me.request('/mitglied/abrechnung?monat=2026-10'));
+
+  const row = (html, id) => new RegExp(`<tr data-player="${id}"[^>]*>([\\s\\S]*?)</tr>`).exec(html)[1];
+  const entries = (cell) => [...cell.matchAll(/<li><span class="tag tag-yes">Pogledao ([^<]+)<\/span> <span class="seen-by">([^<]+)<\/span><\/li>/g)].map((m) => `${m[1]} | ${m[2]}`);
+  const t = (await admin.request(`/admin/ko-je-pogledao?prikaz=raspored&woche=${week}`)).text;
+  // Jedes Konto mit eigenem Datum und eigener Uhrzeit, neuestes zuerst
+  assert.deepEqual(entries(row(t, e)), [
+    '23.12.2026. 19:30 | roditelj: Porodica Svi',
+    '22.12.2026. 17:20 | dječiji račun: Svi Mali',
+    '21.12.2026. 08:10 | sam igrač',
+  ]);
+  assert.deepEqual(entries(row(t, f)), ['23.12.2026. 19:30 | roditelj: Porodica Svi']);
+  assert.match(t, /Pogledalo: <strong>2<\/strong> od <strong>2<\/strong>/);
+
+  // Abschnitt „Roditeljski računi“: alle Elternkonten, mit Spielern
+  const section = /<section class="card seen-parents">([\s\S]*?)<\/section>/.exec(t);
+  assert.ok(section, 'Abschnitt „Roditeljski računi“ fehlt');
+  assert.match(section[1], /<h2>Roditeljski računi<\/h2>/);
+  const prow = (id) => new RegExp(`<tr data-parent="${id}"[^>]*>([\\s\\S]*?)</tr>`).exec(section[1])[1];
+  assert.match(prow(pa), /Porodica Svi[\s\S]*tag-yes">Pogledao 23\.12\.2026\. 19:30<[\s\S]*Svi Eldin, Svi Fata/);
+  assert.match(prow(pn), /Porodica Nista[\s\S]*tag-no">Nije pogledao<[\s\S]*Svi Fata/);
+  const allParents = db.prepare('SELECT COUNT(*) AS n FROM parent_accounts').get().n;
+  assert.equal([...section[1].matchAll(/<tr data-parent="/g)].length, allParents);
+
+  // Reiter „Iznosi“ genauso
+  const iz = (await admin.request('/admin/ko-je-pogledao?prikaz=iznosi&monat=2026-10')).text;
+  assert.deepEqual(entries(row(iz, e)), ['23.10.2026. 11:15 | sam igrač', '22.10.2026. 09:00 | roditelj: Porodica Svi']);
+  const izSection = /<section class="card seen-parents">([\s\S]*?)<\/section>/.exec(iz)[1];
+  assert.match(new RegExp(`<tr data-parent="${pa}"[^>]*>([\\s\\S]*?)</tr>`).exec(izSection)[1], /tag-yes">Pogledao 22\.10\.2026\. 09:00</);
+  assert.match(new RegExp(`<tr data-parent="${pn}"[^>]*>([\\s\\S]*?)</tr>`).exec(izSection)[1], /tag-no">Nije pogledao</);
+
+  // Weiterhin nur für den Admin
+  for (const cl of [me, kid, p]) assert.doesNotMatch((await cl.request(`/admin/ko-je-pogledao?prikaz=raspored&woche=${week}`)).text, /Roditeljski računi|Pogledalo:/);
 });

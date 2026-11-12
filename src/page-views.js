@@ -36,19 +36,40 @@ function recordView(db, { kind, period, playerIds, viewerType, viewerId }) {
   if (last === undefined || now - last >= CLEANUP_EVERY_MS || now < last) cleanupViews(db, now);
 }
 
+// Sva otvaranja po igraču (svaki račun sa svojim posljednjim otvaranjem, najnovije prvo):
+// Map(player_id → [{ at, viewer_type, viewer_id, viewer_name }, …]).
+function viewsByPlayer(db, kind, period) {
+  const map = new Map();
+  for (const r of [...latestViews.rows(db, kind, period)].reverse()) {
+    if (!map.has(r.player_id)) map.set(r.player_id, []);
+    map.get(r.player_id).push(r);
+  }
+  return map;
+}
+
+// Posljednje otvaranje po roditeljskom računu: Map(parent_account_id → at).
+function parentViews(db, kind, period) {
+  const rows = db.prepare(
+    "SELECT viewer_id, MAX(at) AS at FROM page_views WHERE kind = ? AND period = ? AND viewer_type = 'roditelj' GROUP BY viewer_id"
+  ).all(kind, period);
+  return new Map(rows.map((r) => [r.viewer_id, r.at]));
+}
+
 // Posljednje otvaranje po igraču: Map(player_id → { at, viewer_type, viewer_id, viewer_name }).
 function latestViews(db, kind, period) {
-  const rows = db.prepare(
-    `SELECT v.*, CASE v.viewer_type WHEN 'roditelj' THEN pa.name ELSE u.name END AS viewer_name
-       FROM page_views v
-       LEFT JOIN users u ON v.viewer_type IN ('clan', 'dijete') AND u.id = v.viewer_id
-       LEFT JOIN parent_accounts pa ON v.viewer_type = 'roditelj' AND pa.id = v.viewer_id
-      WHERE v.kind = ? AND v.period = ?
-      ORDER BY v.at`
-  ).all(kind, period);
+  const rows = latestViews.rows(db, kind, period);
   const map = new Map();
   for (const r of rows) map.set(r.player_id, r);
   return map;
 }
 
-module.exports = { recordView, cleanupViews, latestViews, KEEP_MONTHS };
+latestViews.rows = (db, kind, period) => db.prepare(
+  `SELECT v.*, CASE v.viewer_type WHEN 'roditelj' THEN pa.name ELSE u.name END AS viewer_name
+     FROM page_views v
+     LEFT JOIN users u ON v.viewer_type IN ('clan', 'dijete') AND u.id = v.viewer_id
+     LEFT JOIN parent_accounts pa ON v.viewer_type = 'roditelj' AND pa.id = v.viewer_id
+    WHERE v.kind = ? AND v.period = ?
+    ORDER BY v.at, v.id`
+).all(kind, period);
+
+module.exports = { recordView, cleanupViews, latestViews, viewsByPlayer, parentViews, KEEP_MONTHS };

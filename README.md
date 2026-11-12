@@ -209,6 +209,10 @@ Tests: `npm test`
     „Nije pogledao“; oben „Pogledalo: X od Y“. Wochen wechseln mit ‹/›.
   - **Iznosi:** für den gewählten Monat alle Spieler wie in der Liste „Iznosi“ – grün mit Datum, wenn der Spieler
     (Mjesečni iznos) oder sein Elternkonto (Finansije) die Beträge dieses Monats geöffnet hat, sonst rot. Monate wechseln mit ‹/›.
+- Bei jedem Spieler steht **jedes Konto**, das reingeschaut hat, mit eigenem Datum und eigener Uhrzeit (neuestes zuerst),
+  z. B. „sam igrač“, „roditelj: Porodica Muharemović“ oder „dječiji račun: <Name>“.
+- Darunter der Abschnitt **„Roditeljski računi“**: alle Elternkonten mit ihren Spielern – grün mit Datum/Uhrzeit,
+  wenn sie in dieser Woche bzw. diesem Monat reingeschaut haben, sonst rot „Nije pogledao“.
 - Gezählt wird nur, was wirklich zu sehen war: eine **veröffentlichte** Woche bzw. ein **freigegebener** Monatsbetrag
   (bei „Obračun u pripremi“ zählt es nicht).
 - Gespeichert wird nur das Öffnen (Tabelle `page_views`: Art, Woche/Monat, Spieler, wer, wann – je Person nur das letzte
