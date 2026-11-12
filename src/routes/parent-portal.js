@@ -11,6 +11,7 @@ const { monthlyStatement, formatHours } = require('../billing');
 const { layout, weekView, monthNav, paymentBadge, statementTable } = require('../views');
 const { requireParentAccount } = require('../auth');
 const { isWeekReleased } = require('../weeks');
+const { recordView } = require('../page-views');
 
 module.exports = function parentPortalRoutes(db) {
   const router = express.Router();
@@ -40,6 +41,7 @@ module.exports = function parentPortalRoutes(db) {
     const released = isWeekReleased(db, monday);
     const lessons = released ? playerLessons.all(req.user.id, monday, D.addDays(monday, 6)) : [];
     const minutes = lessons.filter((l) => !l.cancelled).reduce((s, l) => s + l.duration_min, 0);
+    if (released) recordView(db, { kind: 'raspored', period: monday, viewerType: 'roditelj', viewerId: req.user.id, playerIds: players.map((p) => p.id) });
 
     res.send(String(layout(req, {
       title: 'Sedmični raspored',
@@ -71,6 +73,8 @@ module.exports = function parentPortalRoutes(db) {
       selected = new Set(allowed);
     }
     const rows = players.map((p) => ({ player: p, st: monthlyStatement(db, p, month), on: selected.has(p.id) }));
+    // „Ko je pogledao“: igrači čiji je iznos za mjesec odobren (vidljiv u tabeli).
+    recordView(db, { kind: 'iznosi', period: month, viewerType: 'roditelj', viewerId: req.user.id, playerIds: rows.filter((r) => r.st.released).map((r) => r.player.id) });
     // Pojedinačne stavke kao kod člana: termini iz još neobjavljenih sedmica se ne navode pojedinačno.
     const detail = (st) => {
       const cache = new Map();

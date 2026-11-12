@@ -191,6 +191,20 @@ CREATE TABLE IF NOT EXISTS activity_log (
 );
 CREATE INDEX IF NOT EXISTS activity_log_at ON activity_log (at);
 
+-- „Ko je pogledao“: samo da je član / dječiji račun / roditeljski račun otvorio sedmični raspored ili iznose
+-- (koja sedmica odn. mjesec, za kojeg igrača, ko, kada – posljednje otvaranje). Stariji od 3 mjeseca se brišu.
+CREATE TABLE IF NOT EXISTS page_views (
+  id          INTEGER PRIMARY KEY,
+  kind        TEXT NOT NULL,
+  period      TEXT NOT NULL,
+  player_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  viewer_type TEXT NOT NULL,
+  viewer_id   INTEGER NOT NULL,
+  at          TEXT NOT NULL,
+  UNIQUE (kind, period, player_id, viewer_type, viewer_id)
+);
+CREATE INDEX IF NOT EXISTS page_views_at ON page_views (at);
+
 -- Prijave (sesije): kolačić nosi samo nasumični token, ovdje se čuva njegov hash.
 -- Odjava i promjena lozinke brišu redove, pa djeluju odmah. kind: user | trainer | parent.
 CREATE TABLE IF NOT EXISTS sessions (

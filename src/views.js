@@ -63,7 +63,8 @@ function layout(req, { title, body, wide = false, fullBleed = false }) {
       ${navLink('/admin/abrechnung', 'Iznosi')}
       ${navLink('/admin/finansije', 'Finansije')}
       ${navLink('/admin/aktuelnosti', 'Aktuelnosti')}
-      ${navLink('/admin/dnevnik', 'Dnevnik aktivnosti')}`;
+      ${navLink('/admin/dnevnik', 'Dnevnik aktivnosti')}
+      ${navLink('/admin/ko-je-pogledao', 'Ko je pogledao')}`;
   } else if (user.role === 'trainer') {
     nav = html`
       ${navLink('/trener', 'Moj izvještaj', true)}

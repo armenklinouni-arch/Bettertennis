@@ -20,6 +20,7 @@ const parentPortalRoutes = require('./routes/parent-portal');
 const parentAccountRoutes = require('./routes/parents');
 const privateAdminRoutes = require('./routes/private-admin');
 const activityAdminRoutes = require('./routes/activity-admin');
+const viewsAdminRoutes = require('./routes/views-admin');
 const { NOTIFY_EMAIL_DEFAULT } = require('./private-lessons');
 
 function createApp(db, {
@@ -79,6 +80,7 @@ function createApp(db, {
   app.use('/admin/roditelji', parentAccountRoutes(db));
   app.use('/admin/privatni-casovi', privateAdminRoutes(db));
   app.use('/admin/dnevnik', activityAdminRoutes(db));
+  app.use('/admin/ko-je-pogledao', viewsAdminRoutes(db));
   app.use('/admin', adminRoutes(db, { mailer, backupEmail, mailDelayMs }));
 
   app.use((req, res) => {

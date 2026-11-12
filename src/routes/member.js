@@ -15,6 +15,7 @@ const {
 } = require('../db');
 const { EMAIL_RE } = require('./public');
 const { logActivity, changes } = require('../activity');
+const { recordView } = require('../page-views');
 const {
   isSlotOpen, slotStartMs, slotLabel, formatSarajevo, NOTIFY_EMAIL_DEFAULT,
 } = require('../private-lessons');
@@ -77,6 +78,13 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
     const upcoming = visibleOnly(upcomingLessons.all(...scheduleIds(req.user), today)).slice(0, 5);
     const emailPrompt = takeEmailPrompt(req, res);
     const weekMinutes = lessons.filter((l) => !l.cancelled).reduce((s, l) => s + l.duration_min, 0);
+    // „Ko je pogledao“: samo objavljena sedmica (dječiji račun se računa kod svog člana).
+    if (weekReleased) {
+      recordView(db, {
+        kind: 'raspored', period: monday, viewerType: isChild ? 'dijete' : 'clan', viewerId: req.user.id,
+        playerIds: isChild ? [req.user.parent_id, ...(lessons.some((l) => l.user_id === req.user.id) ? [req.user.id] : [])] : [req.user.id],
+      });
+    }
 
     res.send(String(layout(req, {
       title: 'Moj sedmični raspored',
@@ -201,6 +209,8 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
     // Termini iz još neobjavljenih sedmica se ne navode pojedinačno (iznos ostaje u ukupnom zbiru).
     const shown = visibleOnly(full.lessons);
     const statement = { ...full, lessons: shown, unpublishedCount: full.lessons.length - shown.length };
+    // „Ko je pogledao“: računa se samo odobren obračun (iznos je zaista vidljiv).
+    if (statement.released) recordView(db, { kind: 'iznosi', period: month, viewerType: 'clan', viewerId: req.user.id, playerIds: [req.user.id] });
     const history = [];
     for (let m = max; m >= min; m = D.addMonths(m, -1)) history.push(monthlyStatement(db, req.user, m));
     res.send(String(layout(req, {

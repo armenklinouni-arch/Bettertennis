@@ -199,6 +199,15 @@ tr.is-inactive td { color: var(--muted); }
 .tag-planned { background: #e6eef7; color: var(--primary); }
 .tag-child { background: #fde7c8; color: #8a4b00; font-weight: 600; }
 .tag-cancelled { background: var(--danger-soft); color: var(--danger); }
+.tag-yes { background: var(--success-soft); color: var(--primary); font-weight: 600; }
+.tag-no { background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+/* „Ko je pogledao“: reiteri Raspored / Iznosi */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; border-bottom: 1px solid var(--border); }
+.tab { padding: 8px 14px; border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0; color: var(--muted); text-decoration: none; font-weight: 600; margin-bottom: -1px; }
+.tab:hover { color: var(--text); }
+.tab.is-active { background: var(--surface); border-color: var(--border); color: var(--text); }
+.seen-count { margin: 10px 0; }
+.seen-table td { vertical-align: middle; }
 .tag-none { background: #e7e9ec; color: #4b5563; font-weight: 600; }
 tr.is-no-training td { color: var(--muted); }
 tr.is-no-training td strong { color: var(--muted); }

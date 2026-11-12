@@ -4898,3 +4898,111 @@ test('Iznosi → Detalji: Stavka „Uredi“ in der Zeile (Opis, Iznos), „Spre
   assert.match(css, /\.stavka-edit-form \{[^}]*position: sticky;[^}]*left: 0;[^}]*flex-wrap: wrap;[^}]*max-width: calc\(100vw - [^}]*\}/);
   assert.match(css, /\.stavka-actions \{[^}]*white-space: nowrap;/);
 });
+
+// ---------------------------------------------------------------- „Ko je pogledao“: Wochenplan und Beträge angeschaut
+test('Ko je pogledao: Aufrufe von Wochenplan und Beträgen werden gespeichert; Admin-Übersicht mit Reitern Raspored/Iznosi; nur Admin', async () => {
+  const { releaseWeek } = require('../src/weeks');
+  const week = '2026-12-07';
+  releaseWeek(db, week);
+  const a = makeMember('Pogled Ana', 'pogled.ana');
+  const b = makeMember('Pogled Bero', 'pogled.bero');
+  const c = makeMember('Pogled Cica', 'pogled.cica');
+  const d = makeMember('Pogled Dino', 'pogled.dino');
+  for (const [uid, t] of [[a, '08:05'], [b, '09:05'], [c, '10:05'], [d, '11:05']]) {
+    db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, price_cents) VALUES (?, '2026-12-08', ?, 60, 4000)").run(uid, t);
+  }
+  for (const uid of [a, c]) db.prepare("INSERT INTO payments (user_id, month, released) VALUES (?, '2026-10', 1)").run(uid);
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await createParentAccount(admin, { name: 'Pogled Roditelj', username: 'pogled.roditelj', password: 'roditelj-pass-1', players: [c] });
+  const views = () => db.prepare('SELECT * FROM page_views ORDER BY id').all();
+  const before = views().length;
+
+  // Mitglied A: Wochenplan und Mjesečni iznos
+  const ma = client();
+  await ma.login('pogled.ana', 'memberpass1');
+  await atTime('2026-12-08T18:30:00', () => ma.request(`/mitglied?woche=${week}`));
+  await atTime('2026-10-20T07:45:00', () => ma.request('/mitglied/abrechnung?monat=2026-10'));
+  // Noch nicht veröffentlichte Woche zählt nicht (dort ist nichts zu sehen)
+  await ma.request('/mitglied?woche=2026-12-14');
+  // Mitglied B: Beträge noch „u pripremi“ → zählt nicht als angeschaut; Kinder-Konto schaut den Wochenplan an
+  const mb = client();
+  await mb.login('pogled.bero', 'memberpass1');
+  await mb.request('/mitglied/abrechnung?monat=2026-10');
+  await mb.post('/mitglied/djeca', { name: 'Pogled Klinac', username: 'pogled.klinac', password: 'klinac-pass-1' }, '/mitglied/djeca');
+  const kid = client();
+  await kid.login('pogled.klinac', 'klinac-pass-1');
+  await atTime('2026-12-09T16:00:00', () => kid.request(`/mitglied?woche=${week}`));
+  // Elternkonto von C: Wochenplan und Finansije
+  const p = client();
+  await p.login('pogled.roditelj', 'roditelj-pass-1');
+  await atTime('2026-12-10T20:15:00', () => p.request(`/roditelj?woche=${week}`));
+  await atTime('2026-10-21T21:00:00', () => p.request('/roditelj/finansije?monat=2026-10'));
+
+  // Gespeichert wird nur: was, welche Woche/welcher Monat, für welchen Spieler, wer, wann – sonst nichts
+  const rows = views().slice(before);
+  assert.deepEqual(Object.keys(rows[0]).sort(), ['at', 'id', 'kind', 'period', 'player_id', 'viewer_id', 'viewer_type']);
+  assert.deepEqual(rows.map((r) => [r.kind, r.period, r.player_id, r.viewer_type]), [
+    ['raspored', week, a, 'clan'],
+    ['iznosi', '2026-10', a, 'clan'],
+    ['raspored', week, b, 'dijete'],
+    ['raspored', week, c, 'roditelj'],
+    ['iznosi', '2026-10', c, 'roditelj'],
+  ]);
+  // Mehrfach öffnen: kein neuer Eintrag, nur die Zeit wird aktualisiert
+  await atTime('2026-12-08T19:00:00', () => ma.request(`/mitglied?woche=${week}`));
+  assert.equal(views().length, before + 5);
+  assert.equal(db.prepare("SELECT at FROM page_views WHERE kind = 'raspored' AND player_id = ?").get(a).at, new Date('2026-12-08T19:00:00').toISOString());
+
+  // Admin-Übersicht, Reiter „Raspored“
+  const page = (await admin.request(`/admin/ko-je-pogledao?prikaz=raspored&woche=${week}`));
+  assert.equal(page.status, 200);
+  const t = page.text;
+  assert.match(t, /<h1>Ko je pogledao<\/h1>/);
+  assert.match(t, /href="\/admin\/ko-je-pogledao"[^>]*>Ko je pogledao</); // im Admin-Menü
+  assert.match(t, /class="tab is-active" href="\/admin\/ko-je-pogledao\?prikaz=raspored&amp;woche=2026-12-07"[^>]*>Raspored</);
+  assert.match(t, /class="tab" href="\/admin\/ko-je-pogledao\?prikaz=iznosi&amp;monat=2026-12"[^>]*>Iznosi</);
+  assert.match(t, /Pogledalo: <strong>3<\/strong> od <strong>4<\/strong>/);
+  const row = (html, id) => new RegExp(`<tr data-player="${id}"[^>]*>([\\s\\S]*?)</tr>`).exec(html)[1];
+  assert.match(row(t, a), /Pogled Ana[\s\S]*tag-yes">Pogledao 08\.12\.2026\. 19:00</);
+  assert.match(row(t, b), /Pogled Bero[\s\S]*tag-yes">Pogledao 09\.12\.2026\. 16:00[\s\S]*Dječiji račun: Pogled Klinac/);
+  assert.match(row(t, c), /Pogled Cica[\s\S]*tag-yes">Pogledao 10\.12\.2026\. 20:15[\s\S]*Roditeljski račun: Pogled Roditelj/);
+  assert.match(row(t, d), /Pogled Dino[\s\S]*tag-no">Nije pogledao</);
+  // Wochen wechseln
+  assert.match(t, /href="\/admin\/ko-je-pogledao\?prikaz=raspored&amp;woche=2026-11-30"/);
+  assert.match(t, /href="\/admin\/ko-je-pogledao\?prikaz=raspored&amp;woche=2026-12-14"/);
+  const other = (await admin.request('/admin/ko-je-pogledao?prikaz=raspored&woche=2026-12-14')).text;
+  assert.doesNotMatch(other, new RegExp(`data-player="${a}"`));
+
+  // Reiter „Iznosi“
+  const iz = (await admin.request('/admin/ko-je-pogledao?prikaz=iznosi&monat=2026-10')).text;
+  assert.match(iz, /class="tab is-active" href="\/admin\/ko-je-pogledao\?prikaz=iznosi&amp;monat=2026-10"/);
+  assert.match(iz, /Pogledalo: <strong>\d+<\/strong> od <strong>\d+<\/strong>/);
+  assert.match(row(iz, a), /Pogled Ana[\s\S]*tag-yes">Pogledao 20\.10\.2026\. 07:45</);
+  assert.match(row(iz, b), /tag-no">Nije pogledao</);
+  assert.match(row(iz, c), /tag-yes">Pogledao 21\.10\.2026\. 21:00[\s\S]*Roditeljski račun: Pogled Roditelj/);
+  assert.match(row(iz, d), /tag-no">Nije pogledao</);
+  assert.match(iz, /href="\/admin\/ko-je-pogledao\?monat=2026-09&amp;prikaz=iznosi"/);
+  // Ungültige Eingaben: Standardansicht, kein Fehler
+  assert.equal((await admin.request('/admin/ko-je-pogledao?prikaz=x&woche=abc&monat=zz')).status, 200);
+
+  // Nur der Admin: Mitglieder, Kinder, Eltern und Trainer sehen nichts davon
+  for (const cl of [ma, kid, p]) {
+    const r = await cl.request('/admin/ko-je-pogledao');
+    assert.notEqual(r.status, 200);
+    assert.doesNotMatch(r.text, /Pogledalo:/);
+  }
+  assert.doesNotMatch((await ma.request('/mitglied')).text, /Ko je pogledao|ko-je-pogledao/);
+  assert.doesNotMatch((await p.request('/roditelj')).text, /Ko je pogledao|ko-je-pogledao/);
+  db.prepare("INSERT INTO trainers (name, username, password_hash, rate_individual_cents, rate_group_cents) VALUES ('Pogled Trener', 'pogled.trener', ?, 0, 0)").run(hashPassword('trener-pass-1'));
+  const tr = client();
+  await tr.login('pogled.trener', 'trener-pass-1');
+  const trRes = await tr.request('/admin/ko-je-pogledao');
+  assert.notEqual(trRes.status, 200);
+  assert.doesNotMatch(trRes.text, /Pogledalo:/);
+
+  // Einträge älter als 3 Monate werden automatisch gelöscht
+  db.prepare("INSERT INTO page_views (kind, period, player_id, viewer_type, viewer_id, at) VALUES ('raspored', '2026-06-01', ?, 'clan', ?, '2026-06-02T10:00:00.000Z'), ('raspored', '2026-07-13', ?, 'clan', ?, '2026-07-15T10:00:00.000Z')").run(d, d, d, d);
+  await admin.request('/admin/ko-je-pogledao');
+  assert.deepEqual(db.prepare('SELECT period FROM page_views WHERE player_id = ? ORDER BY period').all(d).map((r) => r.period), ['2026-07-13']);
+});

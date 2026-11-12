@@ -201,6 +201,20 @@ Tests: `npm test`
   „lozinka promijenjena“. Einträge älter als 12 Monate werden automatisch gelöscht. Tabelle `activity_log`;
   das Protokoll beginnt mit diesem Update (frühere Änderungen werden nicht nachgetragen).
 
+## Ko je pogledao (nur Admin)
+
+- Menü **„Ko je pogledao“** (`/admin/ko-je-pogledao`) mit zwei Reitern:
+  - **Raspored:** für die gewählte Woche alle Spieler mit Terminen – grün „Pogledao <Datum Uhrzeit>“, wenn der Spieler,
+    sein Kinder-Konto oder sein Elternkonto den Wochenplan dieser Woche geöffnet hat (mit Hinweis, wer), sonst rot
+    „Nije pogledao“; oben „Pogledalo: X od Y“. Wochen wechseln mit ‹/›.
+  - **Iznosi:** für den gewählten Monat alle Spieler wie in der Liste „Iznosi“ – grün mit Datum, wenn der Spieler
+    (Mjesečni iznos) oder sein Elternkonto (Finansije) die Beträge dieses Monats geöffnet hat, sonst rot. Monate wechseln mit ‹/›.
+- Gezählt wird nur, was wirklich zu sehen war: eine **veröffentlichte** Woche bzw. ein **freigegebener** Monatsbetrag
+  (bei „Obračun u pripremi“ zählt es nicht).
+- Gespeichert wird nur das Öffnen (Tabelle `page_views`: Art, Woche/Monat, Spieler, wer, wann – je Person nur das letzte
+  Öffnen), Zeiten in Sarajevo-Zeit angezeigt. Einträge älter als 3 Monate werden automatisch gelöscht.
+  Mitglieder, Eltern, Kinder und Trainer sehen davon nichts.
+
 ## Maskottchen
 
 - Unten rechts steht klein das Maskottchen (auf dem Handy kleiner) – für **alle eingeloggten Konten** (Admin,
