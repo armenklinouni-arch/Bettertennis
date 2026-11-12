@@ -390,6 +390,22 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .players-table td { vertical-align: middle; }
 .statement tr.is-unbilled td { color: var(--muted); }
 .statement td.attendance { white-space: nowrap; }
+/* Iznosi → Detalji: „Uredi“/„Obriši“ uz stavku i uređivanje stavke u njenom redu (i na mobitelu u vidljivom dijelu) */
+.stavka-actions { white-space: nowrap; }
+.stavka-actions form { display: inline; margin: 0; }
+.statement tr.stavka-edit td { background: var(--surface); }
+.stavka-edit-form { position: sticky; left: 0; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; max-width: calc(100vw - 72px); margin: 0; }
+.stavka-edit-form label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 180px; min-width: 0; margin: 0; }
+.stavka-edit-form label:nth-of-type(2) { flex: 0 1 130px; }
+.stavka-edit-form input { width: 100%; min-width: 0; }
+tr[id^="stavka-"] { scroll-margin-top: 140px; }
+@media (max-width: 700px) {
+  /* Mobitel: „Uredi“/„Obriši“ jedno ispod drugog i uvijek vidljivi na desnom rubu tabele */
+  .statement td.stavka-actions { position: sticky; right: 0; z-index: 1; background: var(--surface); box-shadow: -8px 0 8px -8px rgba(17, 48, 76, 0.25); }
+  .statement td.stavka-actions > a, .statement td.stavka-actions > form { display: block; }
+  .statement td.stavka-actions > a { margin-bottom: 6px; text-align: center; }
+  .statement td.stavka-actions .btn { width: 100%; }
+}
 
 /* Liste der E-Mail-Empfänger (Absage-Mail, Aktuelnosti) */
 .recipient-table input[type="checkbox"] { width: auto; margin: 0; }

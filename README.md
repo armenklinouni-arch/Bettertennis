@@ -25,6 +25,11 @@ diese Anleitung ist auf Deutsch. Die Anwendung hat drei Bereiche:
      Mitglieder und Elternkonten sehen in der Monatstabelle nur die Spalten **„Stavka“** und **„Iznos“** und die Summe;
      die Spalte **„Detalji“** (z. B. „Termini: 3 · 4,5 h“, „Dodatna stavka · Eintragungsdatum“) sieht nur der Admin.
 
+     Stavke bearbeiten (Iznosi → Detalji): neben **„Obriši“** steht **„Uredi“** – Opis und Iznos werden direkt in der
+     Zeile geändert, **„Spremi“** speichert (Summe rechnet neu, Eintrag im Dnevnik), **„Odustani“** bricht ohne Änderung ab.
+     Auf dem Handy bricht das Formular um, „Uredi“/„Obriši“ bleiben am rechten Tabellenrand sichtbar.
+     Im gesperrten (abgeschlossenen) Monat gibt es weder „Uredi“ noch „Obriši“.
+
      Voreinstellung: Jeder Monat, für den noch keine Abrechnungsart gespeichert wurde, steht auf **„Ručni unos“**.
      Monate mit gespeicherter Art bleiben unverändert; umstellen geht jederzeit mit „Sačuvaj za …“.
    - **Grupe**: feste Trainingsgruppen (z. B. „Grupa 1“ … „Grupa 10“) mit 2–8 Mitgliedern anlegen,

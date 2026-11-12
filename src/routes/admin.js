@@ -1632,6 +1632,8 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       ${st.mode === 'manual' ? '' : html`<p class="muted small attendance-summary">Status u mjesecu: ${attendanceSummary(withLiveAttendance(st.lessons)) || 'još nije unesen'}</p>`}
       ${statementTable({ ...st, lessons: withLiveAttendance(st.lessons) }, {
         adminDelete: !st.closed, req, attendance: true, billingMarks: true, showManualRow: true, adjustmentDates: true, showDetails: true,
+        editId: st.closed ? null : toId(req.query.uredi),
+        editUrl: (adj) => `${back}&uredi=${adj.id}#stavka-${adj.id}`, cancelUrl: (adj) => `${back}#stavka-${adj.id}`,
         lessonAmountUrl: st.mode === 'display' && !st.closed ? (l) => `/admin/abrechnung/${member.id}/termin/${l.id}?monat=${month}` : null,
       })}
       ${st.mode === 'display' && !st.closed ? html`<section class="card" id="iznos-treninga">
@@ -1908,6 +1910,29 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     log(req, 'Iznosi', `${owner ? owner.name : '?'}, ${D.monthLabel(adj.month)} – stavka obrisana: ${adj.description}, ${money(adj.amount_cents)}`);
     res.flash('success', 'Stavka je obrisana.');
     res.redirect(`/admin/abrechnung/${adj.user_id}?monat=${adj.month}`);
+  });
+
+  // Stavku mijenja admin direktno u njenom redu (opis i iznos); zaključan mjesec se ne mijenja.
+  router.post('/posten/:id/uredi', (req, res) => {
+    const adj = db.prepare('SELECT * FROM adjustments WHERE id = ?').get(toId(req.params.id));
+    if (!adj) return notFound(res, 'stavka');
+    const owner = getMember.get(adj.user_id);
+    const url = `/admin/abrechnung/${adj.user_id}?monat=${adj.month}`;
+    if (owner && isMonthClosed(db, owner, adj.month)) {
+      res.flash('error', `${D.monthLabel(adj.month)} je zaključen. Za izmjenu ga prvo retroaktivno otvori.`);
+      return res.redirect(url);
+    }
+    const description = str(req.body.description, 200);
+    const amount = parseMoney(req.body.amount);
+    if (!description || amount === null) {
+      res.flash('error', 'Molimo unesi opis i ispravan iznos.');
+      return res.redirect(`${url}&uredi=${adj.id}#stavka-${adj.id}`);
+    }
+    db.prepare('UPDATE adjustments SET description = ?, amount_cents = ? WHERE id = ?').run(description, amount, adj.id);
+    const diff = changes([['Opis', adj.description, description], ['Iznos', money(adj.amount_cents), money(amount)]]);
+    if (diff) log(req, 'Iznosi', `${owner ? owner.name : '?'}, ${D.monthLabel(adj.month)} – stavka izmijenjena: ${diff}`);
+    res.flash('success', 'Stavka je izmijenjena.');
+    res.redirect(`${url}#stavka-${adj.id}`);
   });
 
   // ---------------------------------------------------------------- Aktuelnosti

@@ -6,7 +6,7 @@ const path = require('node:path');
 const { html } = require('./html');
 const D = require('./dates');
 const { sortByName } = require('./search');
-const { formatMoney } = require('./money');
+const { formatMoney, centsToInput, CURRENCY_SYMBOL } = require('./money');
 const { formatHours } = require('./billing');
 const { zonedTimeToUtc } = require('./weeks');
 
@@ -284,6 +284,8 @@ function statementTable(statement, {
   showManualRow = false,
   // Samo admin: kolona „Detalji“ (članovi i roditelji vide samo „Stavka“ i „Iznos“).
   showDetails = false,
+  // Samo admin (otvoren mjesec): „Uredi“ uz stavku; editId = stavka koja se upravo uređuje u svom redu.
+  editId = null, editUrl = null, cancelUrl = null,
 } = {}) {
   const det = (content) => (showDetails ? html`<td>${content}</td>` : '');
   const showStatus = attendance && statement.mode !== 'manual';
@@ -315,14 +317,27 @@ function statementTable(statement, {
       </tr>`);
   }
   for (const a of statement.adjustments) {
+    if (adminDelete && editUrl && editId === a.id) {
+      rows.push(html`
+      <tr id="stavka-${a.id}" class="stavka-edit"><td colspan="${cols}">
+        <form class="stavka-edit-form" method="post" action="/admin/posten/${a.id}/uredi">
+          ${csrfField(req)}
+          <label>Opis<input name="description" required maxlength="200" value="${a.description}" autofocus></label>
+          <label>Iznos (${CURRENCY_SYMBOL})<input name="amount" required inputmode="decimal" value="${centsToInput(a.amount_cents)}"></label>
+          <div class="stavka-actions"><button class="btn btn-primary btn-sm" type="submit">Spremi</button>
+            <a class="btn btn-ghost btn-sm" href="${cancelUrl(a)}">Odustani</a></div>
+        </form>
+      </td></tr>`);
+      continue;
+    }
     rows.push(html`
-      <tr class="${off}">
+      <tr${adminDelete ? html` id="stavka-${a.id}"` : ''} class="${off}">
         <td>${a.description}</td>
         ${det(`${a.amount_cents < 0 ? 'Odobrenje' : 'Dodatna stavka'}${adjustmentDates && a.created_at ? ` · ${D.formatDate(a.created_at.slice(0, 10))}` : ''}`)}
         ${extra()}
         <td class="num">${formatMoney(a.amount_cents)}</td>
         ${adminDelete
-          ? html`<td class="num">
+          ? html`<td class="num stavka-actions">${editUrl ? html`<a class="btn btn-ghost btn-sm" href="${editUrl(a)}">Uredi</a> ` : ''}
               <form method="post" action="/admin/posten/${a.id}/loeschen" data-confirm="Zaista obrisati stavku?">
                 ${csrfField(req)}<button class="btn btn-danger btn-sm" type="submit">Obriši</button>
               </form></td>`

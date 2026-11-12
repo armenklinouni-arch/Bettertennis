@@ -4809,3 +4809,92 @@ test('Iznosi: Mitglieder und Elternkonten sehen nur „Stavka“ und „Iznos“
   assert.match(det, /Realizovani treninzi<\/td><td>Termini: 1 · 1 h<\/td>/);
   assert.match(det, /Otkazan · 60 min/);
 });
+
+// ---------------------------------------------------------------- Iznosi → Detalji: Stavka bearbeiten („Uredi“)
+test('Iznosi → Detalji: Stavka „Uredi“ in der Zeile (Opis, Iznos), „Spremi“/„Odustani“; Summe neu; gesperrter Monat nicht änderbar', async () => {
+  const id = makeMember('Uredi Stavku', 'uredi.stavku', { fee: 1000 });
+  const month = '2026-10';
+  const adjId = db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, ?, 'Lopte stare', 1500)").run(id, month).lastInsertRowid;
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const url = `/admin/abrechnung/${id}?monat=${month}`;
+  const total = (t) => /Ukupno Oktobar 2026<\/td>[\s\S]*?<td class="num">([^<]*)</.exec(t)[1];
+  const adj = () => db.prepare('SELECT * FROM adjustments WHERE id = ?').get(adjId);
+
+  // Neben „Obriši“ steht „Uredi“ (Link in die Bearbeitung derselben Zeile)
+  let page = (await admin.request(url)).text;
+  const editHref = `/admin/abrechnung/${id}?monat=${month}&amp;uredi=${adjId}#stavka-${adjId}`;
+  assert.match(page, new RegExp(`<a class="btn btn-ghost btn-sm" href="${editHref.replace(/[?.]/g, '\\$&')}">Uredi</a>`));
+  assert.match(page, /Obriši/);
+  assert.equal(total(page), formatMoney(2500));
+
+  // Bearbeitungsmodus: Zeile mit Opis, Iznos, „Spremi“ und „Odustani“
+  page = (await admin.request(`${url}&uredi=${adjId}`)).text;
+  const row = new RegExp(`<tr id="stavka-${adjId}" class="stavka-edit">([\\s\\S]*?)</tr>`).exec(page);
+  assert.ok(row, 'Bearbeitungszeile fehlt');
+  assert.match(row[1], new RegExp(`<form class="stavka-edit-form" method="post" action="/admin/posten/${adjId}/uredi">`));
+  assert.match(row[1], /name="_csrf"/);
+  assert.match(row[1], /<input name="description" required maxlength="200" value="Lopte stare" autofocus>/);
+  assert.match(row[1], /<input name="amount" required inputmode="decimal" value="15,00">/);
+  assert.match(row[1], /<button class="btn btn-primary btn-sm" type="submit">Spremi<\/button>/);
+  assert.match(row[1], new RegExp(`<a class="btn btn-ghost btn-sm" href="/admin/abrechnung/${id}\\?monat=${month}#stavka-${adjId}">Odustani</a>`));
+  // „Odustani“ ändert nichts (nur zurück zur Ansicht)
+  assert.equal(adj().description, 'Lopte stare');
+  assert.equal(adj().amount_cents, 1500);
+
+  // Ungültig: nichts gespeichert, zurück in die Bearbeitung mit Meldung
+  let r = await admin.post(`/admin/posten/${adjId}/uredi`, { description: '', amount: '20' }, `${url}&uredi=${adjId}`);
+  assert.equal(r.location, `${url}&uredi=${adjId}#stavka-${adjId}`);
+  r = await admin.post(`/admin/posten/${adjId}/uredi`, { description: 'X', amount: 'abc' }, `${url}&uredi=${adjId}`);
+  assert.match((await admin.request(r.location)).text, /Molimo unesi opis i ispravan iznos\./);
+  assert.equal(adj().amount_cents, 1500);
+  // Ohne CSRF-Token: abgelehnt
+  const noCsrf = await admin.request(`/admin/posten/${adjId}/uredi`, { method: 'POST', form: { description: 'Hack', amount: '1' } });
+  assert.equal(noCsrf.status, 403);
+  assert.equal(adj().description, 'Lopte stare');
+
+  // Spremi: Text und Betrag geändert, Summe rechnet mit
+  r = await admin.post(`/admin/posten/${adjId}/uredi`, { description: 'Lopte <nove>', amount: '22,50' }, `${url}&uredi=${adjId}`);
+  assert.equal(r.location, `${url}#stavka-${adjId}`);
+  assert.equal(adj().description, 'Lopte <nove>');
+  assert.equal(adj().amount_cents, 2250);
+  assert.equal(adj().month, month);
+  assert.equal(adj().user_id, id);
+  page = (await admin.request(url)).text;
+  assert.match(page, /Stavka je izmijenjena\./);
+  assert.match(page, /Lopte &lt;nove&gt;/);
+  assert.equal(total(page), formatMoney(3250));
+  assert.doesNotMatch(page, /class="stavka-edit"/);
+  // Negativer Betrag (Odobrenje) geht ebenfalls
+  await admin.post(`/admin/posten/${adjId}/uredi`, { description: 'Popust', amount: '-5' }, `${url}&uredi=${adjId}`);
+  assert.equal(adj().amount_cents, -500);
+  // Dnevnik
+  const log = db.prepare("SELECT text FROM activity_log WHERE area = 'Iznosi' ORDER BY id DESC LIMIT 2").all().map((x) => x.text).join('\n');
+  assert.match(log, /Uredi Stavku, Oktobar 2026 – stavka izmijenjena: Opis: Lopte <nove> → Popust, Iznos: 22,50\sKM → -5,00\sKM/);
+  // Mitglied sieht nur die neue Stavka und Summe
+  db.prepare('INSERT INTO payments (user_id, month, released) VALUES (?, ?, 1)').run(id, month);
+  const m = client();
+  await m.login('uredi.stavku', 'memberpass1');
+  const own = (await m.request(`/mitglied/abrechnung?monat=${month}`)).text;
+  assert.match(own, /Popust/);
+  assert.doesNotMatch(own, />Uredi<|stavka-edit/);
+  // Unbekannte Stavka
+  assert.equal((await admin.post('/admin/posten/999999/uredi', { description: 'X', amount: '1' }, url)).status, 404);
+
+  // Gesperrter (abgeschlossener) Monat: weder „Uredi“ noch „Obriši“, Speichern abgelehnt
+  const sepId = db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, '2026-09', 'Septembar stavka', 700)").run(id).lastInsertRowid;
+  const { closeElapsedMonths } = require('../src/billing');
+  closeElapsedMonths(db, '2026-10');
+  const sep = (await admin.request(`/admin/abrechnung/${id}?monat=2026-09&uredi=${sepId}`)).text;
+  assert.match(sep, /Mjesec je zaključen/);
+  assert.doesNotMatch(sep, />Uredi<|>Obriši<|class="stavka-edit"/);
+  r = await admin.post(`/admin/posten/${sepId}/uredi`, { description: 'Promijenjeno', amount: '1' }, `/admin/abrechnung/${id}?monat=2026-09`);
+  assert.equal(r.location, `/admin/abrechnung/${id}?monat=2026-09`);
+  assert.match((await admin.request(r.location)).text, /Septembar 2026 je zaključen/);
+  assert.equal(db.prepare('SELECT description FROM adjustments WHERE id = ?').get(sepId).description, 'Septembar stavka');
+
+  // Handy: Bearbeitungsformular bricht um und bleibt sichtbar (sticky, max. Bildschirmbreite)
+  const css = (await admin.request('/static/style.css')).text;
+  assert.match(css, /\.stavka-edit-form \{[^}]*position: sticky;[^}]*left: 0;[^}]*flex-wrap: wrap;[^}]*max-width: calc\(100vw - [^}]*\}/);
+  assert.match(css, /\.stavka-actions \{[^}]*white-space: nowrap;/);
+});

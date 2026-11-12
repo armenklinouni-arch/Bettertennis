@@ -482,3 +482,19 @@ window.btMascotNext = function btMascotNext(state, names, random = Math.random) 
     schedule();
   });
 })();
+
+// Iznosi → Detalji: red stavke koja se uređuje (ili upravo sačuvana) pomakni ispod zaglavlja i u polje „Opis“.
+(() => {
+  document.addEventListener('DOMContentLoaded', () => {
+    const edit = document.querySelector('tr.stavka-edit');
+    const target = edit || (/^#stavka-\d+$/.test(window.location.hash) ? document.getElementById(window.location.hash.slice(1)) : null);
+    if (!target) return;
+    const header = document.querySelector('.site-header');
+    const offset = header && window.getComputedStyle(header).position === 'sticky' ? header.offsetHeight : 0;
+    window.requestAnimationFrame(() => {
+      window.scrollTo(0, Math.max(0, target.getBoundingClientRect().top + window.scrollY - offset - 12));
+      const input = edit && edit.querySelector('input[name="description"]');
+      if (input) { input.focus({ preventScroll: true }); input.setSelectionRange(input.value.length, input.value.length); }
+    });
+  });
+})();
