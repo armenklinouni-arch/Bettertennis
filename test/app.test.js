@@ -261,7 +261,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   assert.match(leaWeek.text, /Grupni trening/);
   assert.doesNotMatch(leaWeek.text, /Max/);
   const adminWeek = await admin.request('/admin/termine?woche=2026-10-05');
-  assert.match(adminWeek.text, /<ul class="lesson-names">\s*<li[^>]*>(Lea Neu|Max[^<]*)<\/li>\s*<li[^>]*>(Lea Neu|Max[^<]*)<\/li>\s*<\/ul>/);
+  assert.match(adminWeek.text, /<ul class="lesson-names">\s*<li[^>]*><span class="lesson-num">1\.<\/span> (Lea Neu|Max[^<]*)<\/li>\s*<li[^>]*><span class="lesson-num">2\.<\/span> (Lea Neu|Max[^<]*)<\/li>\s*<\/ul>/);
 
   // Gruppe ohne zweites Mitglied wird abgelehnt
   const bad = await admin.post('/admin/termine', {
@@ -5182,14 +5182,14 @@ test('Termini-Wochenübersicht (Admin): jeder Spieler in eigener Zeile; Karten f
   const g = card('16:15–17:15');
   assert.ok(g, 'Gruppenkarte fehlt');
   assert.equal(g[1], 'lesson lesson-card is-group');
-  const names = [...g[0].matchAll(/<li[^>]*>([^<]*)<\/li>/g)].map((m) => m[1]);
+  const names = [...g[0].matchAll(/<li[^>]*><span class=\"lesson-num\">\d+\.<\/span> ([^<]*)<\/li>/g)].map((m) => m[1]);
   assert.deepEqual(names.sort(), ['Amra Muharemović', 'Benjamin Karta', 'Cvijeta Karta']);
   assert.match(g[0], /<ul class="lesson-names">/);
   assert.doesNotMatch(g[0], /Muharemović, |Karta, /);
   // Individual- und abgesagter Termin
   const i = card('18:15–19:15');
   assert.equal(i[1], 'lesson lesson-card is-individual');
-  assert.match(i[0], /<ul class="lesson-names">\s*<li title="Amra Muharemović">Amra Muharemović<\/li>\s*<\/ul>/);
+  assert.match(i[0], /<ul class="lesson-names">\s*<li title="Amra Muharemović"><span class="lesson-num">1\.<\/span> Amra Muharemović<\/li>\s*<\/ul>/);
   assert.equal(card('19:15–20:15')[1], 'lesson lesson-card is-individual is-cancelled');
 
   // Farben/Stil: helle Hintergründe, Rand, Abstand, kräftigere Uhrzeit, Namen nicht getrennt
@@ -5278,4 +5278,62 @@ test('Sedmični raspored (Mitglied, Kind, Eltern, Trainer): Karten wie im Admin,
   const css = (await admin.request('/static/style.css')).text;
   assert.match(css, /\.week-title span \{[^}]*font-size: 1\.05rem;[^}]*font-weight: 700;[^}]*\}/);
   assert.match(css, /\.week-title strong \{[^}]*font-size: 1\.2rem;[^}]*font-weight: 800;[^}]*\}/);
+});
+
+// ---------------------------------------------------------------- Termini (Admin): laufende Nummer vor jedem Spieler; Datenschutz im Sedmični raspored
+test('Termini (Admin): Spieler je Termin nummeriert (1., 2., 3. …, pro Termin neu); Sedmični raspored ohne Nummern und ohne fremde Namen', async () => {
+  const { releaseWeek } = require('../src/weeks');
+  const week = '2027-02-15';
+  releaseWeek(db, week);
+  const a = makeMember('Nina Redni', 'redni.nina');
+  const b = makeMember('Omer Redni', 'redni.omer');
+  const c = makeMember('Petra Redni', 'redni.petra');
+  db.prepare("INSERT INTO trainers (name, username, password_hash) VALUES ('Redni Trener', 'redni.trener', ?)").run(hashPassword('trener-pass-1'));
+  const tid = db.prepare("SELECT id FROM trainers WHERE username = 'redni.trener'").get().id;
+  const ins = (uid, time, kind, g = null) => db.prepare(
+    "INSERT INTO lessons (user_id, date, start_time, duration_min, kind, group_id, trainer_id) VALUES (?, '2027-02-16', ?, 60, ?, ?, ?)"
+  ).run(uid, time, kind, g, tid);
+  for (const uid of [a, b, c]) ins(uid, '14:25', 'group', 'redni-g1');
+  ins(b, '16:25', 'individual');
+  for (const uid of [a, c]) ins(uid, '17:25', 'group', 'redni-g2');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const t = (await admin.request(`/admin/termine?woche=${week}`)).text;
+  const card = (html, time) => new RegExp(`<div class="lesson-time">${time} h</div>([\\s\\S]*?)</article>`).exec(html)[1];
+  const numbered = (html, time) => [...card(html, time).matchAll(/<li title="[^"]*"><span class="lesson-num">(\d+)\.<\/span> ([^<]*)<\/li>/g)].map((x) => `${x[1]}. ${x[2]}`);
+  assert.deepEqual(numbered(t, '14:25–15:25').map((x) => x.split(' ')[0]), ['1.', '2.', '3.']);
+  assert.deepEqual(numbered(t, '14:25–15:25').map((x) => x.slice(3)).sort(), ['Nina Redni', 'Omer Redni', 'Petra Redni']);
+  assert.deepEqual(numbered(t, '16:25–17:25'), ['1. Omer Redni']); // jeder Termin beginnt bei 1
+  assert.deepEqual(numbered(t, '17:25–18:25').map((x) => x.split(' ')[0]), ['1.', '2.']);
+  const css = (await admin.request('/static/style.css')).text;
+  assert.match(css, /\.lesson-num \{[^}]*font-variant-numeric: tabular-nums/);
+
+  // Sedmični raspored: keine Nummern; Mitglied, Kind und Eltern sehen nur eigene Spieler, keine fremden Namen
+  const m = client();
+  await m.login('redni.nina', 'memberpass1');
+  await m.post('/mitglied/djeca', { name: 'Redni Dijete', username: 'redni.dijete', password: 'dijete-pass-1' }, '/mitglied/djeca');
+  const kid = client();
+  await kid.login('redni.dijete', 'dijete-pass-1');
+  await createParentAccount(admin, { name: 'Redni Roditelj', username: 'redni.roditelj', password: 'roditelj-pass-1', players: [c] });
+  const p = client();
+  await p.login('redni.roditelj', 'roditelj-pass-1');
+  const tr = client();
+  await tr.login('redni.trener', 'trener-pass-1');
+  const memberPage = (await m.request(`/mitglied?woche=${week}`)).text;
+  const kidPage = (await kid.request(`/mitglied?woche=${week}`)).text;
+  const parentPage = (await p.request(`/roditelj?woche=${week}`)).text;
+  const trainerPage = (await tr.request(`/trener/raspored?woche=${week}`)).text;
+  for (const [who, page] of [['clan', memberPage], ['dijete', kidPage], ['roditelj', parentPage], ['trener', trainerPage]]) {
+    assert.doesNotMatch(page, /lesson-num/, who);
+  }
+  for (const [who, page] of [['clan', memberPage], ['dijete', kidPage]]) {
+    assert.match(card(page, '14:25–15:25'), /<li title="Nina Redni">Nina Redni<\/li>/, who);
+    assert.doesNotMatch(page, /Omer Redni|Petra Redni/, who);
+    assert.doesNotMatch(page, /16:25–17:25/, who); // fremder Einzeltermin
+  }
+  assert.match(card(parentPage, '14:25–15:25'), /<li title="Petra Redni">Petra Redni<\/li>/);
+  assert.doesNotMatch(parentPage, /Nina Redni|Omer Redni|16:25–17:25/);
+  // Trainer sieht wie bisher alle Spieler seiner Gruppe (ohne Nummern)
+  assert.match(card(trainerPage, '14:25–15:25'), /<li title="Nina Redni">Nina Redni<\/li>/);
+  assert.match(card(trainerPage, '14:25–15:25'), /<li title="Omer Redni">Omer Redni<\/li>/);
 });

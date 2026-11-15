@@ -193,7 +193,8 @@ function lessonTimeRange(lesson) {
 // options.baseUrl: cilj za navigaciju po sedmicama; options.actions: funkcija koja vraća dugmad za termin (admin).
 // Svaki termin je obojena kartica (grupni/individualni/otkazan), svaki igrač u svom redu (member_names ili member_name);
 // names_note: kratka napomena ispod imena (npr. „3 igrača“ kod trenera).
-function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '' }) {
+// options.numbered (samo admin, Termini): redni broj ispred svakog igrača (1., 2., … – za svaki termin ispočetka).
+function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '', numbered = false }) {
   const days = D.weekDays(monday);
   const sunday = days[6];
   const prev = D.addDays(monday, -7);
@@ -230,7 +231,7 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
                   (l) => html`
               <article class="lesson lesson-card ${l.kind === 'group' ? 'is-group' : 'is-individual'}${l.cancelled ? ' is-cancelled' : ''}">
                 <div class="lesson-time">${lessonTimeRange(l)} h</div>
-                <ul class="lesson-names">${(l.member_names || [l.member_name]).map((n) => html`<li title="${n}">${n}</li>`)}</ul>
+                <ul class="lesson-names">${(l.member_names || [l.member_name]).map((n, i) => html`<li title="${n}">${numbered ? html`<span class="lesson-num">${i + 1}.</span> ` : ''}${n}</li>`)}</ul>
                 ${l.names_note ? html`<div class="lesson-meta">${l.names_note}</div>` : ''}
                 ${l.trainer_name ? html`<div class="lesson-meta">Trener: ${l.trainer_name}</div>` : ''}
                 <div class="lesson-meta">

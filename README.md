@@ -152,10 +152,11 @@ Tests: `npm test`
 
 - Jeder Termin ist eine eigene, deutlich abgegrenzte Karte: **Gruppentraining hellgrün**, **Individualtraining hellblau**,
   abgesagte Termine grau und durchgestrichen; die Uhrzeit oben ist kräftiger. Im Dunkelmodus gedeckte dunkle Varianten.
-- Jeder Spieler steht in einer eigenen Zeile (Vor- und Nachname zusammen). Ist ein Name in der schmalen Tagesspalte am
+- Jeder Spieler steht in einer eigenen Zeile (Vor- und Nachname zusammen); im Admin-Bereich mit laufender Nummer (1., 2., 3. …, bei jedem Termin neu). Ist ein Name in der schmalen Tagesspalte am
   Desktop zu lang, wird er mit „…“ gekürzt – der volle Name erscheint beim Darüberfahren mit der Maus; am Handy ist genug Platz.
 - Dieselbe Darstellung gilt im Wochenplan (Sedmični raspored) für Mitglieder, Kinder-Konten, Eltern und Trainer – jedes Konto
-  sieht dabei nur, was es bisher sah (keine Admin-Knöpfe, keine Beträge pro Person; Trainer sehen zusätzlich „N igrača“).
+  sieht dabei nur, was es bisher sah (keine Nummern, keine Admin-Knöpfe, keine Beträge pro Person; Trainer sehen zusätzlich „N igrača“).
+  Mitglieder und Kinder-Konten sehen nur ihre eigenen Termine, Elternkonten nur ihre Spieler – nie die Namen anderer Spieler im selben Termin.
 - Oben über der Woche stehen Wochennummer und Datum groß und fett; auf schmalen Handys in eigener Zeile über ‹ Prethodna / Sljedeća ›.
 
 ## Status-Anzeige der Termine

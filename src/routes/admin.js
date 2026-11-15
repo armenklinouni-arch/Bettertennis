@@ -866,7 +866,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       </div>
       ${childLessonCount ? html`<p class="notice"><a href="/admin/termine/djecji-racuni">⚠️ ${childLessonCount} ${childLessonCount === 1 ? 'termin je upisan' : 'termina je upisano'} s dječijim računima – pogledaj listu i ispravi</a></p>` : ''}
       ${weekReleasePanel(req, monday, back)}
-      ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, actions, showPrice: true, extraQuery })}
+      ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, actions, showPrice: true, extraQuery, numbered: true })}
       <section class="card">
         <h2>Novi termin</h2>
         ${members.length === 0
