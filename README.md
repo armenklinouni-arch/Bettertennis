@@ -232,12 +232,13 @@ Tests: `npm test`
 
 - Menü **„Sedmični draft“** (`/admin/draftovi`): mehrere Drafts mit eigenem Namen. Ein Draft ist eine Woche
   Ponedjeljak–Nedjelja ohne Datum; Termine werden wie unter Termini eingetragen (Tag statt Datum, Uhrzeit, Dauer, Teren,
-  Trainer, Gruppe/Spieler, Gruppen- oder Individualtraining, Preis). Speichern geschieht bei jeder Änderung;
+  Trainer, Gruppe/Spieler, Gruppen- oder Individualtraining, Preis); angezeigt als Wochenübersicht Ponedjeljak–Nedjelja
+  mit farbigen Karten wie unter Termini (ohne Datum). Speichern geschieht bei jeder Änderung;
   Drafts lassen sich umbenennen, weiter bearbeiten, **kopieren** und **löschen** (bereits übernommene Termine bleiben).
 - **„Spremi sedmicu kao draft“** (unter Termini bei jeder Woche oder auf der Draft-Seite): eine bestehende Woche wird zum
   neuen Draft (ohne abgesagte Termine; Preise pro Spieler bleiben). Die Woche selbst ändert sich nicht.
 - **„Unesi termine prema draftu“** (unter Termini bei jeder Woche): Draft auswählen → Vorschau mit allen Terminen,
-  echten Daten und Preisen → „Unesi termine“. Hat die Woche schon Termine, erscheint eine Warnung mit
+  echten Daten und Preisen als Wochenübersicht wie unter Termini (farbige Karten, nummerierte Spieler) → „Unesi termine“. Hat die Woche schon Termine, erscheint eine Warnung mit
   „Dodaj uz postojeće“ oder „Odustani“ – es wird nie etwas gelöscht oder überschrieben.
 - Danach sind es normale Termine (einzeln bearbeitbar); der Draft bleibt unverändert. Ohne festen Preis gilt der
   Stundenpreis des Spielers zum Zeitpunkt der Übernahme. Mitglieder, Eltern, Kinder und Trainer sehen Drafts nie,

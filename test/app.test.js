@@ -5747,3 +5747,64 @@ test('Sedmični draft: Drafts anlegen/bearbeiten/kopieren/löschen, Woche als Dr
   assert.equal((await tr.request('/admin/draftovi')).status, 403);
   assert.doesNotMatch((await tr.request(`/trener/raspored?woche=${srcWeek}`)).text, /Zimska|Sedmica bez subote/);
 });
+
+// ---------------------------------------------------------------- Sedmični draft: Vorschau und Draft als Wochenansicht (Karten wie unter Termini)
+test('Sedmični draft: Vorschau und Draft-Ansicht als Wochenübersicht mit farbigen Karten (Mo–So, nummerierte Spieler, Teren, Trainer, „Nema treninga“)', async () => {
+  const a = makeMember('Karta Adna', 'karta.adna', { rate: 4000 });
+  const b = makeMember('Karta Bakir', 'karta.bakir', { rate: 3000 });
+  const c = makeMember('Karta Cana', 'karta.cana', { rate: 3000 });
+  db.prepare("INSERT INTO trainers (name, username, password_hash) VALUES ('Karta Trener', 'karta.trener', ?)").run(hashPassword('trener-pass-1'));
+  const tid = db.prepare("SELECT id FROM trainers WHERE username = 'karta.trener'").get().id;
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await admin.post('/admin/draftovi', { name: 'Kartice draft' }, '/admin/draftovi');
+  const d = db.prepare("SELECT id FROM week_drafts WHERE name = 'Kartice draft'").get();
+  const url = `/admin/draftovi/${d.id}`;
+  await admin.post(`${url}/termin`, { kind: 'group', member_ids: [String(b), String(c)], weekday: '1', start_time: '16:30', duration_min: '90', court: '4', trainer_id: String(tid), price: '' }, url);
+  await admin.post(`${url}/termin`, { kind: 'individual', user_id: String(a), weekday: '3', start_time: '18:30', duration_min: '60', court: '2', price: '' }, url);
+  const cards = (t) => [...t.matchAll(/<article class="lesson lesson-card (is-group|is-individual)"[^>]*>([\s\S]*?)<\/article>/g)].map((m) => ({ kind: m[1], body: m[2] }));
+  const nums = (body) => [...body.matchAll(/<li title="[^"]*"><span class="lesson-num">(\d+)\.<\/span> ([^<]*)<\/li>/g)].map((m) => `${m[1]}. ${m[2]}`);
+
+  // Vorschau: Wochenansicht statt Tabelle
+  const target = '2027-05-03';
+  const prev = (await admin.request(`/admin/termine/prema-draftu?woche=${target}&draft=${d.id}`)).text;
+  const preview = /<section class="card draft-preview">([\s\S]*?)<\/section>\s*<\/main>/.exec(prev)[1];
+  assert.doesNotMatch(preview, /<table/);
+  assert.match(preview, /<section class="week week-tone is-blue" aria-label="Sedmični pregled">/); // KW 18 (gerade → blau)
+  const heads = [...preview.matchAll(/<span class="day-name">([^<]+)<\/span>\s*<span class="day-date">([^<]+)<\/span>/g)].map((m) => `${m[1]} ${m[2]}`);
+  assert.deepEqual(heads, ['Ponedjeljak 03.05.2027.', 'Utorak 04.05.2027.', 'Srijeda 05.05.2027.', 'Četvrtak 06.05.2027.', 'Petak 07.05.2027.', 'Subota 08.05.2027.', 'Nedjelja 09.05.2027.']);
+  assert.equal([...preview.matchAll(/<p class="empty">Nema treninga<\/p>/g)].length, 5);
+  const pc = cards(preview);
+  assert.equal(pc.length, 2);
+  assert.equal(pc[0].kind, 'is-group');
+  assert.match(pc[0].body, /<div class="lesson-time">16:30–18:00 h<\/div>/);
+  assert.deepEqual(nums(pc[0].body).map((x) => x.slice(0, 2)), ['1.', '2.']);
+  assert.match(pc[0].body, /Trener: Karta Trener/);
+  assert.match(pc[0].body, /Teren 4/);
+  assert.match(pc[0].body, /Utorak, 04\.05\.2027\./);
+  assert.equal(pc[1].kind, 'is-individual');
+  assert.deepEqual(nums(pc[1].body), ['1. Karta Adna']);
+  assert.match(pc[1].body, /Teren 2/);
+  assert.doesNotMatch(pc[0].body, /lesson-actions|Uredi/); // Vorschau ohne Bearbeiten-Knöpfe
+  // Knöpfe darunter wie bisher
+  assert.match(preview, />Unesi termine<\/button>\s*<a class="btn btn-ghost" href="\/admin\/termine\?woche=2027-05-03">Odustani<\/a>/);
+  // Wochenwechsel in der Vorschau behält den Draft
+  assert.match(preview, new RegExp(`href="/admin/termine/prema-draftu\\?woche=2027-05-10&amp;draft=${d.id}"`));
+
+  // Draft-Ansicht: dieselbe Wochenansicht, ohne Datum, mit Bearbeiten/Löschen
+  const dp = (await admin.request(url)).text;
+  const week = /<section class="week draft-week"[^>]*>([\s\S]*?)<\/section>/.exec(dp)[1];
+  assert.deepEqual([...week.matchAll(/<span class="day-name">([^<]+)<\/span>/g)].map((m) => m[1]), D.DAY_NAMES);
+  assert.doesNotMatch(week, /day-date|\d\d\.\d\d\.\d{4}\./); // ohne festes Datum
+  assert.equal([...week.matchAll(/<p class="empty">Nema treninga<\/p>/g)].length, 5);
+  const dc = cards(week);
+  assert.equal(dc.length, 2);
+  assert.equal(dc[0].kind, 'is-group');
+  assert.match(dc[0].body, /<div class="lesson-time">16:30–18:00 h<\/div>/);
+  assert.equal(nums(dc[0].body).length, 2);
+  assert.match(dc[0].body, /Trener: Karta Trener/);
+  assert.match(dc[0].body, /90 min · Teren 4/);
+  assert.match(dc[0].body, /<a href="\/admin\/draftovi\/\d+\/termin\/\d+">Uredi<\/a>/);
+  assert.match(dc[0].body, /Obriši/);
+  assert.doesNotMatch(dc[0].body, /Planiran|Realizovan/); // kein Status im Draft
+});

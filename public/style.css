@@ -217,7 +217,6 @@ tr.is-inactive td { color: var(--muted); }
 .draft-actions input[name="name"] { flex: 1 1 14em; min-width: 0; width: auto; max-width: 26em; }
 .draft-rename { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
 .draft-rename input { width: 22em; max-width: 100%; }
-.draft-week .day { min-height: 120px; }
 @media (max-width: 700px) { .week-tone { padding: 8px; } }
 @media (max-width: 480px) {
   /* Schmale Handys: Woche und Datum in eigener Zeile (groß, fett, ohne Umbruch), darunter ‹ Prethodna / Sljedeća › */

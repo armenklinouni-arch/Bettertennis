@@ -215,14 +215,16 @@ function lessonTimeRange(lesson) {
 // options.numbered (samo admin, Termini): redni broj ispred svakog igrača (1., 2., … – za svaki termin ispočetka).
 // options.weekTone (samo admin, Termini): pozadina po sedmici (parna = plava, neparna = zelena) i dugme „Ova sedmica“ uvijek vidljivo.
 // options.lang: jezik prikaza (standard bosanski; admin uvijek bosanski).
-function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '', numbered = false, weekTone = false, lang = 'bs' }) {
+// options.undated (samo admin, „Sedmični draft“): dani bez datuma i bez navigacije; termini dobijaju polje date
+//   prema danu (monday + weekday); na kartici trajanje i teren umjesto datuma, bez statusa.
+function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '', numbered = false, weekTone = false, lang = 'bs', undated = false }) {
   const t = (key, vars) => translate(lang, key, vars);
   const dayNames = D.dayNames(lang);
   const days = D.weekDays(monday);
   const sunday = days[6];
   const prev = D.addDays(monday, -7);
   const next = D.addDays(monday, 7);
-  const thisMonday = D.mondayOf(today);
+  const thisMonday = today ? D.mondayOf(today) : monday;
   const q = (w) => `${baseUrl}?woche=${w}${extraQuery}`;
   const byDay = new Map(days.map((d) => [d, []]));
   for (const l of lessons) if (byDay.has(l.date)) byDay.get(l.date).push(l);
@@ -230,8 +232,8 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
   const weekNo = D.isoWeekNumber(monday);
   const blue = weekNo % 2 === 0;
   return html`
-  <section class="${weekTone ? `week week-tone ${blue ? 'is-blue' : 'is-green'}` : 'week'}" aria-label="${t('week.aria')}">
-    <div class="week-head">
+  <section class="${undated ? 'week draft-week' : weekTone ? `week week-tone ${blue ? 'is-blue' : 'is-green'}` : 'week'}" aria-label="${undated ? 'Draft sedmice' : t('week.aria')}">
+    ${undated ? '' : html`<div class="week-head">
       <a class="btn btn-ghost btn-sm" href="${q(prev)}" aria-label="${t('week.prevAria')}">${t('week.prev')}</a>
       <div class="week-title">
         ${weekTone
@@ -243,15 +245,15 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
           : monday !== thisMonday ? html`<a href="${q(thisMonday)}" class="today-link">${t('week.thisWeek')}</a>` : ''}
       </div>
       <a class="btn btn-ghost btn-sm" href="${q(next)}" aria-label="${t('week.nextAria')}">${t('week.next')}</a>
-    </div>
+    </div>`}
     <div class="week-grid">
       ${days.map((day, i) => {
         const items = byDay.get(day);
         return html`
-        <div class="day${day === today ? ' is-today' : ''}${i >= 5 ? ' is-weekend' : ''}">
+        <div class="day${!undated && day === today ? ' is-today' : ''}${i >= 5 ? ' is-weekend' : ''}">
           <div class="day-head">
             <span class="day-name">${dayNames[i]}</span>
-            <span class="day-date">${D.formatDate(day, lang)}</span>
+            ${undated ? '' : html`<span class="day-date">${D.formatDate(day, lang)}</span>`}
           </div>
           <div class="day-body">
             ${items.length === 0
@@ -264,9 +266,11 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
                 ${l.names_note ? html`<div class="lesson-meta">${l.names_note}</div>` : ''}
                 ${l.trainer_name ? html`<div class="lesson-meta">${t('lesson.trainer', { name: l.trainer_name })}</div>` : ''}
                 <div class="lesson-meta">
-                  ${D.formatDateLong(l.date, lang)}${l.court ? html` · ${t('lesson.court', { court: l.court })}` : ''}
+                  ${undated ? `${l.duration_min} min` : D.formatDateLong(l.date, lang)}${l.court ? html` · ${t('lesson.court', { court: l.court })}` : ''}
                 </div>
-                ${lessonTags(l, lang)}
+                ${undated
+                  ? html`<div class="lesson-tags"><span class="tag tag-kind${l.kind === 'group' ? ' is-group' : ''}">${lessonKindLabel(l, lang)}</span></div>`
+                  : lessonTags(l, lang)}
                 ${l.note ? html`<div class="lesson-note">${l.note}</div>` : ''}
                 ${showPrice ? html`<div class="lesson-meta">${formatMoney(l.price_cents)}${l.kind === 'group' ? ' po osobi' : ''}</div>` : ''}
                 ${actions ? actions(l) : ''}

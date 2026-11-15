@@ -1077,36 +1077,23 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     });
   }
 
-  // Prikaz drafta: kolone ponedjeljak–nedjelja (bez datuma), kartice kao u „Termini“.
+  // Prikaz drafta: ista sedmična kartica kao u „Termini“, ali bez datuma (DRAFT_MONDAY služi samo za raspored po danima).
+  const DRAFT_MONDAY = '2024-01-01';
   function draftWeek(req, d, lessons) {
-    const byDay = D.DAY_NAMES.map(() => []);
-    for (const l of lessons) byDay[l.weekday].push(l);
-    return html`
-      <section class="week draft-week" aria-label="Draft sedmice">
-        <div class="week-grid">
-          ${D.DAY_NAMES.map((day, i) => html`
-          <div class="day${i >= 5 ? ' is-weekend' : ''}">
-            <div class="day-head"><span class="day-name">${day}</span></div>
-            <div class="day-body">
-              ${byDay[i].length === 0 ? html`<p class="empty">Nema treninga</p>` : byDay[i].map((l) => html`
-              <article class="lesson lesson-card ${l.kind === 'group' ? 'is-group' : 'is-individual'}" data-draft-lesson="${l.id}">
-                <div class="lesson-time">${lessonTimeRange(l)} h</div>
-                <ul class="lesson-names">${l.players.length
-                  ? l.players.map((p, n) => html`<li title="${p.name}"><span class="lesson-num">${n + 1}.</span> ${p.name}</li>`)
-                  : html`<li class="muted">bez igrača</li>`}</ul>
-                ${l.trainer_id ? html`<div class="lesson-meta">Trener: ${trainerName(l.trainer_id)}</div>` : ''}
-                <div class="lesson-meta">${l.duration_min} min${l.court ? ` · Teren ${l.court}` : ''}</div>
-                <div class="lesson-tags"><span class="tag tag-kind${l.kind === 'group' ? ' is-group' : ''}">${LESSON_KINDS[l.kind]}</span></div>
-                ${l.note ? html`<div class="lesson-note">${l.note}</div>` : ''}
-                <div class="lesson-actions">
-                  <a href="${draftUrl(d)}/termin/${l.id}">Uredi</a>
-                  <form method="post" action="${draftUrl(d)}/termin/${l.id}/obrisi" data-confirm="Obrisati ovaj termin iz drafta?">${csrfField(req)}<button type="submit" class="link-btn">Obriši</button></form>
-                </div>
-              </article>`)}
-            </div>
-          </div>`)}
-        </div>
-      </section>`;
+    const cards = lessons.map((l) => ({
+      ...l,
+      date: D.addDays(DRAFT_MONDAY, l.weekday),
+      cancelled: 0,
+      member_names: l.players.map((p) => p.name),
+      member_name: l.players.length ? '' : 'bez igrača',
+      trainer_name: l.trainer_id ? trainerName(l.trainer_id) : '',
+    })).map((l) => (l.players.length ? l : { ...l, member_names: null }));
+    const actions = (l) => html`
+      <div class="lesson-actions">
+        <a href="${draftUrl(d)}/termin/${l.id}">Uredi</a>
+        <form method="post" action="${draftUrl(d)}/termin/${l.id}/obrisi" data-confirm="Obrisati ovaj termin iz drafta?">${csrfField(req)}<button type="submit" class="link-btn">Obriši</button></form>
+      </div>`;
+    return weekView({ monday: DRAFT_MONDAY, lessons: cards, baseUrl: draftUrl(d), today: null, actions, numbered: true, undated: true });
   }
 
   function draftPage(req, d, { values = null } = {}) {
@@ -1373,20 +1360,24 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       ${d ? html`
       <section class="card draft-preview">
         <h2>Pregled: „${d.name}“ → ${D.formatDate(monday)} – ${D.formatDate(D.addDays(monday, 6))}</h2>
-        ${plan.length === 0 ? html`<p class="muted">Ovaj draft još nema termina.</p>` : html`
-        <div class="table-wrap"><table>
-          <thead><tr><th>Datum</th><th>Vrijeme</th><th>Teren</th><th>Trener</th><th>Vrsta</th><th>Igrači (cijena)</th></tr></thead>
-          <tbody>${plan.map((l) => html`<tr class="${l.players.length ? '' : 'is-unbilled'}">
-            <td>${D.formatDateLong(l.date)}</td>
-            <td>${lessonTimeRange(l)} h (${l.duration_min} min)</td>
-            <td>${l.court || '–'}</td>
-            <td>${l.trainer_id ? trainerName(l.trainer_id) : '–'}</td>
-            <td>${LESSON_KINDS[l.kind]}</td>
-            <td>${l.players.length
-              ? l.players.map((p) => `${p.name} (${money(p.price)})`).join(', ')
-              : html`<span class="muted">bez igrača – neće biti unesen</span>`}</td>
-          </tr>`)}</tbody>
-        </table></div>`}
+        ${plan.length === 0 ? html`<p class="muted">Ovaj draft još nema termina.</p>` : ''}
+        ${weekView({
+          monday,
+          lessons: plan.map((l) => {
+            const prices = [...new Set(l.players.map((p) => p.price))];
+            return {
+              ...l,
+              cancelled: 0,
+              member_names: l.players.length ? l.players.map((p) => p.name) : null,
+              member_name: 'bez igrača – neće biti unesen',
+              trainer_name: l.trainer_id ? trainerName(l.trainer_id) : '',
+              // Cijena: ista za sve → „25,00 KM po osobi“; različite → navedene po igraču.
+              price_cents: prices.length === 1 ? prices[0] : 0,
+              names_note: prices.length > 1 ? `Cijene: ${l.players.map((p) => `${p.name} ${money(p.price)}`).join(', ')}` : '',
+            };
+          }),
+          baseUrl: '/admin/termine/prema-draftu', today: D.todayISO(), showPrice: true, extraQuery: `&draft=${d.id}`, numbered: true, weekTone: true,
+        })}
         ${existing ? html`<p class="notice">⚠️ Ova sedmica već ima ${existing} ${existing === 1 ? 'termin' : 'termina'}. Postojeći termini se ne brišu i ne mijenjaju –
           termini iz drafta se samo dodaju.</p>` : ''}
         ${usable.length ? html`<form method="post" action="/admin/termine/prema-draftu" class="btn-row">
