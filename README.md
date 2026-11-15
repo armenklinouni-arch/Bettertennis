@@ -148,6 +148,14 @@ Tests: `npm test`
   ohne Groß-/Kleinschreibung und č/ć/š/ž/đ; **×** löscht es) und die Zeile **„Odabrano: N“** mit den Namen der
   angehakten Spieler. Angehakte Spieler bleiben angehakt und werden mitgespeichert, auch wenn der Filter sie ausblendet.
 
+## Wochenübersicht unter Termini (nur Admin)
+
+- Jeder Termin ist eine eigene, deutlich abgegrenzte Karte: **Gruppentraining hellgrün**, **Individualtraining hellblau**,
+  abgesagte Termine grau und durchgestrichen; die Uhrzeit oben ist kräftiger. Im Dunkelmodus gedeckte dunkle Varianten.
+- Jeder Spieler steht in einer eigenen Zeile (Vor- und Nachname zusammen). Ist ein Name in der schmalen Tagesspalte am
+  Desktop zu lang, wird er mit „…“ gekürzt – der volle Name erscheint beim Darüberfahren mit der Maus; am Handy ist genug Platz.
+- Der Wochenplan für Mitglieder, Eltern, Kinder und Trainer bleibt unverändert.
+
 ## Status-Anzeige der Termine
 
 - Nicht abgesagte Termine zeigen **„Planiran“**, solange ihre Endzeit (Ortszeit Sarajevo) noch nicht erreicht ist,

@@ -20,6 +20,13 @@
   --success-soft: #eaf4de;
   --radius: 12px;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
+  /* Termini (admin): kartice po vrsti treninga – svijetle boje u tonovima BetterTennisa */
+  --lesson-group-bg: #ecf6e0;
+  --lesson-group-border: #b5d98a;
+  --lesson-individual-bg: #e6f0fa;
+  --lesson-individual-border: #a8c6e5;
+  --lesson-cancelled-bg: #eef0f2;
+  --lesson-cancelled-border: #d2d7dd;
   color-scheme: light;
 }
 
@@ -40,6 +47,12 @@
     --danger-soft: #3a2220;
     --success-soft: #1d3326;
     --shadow: none;
+    --lesson-group-bg: #1e3424;
+    --lesson-group-border: #3f6b2c;
+    --lesson-individual-bg: #182c42;
+    --lesson-individual-border: #335a80;
+    --lesson-cancelled-bg: #1b2531;
+    --lesson-cancelled-border: #33414f;
     color-scheme: dark;
   }
 }
@@ -260,6 +273,17 @@ tr.is-selected td { background: var(--primary-soft); }
 .recipient-list > * { break-inside: avoid; margin-bottom: 6px; }
 .lesson.is-cancelled { border-left-color: var(--muted); opacity: 0.75; }
 .lesson.is-cancelled .lesson-time { text-decoration: line-through; }
+/* Termini (admin): jasno odvojene kartice */
+.lesson-card { border: 1px solid var(--border); border-left-width: 5px; border-radius: 10px; padding: 8px 8px; box-shadow: 0 1px 2px rgba(17, 48, 76, 0.06); }
+.lesson-card + .lesson-card { margin-top: 2px; }
+.lesson-card.is-group { background: var(--lesson-group-bg); border-color: var(--lesson-group-border); border-left-color: var(--brand-green); }
+.lesson-card.is-individual { background: var(--lesson-individual-bg); border-color: var(--lesson-individual-border); border-left-color: #3d7cc0; }
+.lesson-card.is-cancelled { background: var(--lesson-cancelled-bg); border-color: var(--lesson-cancelled-border); border-left-color: var(--muted); opacity: 0.8; }
+.lesson-card.is-cancelled .lesson-time, .lesson-card.is-cancelled .lesson-names { text-decoration: line-through; color: var(--muted); }
+.lesson-card .lesson-time { font-weight: 800; font-size: 0.98rem; color: var(--brand-text); }
+.lesson-names { list-style: none; margin: 2px 0 4px; padding: 0; font-weight: 500; font-size: 0.86rem; line-height: 1.35; }
+.lesson-names li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lesson-card .lesson-actions .btn { white-space: normal; max-width: 100%; text-align: left; }
 .lesson-edit { font-size: 0.8rem; }
 
 @media (max-width: 900px) {

@@ -191,7 +191,8 @@ function lessonTimeRange(lesson) {
 // Sedmični pregled od ponedjeljka do nedjelje.
 // lessons: termini (s poljem member_name) unutar sedmice.
 // options.baseUrl: cilj za navigaciju po sedmicama; options.actions: funkcija koja vraća dugmad za termin (admin).
-function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '' }) {
+// options.adminCards (samo admin, Termini): termin kao obojena kartica (grupni/individualni), svaki igrač u svom redu.
+function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '', adminCards = false }) {
   const days = D.weekDays(monday);
   const sunday = days[6];
   const prev = D.addDays(monday, -7);
@@ -226,9 +227,11 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
               ? html`<p class="empty">Nema treninga</p>`
               : items.map(
                   (l) => html`
-              <article class="lesson${l.cancelled ? ' is-cancelled' : ''}">
+              <article class="${adminCards ? `lesson lesson-card ${l.kind === 'group' ? 'is-group' : 'is-individual'}` : 'lesson'}${l.cancelled ? ' is-cancelled' : ''}">
                 <div class="lesson-time">${lessonTimeRange(l)} h</div>
-                <div class="lesson-name">${l.member_name}</div>
+                ${adminCards
+                  ? html`<ul class="lesson-names">${(l.member_names || [l.member_name]).map((n) => html`<li title="${n}">${n}</li>`)}</ul>`
+                  : html`<div class="lesson-name">${l.member_name}</div>`}
                 ${l.trainer_name ? html`<div class="lesson-meta">Trener: ${l.trainer_name}</div>` : ''}
                 <div class="lesson-meta">
                   ${D.formatDateLong(l.date)}${l.court ? html` · Teren ${l.court}` : ''}

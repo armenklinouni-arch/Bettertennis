@@ -261,7 +261,7 @@ test('Admin verwaltet Mitglied, Termine und Beträge; Mitglied sieht Wochenplan 
   assert.match(leaWeek.text, /Grupni trening/);
   assert.doesNotMatch(leaWeek.text, /Max/);
   const adminWeek = await admin.request('/admin/termine?woche=2026-10-05');
-  assert.match(adminWeek.text, /Lea Neu, Max|Max, Lea Neu/);
+  assert.match(adminWeek.text, /<ul class="lesson-names">\s*<li[^>]*>(Lea Neu|Max[^<]*)<\/li>\s*<li[^>]*>(Lea Neu|Max[^<]*)<\/li>\s*<\/ul>/);
 
   // Gruppe ohne zweites Mitglied wird abgelehnt
   const bad = await admin.post('/admin/termine', {
@@ -5157,4 +5157,63 @@ test('Treninzi po igraču: pro Spieler Gruppen-/Individualtrainings der Woche, o
   assert.notEqual(r.status, 200);
   assert.doesNotMatch(r.text, /Treninzi po igraču/);
   assert.doesNotMatch((await m.request('/mitglied')).text, /treninzi-po-igracu/);
+});
+
+// ---------------------------------------------------------------- Termini (Admin): Namen untereinander, farbige Karten
+test('Termini-Wochenübersicht (Admin): jeder Spieler in eigener Zeile; Karten für Gruppe/Individual/abgesagt; Mitglieder-Wochenplan unverändert', async () => {
+  const { releaseWeek } = require('../src/weeks');
+  const week = '2027-02-01';
+  releaseWeek(db, week);
+  const a = makeMember('Amra Muharemović', 'karta.amra');
+  const b = makeMember('Benjamin Karta', 'karta.benjamin');
+  const c = makeMember('Cvijeta Karta', 'karta.cvijeta');
+  const ins = (uid, time, kind, g = null, cancelled = 0) => db.prepare(
+    'INSERT INTO lessons (user_id, date, start_time, duration_min, court, kind, group_id, cancelled) VALUES (?, \'2027-02-02\', ?, 60, \'1\', ?, ?, ?)'
+  ).run(uid, time, kind, g, cancelled);
+  for (const uid of [a, b, c]) ins(uid, '16:15', 'group', 'karta-g1');
+  ins(a, '18:15', 'individual');
+  ins(b, '19:15', 'individual', null, 1);
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const t = (await admin.request(`/admin/termine?woche=${week}`)).text;
+  const card = (time) => new RegExp(`<article class="([^"]*)">\\s*<div class="lesson-time">${time}[\\s\\S]*?</article>`).exec(t);
+
+  // Gruppentermin: eigene Karte, jeder Spieler (Vor- und Nachname) in eigener Zeile, kein Komma
+  const g = card('16:15–17:15');
+  assert.ok(g, 'Gruppenkarte fehlt');
+  assert.equal(g[1], 'lesson lesson-card is-group');
+  const names = [...g[0].matchAll(/<li[^>]*>([^<]*)<\/li>/g)].map((m) => m[1]);
+  assert.deepEqual(names.sort(), ['Amra Muharemović', 'Benjamin Karta', 'Cvijeta Karta']);
+  assert.match(g[0], /<ul class="lesson-names">/);
+  assert.doesNotMatch(g[0], /Muharemović, |Karta, /);
+  // Individual- und abgesagter Termin
+  const i = card('18:15–19:15');
+  assert.equal(i[1], 'lesson lesson-card is-individual');
+  assert.match(i[0], /<ul class="lesson-names">\s*<li title="Amra Muharemović">Amra Muharemović<\/li>\s*<\/ul>/);
+  assert.equal(card('19:15–20:15')[1], 'lesson lesson-card is-individual is-cancelled');
+
+  // Farben/Stil: helle Hintergründe, Rand, Abstand, kräftigere Uhrzeit, Namen nicht getrennt
+  const css = (await admin.request('/static/style.css')).text;
+  assert.match(css, /--lesson-group-bg: #[0-9a-f]{6};/);
+  assert.match(css, /--lesson-individual-bg: #[0-9a-f]{6};/);
+  assert.match(css, /\.lesson-card \{[^}]*border: 1px solid[^}]*\}/);
+  assert.match(css, /\.lesson-card\.is-group \{[^}]*background: var\(--lesson-group-bg\)/);
+  assert.match(css, /\.lesson-card\.is-individual \{[^}]*background: var\(--lesson-individual-bg\)/);
+  assert.match(css, /\.lesson-card\.is-cancelled \{[^}]*background: var\(--lesson-cancelled-bg\)/);
+  assert.match(css, /\.lesson-card\.is-cancelled \.lesson-time, \.lesson-card\.is-cancelled \.lesson-names \{[^}]*text-decoration: line-through/);
+  assert.match(css, /\.lesson-card \.lesson-time \{[^}]*font-weight: 800/);
+  assert.match(css, /\.lesson-names li \{[^}]*white-space: nowrap/);
+  // Dunkelmodus hat eigene (dunkle) Kartenfarben, Text bleibt lesbar
+  assert.match(css, /@media \(prefers-color-scheme: dark\) \{\s*:root \{[^}]*--lesson-group-bg:/);
+
+  // Mitglieder-Wochenplan bleibt genau wie bisher
+  const m = client();
+  await m.login('karta.amra', 'memberpass1');
+  const mw = (await m.request(`/mitglied?woche=${week}`)).text;
+  assert.doesNotMatch(mw, /lesson-card|lesson-names/);
+  assert.match(mw, /<article class="lesson">\s*<div class="lesson-time">16:15–17:15 h<\/div>\s*<div class="lesson-name">Amra Muharemović<\/div>/);
+  await createParentAccount(admin, { name: 'Karta Roditelj', username: 'karta.roditelj', password: 'roditelj-pass-1', players: [a, b] });
+  const p = client();
+  await p.login('karta.roditelj', 'roditelj-pass-1');
+  assert.doesNotMatch((await p.request(`/roditelj?woche=${week}`)).text, /lesson-card|lesson-names/);
 });

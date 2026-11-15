@@ -662,9 +662,10 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       const existing = r.group_id && byGroup.get(r.group_id);
       if (existing) {
         existing.member_name = `${existing.member_name}, ${r.member_name}`;
+        existing.member_names.push(r.member_name);
         continue;
       }
-      const item = { ...r };
+      const item = { ...r, member_names: [r.member_name] };
       if (r.group_id) byGroup.set(r.group_id, item);
       out.push(item);
     }
@@ -865,7 +866,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       </div>
       ${childLessonCount ? html`<p class="notice"><a href="/admin/termine/djecji-racuni">⚠️ ${childLessonCount} ${childLessonCount === 1 ? 'termin je upisan' : 'termina je upisano'} s dječijim računima – pogledaj listu i ispravi</a></p>` : ''}
       ${weekReleasePanel(req, monday, back)}
-      ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, actions, showPrice: true, extraQuery })}
+      ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, actions, showPrice: true, extraQuery, adminCards: true })}
       <section class="card">
         <h2>Novi termin</h2>
         ${members.length === 0
