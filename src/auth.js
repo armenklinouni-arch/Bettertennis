@@ -133,6 +133,8 @@ function startSession(db, req, { kind, id, remember }) {
   ).run(tokenHash(token), kind, id, remember ? 1 : 0, now, now, now + sessionLifetime(remember));
   req.session.sid = token;
   req.session.rm = remember ? 1 : 0;
+  // Nova prijava: zapamćena sedmica u „Termini“ (admin) više ne vrijedi – opet automatsko pravilo.
+  delete req.session.termineWeek;
   req.session[SESSION_KEYS[kind]] = id;
 }
 

@@ -194,7 +194,8 @@ function lessonTimeRange(lesson) {
 // Svaki termin je obojena kartica (grupni/individualni/otkazan), svaki igrač u svom redu (member_names ili member_name);
 // names_note: kratka napomena ispod imena (npr. „3 igrača“ kod trenera).
 // options.numbered (samo admin, Termini): redni broj ispred svakog igrača (1., 2., … – za svaki termin ispočetka).
-function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '', numbered = false }) {
+// options.weekTone (samo admin, Termini): pozadina po sedmici (parna = plava, neparna = zelena) i dugme „Ova sedmica“ uvijek vidljivo.
+function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '', numbered = false, weekTone = false }) {
   const days = D.weekDays(monday);
   const sunday = days[6];
   const prev = D.addDays(monday, -7);
@@ -204,14 +205,20 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
   const byDay = new Map(days.map((d) => [d, []]));
   for (const l of lessons) if (byDay.has(l.date)) byDay.get(l.date).push(l);
 
+  const weekNo = D.isoWeekNumber(monday);
+  const blue = weekNo % 2 === 0;
   return html`
-  <section class="week" aria-label="Sedmični pregled">
+  <section class="${weekTone ? `week week-tone ${blue ? 'is-blue' : 'is-green'}` : 'week'}" aria-label="Sedmični pregled">
     <div class="week-head">
       <a class="btn btn-ghost btn-sm" href="${q(prev)}" aria-label="Prethodna sedmica">‹ Prethodna</a>
       <div class="week-title">
-        <strong>${D.isoWeekNumber(monday)}. sedmica</strong>
+        ${weekTone
+          ? html`<strong>${weekNo}. sedmica <small class="week-tone-label">${blue ? 'plava sedmica' : 'zelena sedmica'}</small></strong>`
+          : html`<strong>${weekNo}. sedmica</strong>`}
         <span>${D.formatDate(monday)} – ${D.formatDate(sunday)}</span>
-        ${monday !== thisMonday ? html`<a href="${q(thisMonday)}" class="today-link">Ova sedmica</a>` : ''}
+        ${weekTone
+          ? html`<a class="btn btn-ghost btn-sm week-today-btn" href="${q(thisMonday)}">Ova sedmica</a>`
+          : monday !== thisMonday ? html`<a href="${q(thisMonday)}" class="today-link">Ova sedmica</a>` : ''}
       </div>
       <a class="btn btn-ghost btn-sm" href="${q(next)}" aria-label="Sljedeća sedmica">Sljedeća ›</a>
     </div>

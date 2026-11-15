@@ -27,6 +27,11 @@
   --lesson-individual-border: #a8c6e5;
   --lesson-cancelled-bg: #eef0f2;
   --lesson-cancelled-border: #d2d7dd;
+  /* Termini (admin): dezentna pozadina po sedmici – parna plava, neparna zelena */
+  --week-blue-bg: #edf4fc;
+  --week-blue-border: #c9ddf2;
+  --week-green-bg: #f0f7e7;
+  --week-green-border: #cfe5b2;
   color-scheme: light;
 }
 
@@ -53,6 +58,10 @@
     --lesson-individual-border: #335a80;
     --lesson-cancelled-bg: #1b2531;
     --lesson-cancelled-border: #33414f;
+    --week-blue-bg: #13263a;
+    --week-blue-border: #24425f;
+    --week-green-bg: #15281c;
+    --week-green-border: #2b4a30;
     color-scheme: dark;
   }
 }
@@ -191,6 +200,12 @@ tr.is-inactive td { color: var(--muted); }
 .week-title strong { font-size: 1.2rem; font-weight: 800; color: var(--brand-text); }
 .week-title span { color: var(--text); font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .week-title { min-width: 0; }
+.week-tone { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; }
+.week-tone.is-blue { background: var(--week-blue-bg); border-color: var(--week-blue-border); }
+.week-tone.is-green { background: var(--week-green-bg); border-color: var(--week-green-border); }
+.week-tone-label { font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-left: 4px; vertical-align: middle; }
+.week-today-btn { margin-top: 4px; }
+@media (max-width: 700px) { .week-tone { padding: 8px; } }
 @media (max-width: 480px) {
   /* Schmale Handys: Woche und Datum in eigener Zeile (groß, fett, ohne Umbruch), darunter ‹ Prethodna / Sljedeća › */
   .week-head { flex-wrap: wrap; row-gap: 8px; }

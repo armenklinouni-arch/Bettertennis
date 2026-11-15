@@ -811,7 +811,21 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
 
   router.get('/termine', (req, res) => {
     const today = D.todayISO();
-    const monday = D.mondayOf(D.isValidDate(req.query.woche) ? req.query.woche : today);
+    // Sedmica: izabrana (‹ Prethodna / Sljedeća › / Ova sedmica) se pamti do sljedeće prijave;
+    // inače pon–pet tekuća sedmica, sub/ned sljedeća (planiranje).
+    let monday;
+    if (D.isValidDate(req.query.woche)) {
+      monday = D.mondayOf(req.query.woche);
+      if (req.session.termineWeek !== monday) {
+        req.session.termineWeek = monday;
+        res.saveSession();
+      }
+    } else if (D.isValidDate(req.session.termineWeek)) {
+      monday = D.mondayOf(req.session.termineWeek);
+    } else {
+      const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
+      monday = weekday === 0 || weekday === 6 ? D.addDays(D.mondayOf(today), 7) : D.mondayOf(today);
+    }
     const memberFilter = toId(req.query.mitglied);
     let filterMember = memberFilter ? getMember.get(memberFilter) : null;
     // Dječiji račun nije zaseban izbor u filteru: prikazuju se termini njegovog računa člana.
@@ -866,7 +880,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       </div>
       ${childLessonCount ? html`<p class="notice"><a href="/admin/termine/djecji-racuni">⚠️ ${childLessonCount} ${childLessonCount === 1 ? 'termin je upisan' : 'termina je upisano'} s dječijim računima – pogledaj listu i ispravi</a></p>` : ''}
       ${weekReleasePanel(req, monday, back)}
-      ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, actions, showPrice: true, extraQuery, numbered: true })}
+      ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, actions, showPrice: true, extraQuery, numbered: true, weekTone: true })}
       <section class="card">
         <h2>Novi termin</h2>
         ${members.length === 0

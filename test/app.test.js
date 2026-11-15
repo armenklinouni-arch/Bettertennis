@@ -5337,3 +5337,67 @@ test('Termini (Admin): Spieler je Termin nummeriert (1., 2., 3. …, pro Termin 
   assert.match(card(trainerPage, '14:25–15:25'), /<li title="Nina Redni">Nina Redni<\/li>/);
   assert.match(card(trainerPage, '14:25–15:25'), /<li title="Omer Redni">Omer Redni<\/li>/);
 });
+
+// ---------------------------------------------------------------- Termini (Admin): Farbe je Woche; Startwoche (Wochenende → nächste Woche); gemerkte Woche
+test('Termini (Admin): gerade Woche hellblau „plava sedmica“, ungerade hellgrün „zelena sedmica“; Startwoche Mo–Fr laufend, Sa/So nächste; gewählte Woche bleibt bis zum nächsten Login; „Ova sedmica“', async () => {
+  const title = (t) => /<div class="week-title">([\s\S]*?)<\/div>/.exec(t)[1];
+  const shownMonday = (t) => /<span>(\d\d\.\d\d\.\d{4}\.) – /.exec(title(t))[1];
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+
+  // Freitag, 09.10.2026 (KW 41, ungerade): laufende Woche, grün
+  let t = (await admin.request('/admin/termine')).text;
+  assert.equal(shownMonday(t), '05.10.2026.');
+  assert.match(t, /<section class="week week-tone is-green" aria-label="Sedmični pregled">/);
+  assert.match(title(t), /<strong>41\. sedmica <small class="week-tone-label">zelena sedmica<\/small><\/strong>/);
+  // „Ova sedmica“ ist immer da (auch in der laufenden Woche)
+  assert.match(title(t), /<a class="btn btn-ghost btn-sm week-today-btn" href="\/admin\/termine\?woche=2026-10-05">Ova sedmica<\/a>/);
+
+  // Gerade Woche (KW 42): blau
+  t = (await admin.request('/admin/termine?woche=2026-10-12')).text;
+  assert.match(t, /<section class="week week-tone is-blue"/);
+  assert.match(title(t), /42\. sedmica <small class="week-tone-label">plava sedmica<\/small>/);
+
+  // Selbst gewählte Woche bleibt beim Zurückkommen (andere Seite dazwischen), Mitglieder-Filter bleibt wie bisher in der Adresse
+  await admin.request('/admin/termine?woche=2026-11-04');
+  await admin.request('/admin/abrechnung');
+  assert.equal(shownMonday((await admin.request('/admin/termine')).text), '02.11.2026.');
+  assert.match(title((await admin.request('/admin/termine')).text), /href="\/admin\/termine\?woche=2026-10-05">Ova sedmica/);
+  // „Ova sedmica“ springt zurück und wird ebenfalls gemerkt
+  await admin.request('/admin/termine?woche=2026-10-05');
+  assert.equal(shownMonday((await admin.request('/admin/termine')).text), '05.10.2026.');
+  await admin.request('/admin/termine?woche=2026-11-04');
+  // Nächster Login (nach Odjava, gleicher Browser): wieder automatische Regel
+  await admin.post('/logout', {}, '/admin');
+  await admin.login('admin@test.de', 'adminpass123');
+  assert.equal(shownMonday((await admin.request('/admin/termine')).text), '05.10.2026.');
+
+  // Samstag und Sonntag: nächste Woche (Planung); Montag: laufende Woche
+  for (const [now, expected] of [['2026-10-10T09:00:00', '12.10.2026.'], ['2026-10-11T21:30:00', '12.10.2026.'], ['2026-10-12T07:00:00', '12.10.2026.'], ['2026-10-16T18:00:00', '12.10.2026.'], ['2026-10-17T08:00:00', '19.10.2026.']]) {
+    await atTime(now, async () => {
+      const c = client();
+      await c.login('admin@test.de', 'adminpass123');
+      const page = (await c.request('/admin/termine')).text;
+      assert.equal(shownMonday(page), expected, now);
+      // „Ova sedmica“ zeigt immer auf die laufende Woche (auch am Wochenende)
+      const thisMonday = D.mondayOf(D.todayISO());
+      assert.match(title(page), new RegExp(`href="/admin/termine\\?woche=${thisMonday}">Ova sedmica`), now);
+    });
+  }
+
+  // Farben dezent (helle Töne) mit eigener Dunkelmodus-Variante
+  const css = (await admin.request('/static/style.css')).text;
+  assert.match(css, /--week-blue-bg: #[0-9a-f]{6};/);
+  assert.match(css, /--week-green-bg: #[0-9a-f]{6};/);
+  assert.match(css, /\.week-tone\.is-blue \{[^}]*background: var\(--week-blue-bg\)/);
+  assert.match(css, /\.week-tone\.is-green \{[^}]*background: var\(--week-green-bg\)/);
+  assert.match(css, /@media \(prefers-color-scheme: dark\) \{\s*:root \{[^}]*--week-blue-bg:/);
+
+  // Sedmični raspored der anderen Konten unverändert (keine Wochenfarbe, kein Hinweis, kein Knopf)
+  makeMember('Ton Clan', 'ton.clan');
+  const mc = client();
+  await mc.login('ton.clan', 'memberpass1');
+  const mw = (await mc.request('/mitglied?woche=2026-10-12')).text;
+  assert.doesNotMatch(mw, /week-tone|plava sedmica|zelena sedmica|week-today-btn/);
+  assert.match(mw, /<section class="week" aria-label="Sedmični pregled">/);
+});
