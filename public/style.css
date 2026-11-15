@@ -112,6 +112,12 @@ main.container { flex: 1; padding-top: 24px; padding-bottom: 48px; }
 .main-nav a.active { background: var(--primary-soft); color: var(--primary); }
 .logout { display: flex; align-items: center; gap: 10px; margin: 0; }
 .who { color: var(--muted); font-size: 0.9rem; }
+.lang-switch { display: inline-flex; align-items: center; gap: 1px; margin: 0; font-size: 0.8rem; }
+.lang-switch button { padding: 4px 7px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-weight: 700; letter-spacing: 0.04em; cursor: pointer; }
+.lang-switch button:hover { color: var(--text); background: var(--primary-soft); }
+.lang-switch button.is-active { color: var(--primary); background: var(--primary-soft); }
+.lang-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lang-switch span { color: var(--border); user-select: none; }
 .badge { display: inline-block; background: var(--brand-green); color: #11304c; font-weight: 600; font-size: 0.7rem; padding: 1px 6px; border-radius: 999px; vertical-align: middle; }
 
 .site-footer { color: var(--muted); font-size: 0.85rem; padding: 20px 0; border-top: 1px solid var(--border); }

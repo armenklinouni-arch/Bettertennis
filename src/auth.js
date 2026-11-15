@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { t, normalizeLang } = require('./i18n');
 
 const COOKIE_NAME = 'bt_session';
 const DAY_MS = 1000 * 60 * 60 * 24;
@@ -196,7 +197,7 @@ function loadUser(db) {
   const trainerStmt = db.prepare('SELECT * FROM trainers WHERE id = ? AND active = 1 AND password_hash IS NOT NULL');
   const parentStmt = db.prepare('SELECT * FROM parent_accounts WHERE id = ? AND active = 1');
   const unread = db.prepare('SELECT COUNT(*) AS n FROM news_recipients WHERE user_id = ? AND read_at IS NULL');
-  const prefs = db.prepare('SELECT mascot_hidden FROM account_prefs WHERE kind = ? AND account_id = ?');
+  const prefs = db.prepare('SELECT mascot_hidden, lang FROM account_prefs WHERE kind = ? AND account_id = ?');
   return (req, res, next) => {
     req.user = null;
     if (req.session.uid) {
@@ -213,7 +214,13 @@ function loadUser(db) {
     req.unreadNews = req.user && req.user.role === 'member' ? unread.get(req.user.id).n : 0;
     // Maskota: vidljiva svim prijavljenim računima, osim ako ju je račun sakrio („×“).
     const key = req.user ? accountKey(req.user) : null;
-    req.mascotHidden = !!(key && (prefs.get(key.kind, key.id) || {}).mascot_hidden);
+    const pref = (key && prefs.get(key.kind, key.id)) || {};
+    req.mascotHidden = !!pref.mascot_hidden;
+    // Jezik: admin uvijek bosanski; računi – sačuvani izbor (inače bosanski); posjetioci – izbor u sesiji.
+    if (req.user && req.user.role === 'admin') req.lang = 'bs';
+    else if (req.user) req.lang = normalizeLang(pref.lang);
+    else req.lang = normalizeLang(req.session.lang);
+    req.t = (k, vars) => t(req.lang, k, vars);
     next();
   };
 }
@@ -236,7 +243,7 @@ function csrfProtection(req, res, next) {
     crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
   if (!ok) {
     res.status(403);
-    return res.send('Neispravan token obrasca. Molimo osvježite stranicu i pokušajte ponovo.');
+    return res.send(t(req.lang, 'err.csrf'));
   }
   next();
 }
@@ -269,7 +276,7 @@ function requireParentAccount(req, res, next) {
   if (!req.user) return res.redirect(`/login?weiter=${encodeURIComponent(req.originalUrl)}`);
   if (req.user.role !== 'parent') {
     res.status(403);
-    return res.send('Nemate pristup: ovaj dio je samo za roditeljske račune.');
+    return res.send(t(req.lang, 'err.parentOnly'));
   }
   next();
 }
@@ -278,7 +285,7 @@ function requireTrainer(req, res, next) {
   if (!req.user) return res.redirect(`/login?weiter=${encodeURIComponent(req.originalUrl)}`);
   if (req.user.role !== 'trainer') {
     res.status(403);
-    return res.send('Nemate pristup: ovaj dio je samo za trenere.');
+    return res.send(t(req.lang, 'err.trainerOnly'));
   }
   next();
 }
@@ -289,7 +296,7 @@ function requireAdmin(req, res, next) {
   }
   if (req.user.role !== 'admin') {
     res.status(403);
-    return res.send('Nemate pristup: ovaj dio je samo za administratore.');
+    return res.send(t(req.lang, 'err.adminOnly'));
   }
   next();
 }

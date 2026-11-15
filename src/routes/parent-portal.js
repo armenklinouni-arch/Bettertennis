@@ -43,19 +43,20 @@ module.exports = function parentPortalRoutes(db) {
     const minutes = lessons.filter((l) => !l.cancelled).reduce((s, l) => s + l.duration_min, 0);
     if (released) recordView(db, { kind: 'raspored', period: monday, viewerType: 'roditelj', viewerId: req.user.id, playerIds: players.map((p) => p.id) });
 
+    const { t, lang } = req;
     res.send(String(layout(req, {
-      title: 'Sedmični raspored',
+      title: t('nav.weekly'),
       wide: true,
       body: html`
       <div class="page-head">
         <div>
-          <h1>Zdravo, ${req.user.name}!</h1>
-          <p class="muted">Treninzi ove sedmice: ${lessons.filter((l) => !l.cancelled).length} (${formatHours(minutes / 60)})
-            · Igrači: ${players.length ? players.map((p) => p.name).join(', ') : '–'}</p>
+          <h1>${t('hello', { name: req.user.name })}</h1>
+          <p class="muted">${t('p.weekCount', { n: lessons.filter((l) => !l.cancelled).length, hours: formatHours(minutes / 60, lang) })}
+            · ${t('p.players', { names: players.length ? players.map((p) => p.name).join(', ') : '–' })}</p>
         </div>
       </div>
-      ${released ? '' : html`<p class="notice">Raspored za ovu sedmicu još nije objavljen. Bit će vidljiv čim ga teniska škola objavi.</p>`}
-      ${weekView({ monday, lessons, baseUrl: '/roditelj', today })}`,
+      ${released ? '' : html`<p class="notice">${t('week.notPublished')}</p>`}
+      ${weekView({ monday, lessons, baseUrl: '/roditelj', today, lang })}`,
     })));
   });
 
@@ -90,57 +91,57 @@ module.exports = function parentPortalRoutes(db) {
     const total = counted.reduce((s, r) => s + r.st.total, 0);
     const pendingSelected = rows.filter((r) => r.on && !r.st.released);
     const selectionQuery = `&izbor=1${[...selected].map((id) => `&igraci=${id}`).join('')}`;
+    const { t, lang } = req;
 
     res.send(String(layout(req, {
-      title: 'Finansije',
+      title: t('nav.finances'),
       body: html`
       <div class="page-head"><div>
-        <h1>Finansije</h1>
-        <p class="muted">Mjesečni iznosi tvojih igrača. Označi igrače koje želiš uključiti – zbir se odmah računa
-          za odabrani mjesec. Izbor se ne čuva i možeš ga u svakom mjesecu slobodno mijenjati.</p>
+        <h1>${t('nav.finances')}</h1>
+        <p class="muted">${t('p.finIntro')}</p>
       </div></div>
-      ${monthNav('/roditelj/finansije', month, selectionQuery)}
+      ${monthNav('/roditelj/finansije', month, selectionQuery, { lang })}
       <div class="summary-tile big">
-        <span class="label">Ukupno za odabrane igrače · ${D.monthLabel(month)}</span>
+        <span class="label">${t('p.totalSelected', { month: D.monthLabel(month, lang) })}</span>
         <span class="value" data-total="${total}">${formatMoney(total)}</span>
         <span class="hint">${selected.size === 0
-          ? 'Nijedan igrač nije odabran.'
-          : `Odabrano: ${counted.length + pendingSelected.length} od ${players.length}`}${
-          pendingSelected.length ? ` · ${pendingSelected.length} u pripremi (nije uključeno u zbir)` : ''}</span>
+          ? t('p.noneSelected')
+          : t('p.selected', { n: counted.length + pendingSelected.length, total: players.length })}${
+          pendingSelected.length ? t('p.pendingCount', { n: pendingSelected.length }) : ''}</span>
       </div>
       <section class="card">
         <form method="get" action="/roditelj/finansije" class="stack" data-autosubmit>
           <input type="hidden" name="monat" value="${month}">
           <input type="hidden" name="izbor" value="1">
           <div class="table-wrap"><table>
-            <thead><tr><th>Uključi</th><th>Igrač</th><th class="num">Termini</th><th class="num">Iznos</th><th>Status</th></tr></thead>
+            <thead><tr><th>${t('p.include')}</th><th>${t('p.player')}</th><th class="num">${t('p.sessions')}</th><th class="num">${t('field.amount')}</th><th>${t('field.status')}</th></tr></thead>
             <tbody>${players.length === 0
-              ? html`<tr><td colspan="5" class="empty">Još nema dodijeljenih igrača.</td></tr>`
+              ? html`<tr><td colspan="5" class="empty">${t('p.noPlayers')}</td></tr>`
               : rows.map(({ player, st, on }) => html`<tr class="${on ? 'is-selected' : ''}">
-                <td><label class="check"><input type="checkbox" name="igraci" value="${player.id}"${on ? ' checked' : ''}><span class="sr-only">Uključi ${player.name}</span></label></td>
+                <td><label class="check"><input type="checkbox" name="igraci" value="${player.id}"${on ? ' checked' : ''}><span class="sr-only">${t('p.includeName', { name: player.name })}</span></label></td>
                 <td><strong>${player.name}</strong></td>
                 <td class="num">${st.manual ? '–' : st.lessonCount}</td>
                 <td class="num">${st.released ? formatMoney(st.total) : '–'}</td>
-                <td>${st.released ? paymentBadge(st) : html`<span class="tag tag-pending">Obračun u pripremi</span>`}</td>
+                <td>${st.released ? paymentBadge(st, { lang }) : html`<span class="tag tag-pending">${t('st.pending')}</span>`}</td>
               </tr>`)}</tbody>
           </table></div>
-          <div class="btn-row"><button class="btn btn-primary btn-sm" type="submit">Izračunaj zbir</button></div>
+          <div class="btn-row"><button class="btn btn-primary btn-sm" type="submit">${t('p.calc')}</button></div>
         </form>
       </section>
       ${rows.filter((r) => r.on).map(({ player, st }) => html`
       <section class="card player-statement" data-player="${player.id}">
-        <h2>${player.name} · ${D.monthLabel(month)}</h2>
+        <h2>${player.name} · ${D.monthLabel(month, lang)}</h2>
         ${st.released
-          ? html`<p class="muted small">${st.manual ? '' : `Termini: ${st.lessonCount} · ${formatHours(st.hours)} · `}${paymentBadge(st)}</p>
-            ${statementTable(detail(st))}`
-          : html`<p class="notice">Obračun u pripremi – stavke i iznos bit će vidljivi kad ih škola odobri.</p>`}
+          ? html`<p class="muted small">${st.manual ? '' : `${t('st.termsHours', { n: st.lessonCount, hours: formatHours(st.hours, lang) })} · `}${paymentBadge(st, { lang })}</p>
+            ${statementTable(detail(st), { lang })}`
+          : html`<p class="notice">${t('p.pendingNotice')}</p>`}
       </section>`)}
       ${selected.size ? html`<div class="summary-tile">
-        <span class="label">Ukupno za odabrane igrače · ${D.monthLabel(month)}</span>
+        <span class="label">${t('p.totalSelected', { month: D.monthLabel(month, lang) })}</span>
         <span class="value" data-grand-total="${total}">${formatMoney(total)}</span>
         <span class="hint">${counted.map((r) => `${r.player.name}: ${formatMoney(r.st.total)}`).join(' · ') || '–'}</span>
       </div>` : ''}
-      <p class="muted small">Pregled je samo informativan. Iznos mjeseca je vidljiv kad ga škola odobri.</p>`,
+      <p class="muted small">${t('p.note')}</p>`,
     })));
   });
 

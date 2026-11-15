@@ -9,6 +9,7 @@ const { sortByName } = require('./search');
 const { formatMoney, centsToInput, CURRENCY_SYMBOL } = require('./money');
 const { formatHours } = require('./billing');
 const { zonedTimeToUtc } = require('./weeks');
+const { t: translate } = require('./i18n');
 
 const SITE_NAME = 'BetterTennis';
 
@@ -30,12 +31,28 @@ const MASCOT_VERSION = (() => {
 // Maskota (test): samo za admina, dolje desno – novi dizajn (kapa „BT“, public/img/maskota-v2).
 // Trajanje animacija u ms (vidi scripts/maskota-animacije.js).
 const MASCOT_ANIMS = { servis: 3000, forhend: 2600, promasaj: 4000, poen: 3200, pogodjen: 3600, mevsme: 7600 };
-function mascotWidget(req) {
-  return html`<div class="mascot-widget" data-mascot data-anims="${JSON.stringify(MASCOT_ANIMS)}" data-version="${MASCOT_VERSION}"><img class="mascot-img" src="/static/img/maskota-v2/spremni.svg?v=${MASCOT_VERSION}" alt="" width="380" height="360"><button type="button" class="mascot-hit" aria-label="Pokreni animaciju maskote"></button><form method="post" action="/maskota/sakrij" class="mascot-close-form">${csrfField(req)}<button type="submit" class="mascot-close" aria-label="Sakrij maskotu">×</button></form></div>`;
+function mascotWidget(req, t) {
+  return html`<div class="mascot-widget" data-mascot data-anims="${JSON.stringify(MASCOT_ANIMS)}" data-version="${MASCOT_VERSION}"><img class="mascot-img" src="/static/img/maskota-v2/spremni.svg?v=${MASCOT_VERSION}" alt="" width="380" height="360"><button type="button" class="mascot-hit" aria-label="${t('mascot.play')}"></button><form method="post" action="/maskota/sakrij" class="mascot-close-form">${csrfField(req)}<button type="submit" class="mascot-close" aria-label="${t('mascot.hide')}">×</button></form></div>`;
+}
+
+// Umschalter „BS | EN“ (posjetioci i svi računi osim admina). Nakon izbora nazad na istu stranicu.
+function langSwitch(req, lang, t) {
+  const home = req.user ? ({ trainer: '/trener', parent: '/roditelj' }[req.user.role] || '/mitglied') : '/';
+  const back = req.method === 'GET' ? req.originalUrl : home;
+  const button = (code, label) => html`<button type="submit" name="lang" value="${code}"${lang === code ? html` class="is-active" aria-pressed="true"` : html` aria-pressed="false"`}>${label}</button>`;
+  return html`<form method="post" action="/jezik" class="lang-switch" aria-label="${t('lang.label')}">
+        ${csrfField(req)}<input type="hidden" name="back" value="${back}">
+        ${button('bs', 'BS')}
+        <span aria-hidden="true">|</span>
+        ${button('en', 'EN')}
+      </form>`;
 }
 
 function layout(req, { title, body, wide = false, fullBleed = false }) {
   const user = req.user;
+  // Admin dio je uvijek na bosanskom (req.lang = 'bs'); ostali vide izabrani jezik.
+  const lang = req.lang || 'bs';
+  const t = (key, vars) => translate(lang, key, vars);
   // Maskota: svi prijavljeni računi (admin, član, dijete, roditelj, trener), osim ako su je sakrili; posjetioci ne.
   const showMascot = !!user && !req.mascotHidden;
   const flash = req.takeFlash();
@@ -48,8 +65,8 @@ function layout(req, { title, body, wide = false, fullBleed = false }) {
   let nav;
   if (!user) {
     nav = req.app.locals.publicHomepage
-      ? html`${navLink('/', 'Početna', true)} ${navLink('/login', 'Prijava za članove')}`
-      : html`${navLink('/login', 'Prijava za članove')}`;
+      ? html`${navLink('/', t('nav.home'), true)} ${navLink('/login', t('nav.memberLogin'))}`
+      : html`${navLink('/login', t('nav.memberLogin'))}`;
   } else if (user.role === 'admin') {
     nav = html`
       ${navLink('/admin', 'Pregled', true)}
@@ -68,30 +85,30 @@ function layout(req, { title, body, wide = false, fullBleed = false }) {
       ${navLink('/admin/ko-je-pogledao', 'Ko je pogledao')}`;
   } else if (user.role === 'trainer') {
     nav = html`
-      ${navLink('/trener', 'Moj izvještaj', true)}
-      ${navLink('/trener/raspored', 'Moj raspored')}
-      ${navLink('/trener/lozinka', 'Lozinka')}`;
+      ${navLink('/trener', t('nav.myReport'), true)}
+      ${navLink('/trener/raspored', t('nav.mySchedule'))}
+      ${navLink('/trener/lozinka', t('nav.password'))}`;
   } else if (user.role === 'parent') {
     // Roditeljski račun: samo pregled (raspored i finansije dodijeljenih igrača).
     nav = html`
-      ${navLink('/roditelj', 'Sedmični raspored', true)}
-      ${navLink('/roditelj/finansije', 'Finansije')}`;
+      ${navLink('/roditelj', t('nav.weekly'), true)}
+      ${navLink('/roditelj/finansije', t('nav.finances'))}`;
   } else if (user.parent_id) {
     // Dječiji račun: samo sedmični raspored (bez iznosa, plaćanja i obračuna).
-    nav = html`${navLink('/mitglied', 'Moj raspored', true)}`;
+    nav = html`${navLink('/mitglied', t('nav.mySchedule'), true)}`;
   } else {
     nav = html`
-      ${navLink('/mitglied', 'Sedmični raspored', true)}
-      ${navLink('/mitglied/abrechnung', 'Mjesečni iznos')}
-      ${navLink('/mitglied/privatni-cas', 'Zatraži privatni čas')}
-      ${navLink('/mitglied/aktuelnosti', html`Aktuelnosti${req.unreadNews ? html` <span class="count" aria-label="nepročitano">${req.unreadNews}</span>` : ''}`)}
-      ${navLink('/mitglied/djeca', 'Djeca')}
-      ${navLink('/mitglied/moji-podaci', 'Moji podaci')}
-      ${navLink('/mitglied/passwort', 'Lozinka')}`;
+      ${navLink('/mitglied', t('nav.weekly'), true)}
+      ${navLink('/mitglied/abrechnung', t('nav.monthly'))}
+      ${navLink('/mitglied/privatni-cas', t('nav.privateLesson'))}
+      ${navLink('/mitglied/aktuelnosti', html`${t('nav.news')}${req.unreadNews ? html` <span class="count" aria-label="${t('nav.unread')}">${req.unreadNews}</span>` : ''}`)}
+      ${navLink('/mitglied/djeca', t('nav.children'))}
+      ${navLink('/mitglied/moji-podaci', t('nav.myData'))}
+      ${navLink('/mitglied/passwort', t('nav.password'))}`;
   }
 
   return html`<!doctype html>
-<html lang="bs">
+<html lang="${lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -109,12 +126,13 @@ function layout(req, { title, body, wide = false, fullBleed = false }) {
         <img class="brand-mark" src="/static/img/logo-mark.png" alt="" width="40" height="40">
         <span class="brand-name">Better<span>Tennis</span></span>
       </a>
-      <nav class="main-nav" aria-label="Glavna navigacija">${nav}</nav>
+      <nav class="main-nav" aria-label="${t('nav.main')}">${nav}</nav>
+      ${user && user.role === 'admin' ? '' : langSwitch(req, lang, t)}
       ${user
         ? html`<form method="post" action="/logout" class="logout">
             ${csrfField(req)}
-            <span class="who">${user.name}${user.role === 'admin' ? html` <span class="badge">Admin</span>` : ''}${user.role === 'trainer' ? html` <span class="badge">Trener</span>` : ''}${user.role === 'parent' ? html` <span class="badge">Roditelj</span>` : ''}</span>
-            <button type="submit" class="btn btn-ghost btn-sm">Odjava</button>
+            <span class="who">${user.name}${user.role === 'admin' ? html` <span class="badge">Admin</span>` : ''}${user.role === 'trainer' ? html` <span class="badge">${t('badge.trainer')}</span>` : ''}${user.role === 'parent' ? html` <span class="badge">${t('badge.parent')}</span>` : ''}</span>
+            <button type="submit" class="btn btn-ghost btn-sm">${t('logout')}</button>
           </form>`
         : ''}
     </div>
@@ -129,10 +147,10 @@ function layout(req, { title, body, wide = false, fullBleed = false }) {
     ${body}
   </main>`}
   <footer class="site-footer">
-    <div class="container${wide ? ' wide' : ''}">© ${new Date().getFullYear()} ${SITE_NAME} · Teniska škola${user && req.mascotHidden
-      ? html`<form method="post" action="/maskota/prikazi" class="mascot-show-form">${csrfField(req)}<button type="submit" class="link-btn">Prikaži maskotu</button></form>` : ''}</div>
+    <div class="container${wide ? ' wide' : ''}">© ${new Date().getFullYear()} ${SITE_NAME} · ${t('site.tagline')}${user && req.mascotHidden
+      ? html`<form method="post" action="/maskota/prikazi" class="mascot-show-form">${csrfField(req)}<button type="submit" class="link-btn">${t('mascot.show')}</button></form>` : ''}</div>
   </footer>
-  ${showMascot ? mascotWidget(req) : ''}
+  ${showMascot ? mascotWidget(req, t) : ''}
 </body>
 </html>`;
 }
@@ -164,23 +182,23 @@ function isLessonOver(lesson, now = Date.now()) {
   return lessonEndMs(lesson) <= now;
 }
 
-// Naziv za termin koji nije otkazan: „Planiran“ ili „Realizovan“.
-function activeStatusLabel(lesson, now = Date.now()) {
-  return isLessonOver(lesson, now) ? LESSON_STATUSES.done : LESSON_PLANNED;
+// Naziv za termin koji nije otkazan: „Planiran“ ili „Realizovan“ (lang: jezik prikaza, standard bosanski).
+function activeStatusLabel(lesson, now = Date.now(), lang = 'bs') {
+  return translate(lang, isLessonOver(lesson, now) ? 'lesson.done' : 'lesson.planned');
 }
 
-function lessonKindLabel(lesson) {
-  return LESSON_KINDS[lesson.kind] || LESSON_KINDS.individual;
+function lessonKindLabel(lesson, lang = 'bs') {
+  return translate(lang, lesson.kind === 'group' ? 'lesson.group' : 'lesson.individual');
 }
 
-function lessonStatusLabel(lesson) {
-  return lesson.cancelled ? LESSON_STATUSES.cancelled : activeStatusLabel(lesson);
+function lessonStatusLabel(lesson, lang = 'bs') {
+  return lesson.cancelled ? translate(lang, 'lesson.cancelled') : activeStatusLabel(lesson, Date.now(), lang);
 }
 
-function lessonTags(lesson) {
+function lessonTags(lesson, lang = 'bs') {
   return html`<div class="lesson-tags">
-    <span class="tag tag-kind${lesson.kind === 'group' ? ' is-group' : ''}">${lessonKindLabel(lesson)}</span>
-    <span class="tag ${lesson.cancelled ? 'tag-cancelled' : isLessonOver(lesson) ? 'tag-done' : 'tag-planned'}">${lessonStatusLabel(lesson)}</span>
+    <span class="tag tag-kind${lesson.kind === 'group' ? ' is-group' : ''}">${lessonKindLabel(lesson, lang)}</span>
+    <span class="tag ${lesson.cancelled ? 'tag-cancelled' : isLessonOver(lesson) ? 'tag-done' : 'tag-planned'}">${lessonStatusLabel(lesson, lang)}</span>
   </div>`;
 }
 
@@ -195,7 +213,10 @@ function lessonTimeRange(lesson) {
 // names_note: kratka napomena ispod imena (npr. „3 igrača“ kod trenera).
 // options.numbered (samo admin, Termini): redni broj ispred svakog igrača (1., 2., … – za svaki termin ispočetka).
 // options.weekTone (samo admin, Termini): pozadina po sedmici (parna = plava, neparna = zelena) i dugme „Ova sedmica“ uvijek vidljivo.
-function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '', numbered = false, weekTone = false }) {
+// options.lang: jezik prikaza (standard bosanski; admin uvijek bosanski).
+function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '', numbered = false, weekTone = false, lang = 'bs' }) {
+  const t = (key, vars) => translate(lang, key, vars);
+  const dayNames = D.dayNames(lang);
   const days = D.weekDays(monday);
   const sunday = days[6];
   const prev = D.addDays(monday, -7);
@@ -208,19 +229,19 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
   const weekNo = D.isoWeekNumber(monday);
   const blue = weekNo % 2 === 0;
   return html`
-  <section class="${weekTone ? `week week-tone ${blue ? 'is-blue' : 'is-green'}` : 'week'}" aria-label="Sedmični pregled">
+  <section class="${weekTone ? `week week-tone ${blue ? 'is-blue' : 'is-green'}` : 'week'}" aria-label="${t('week.aria')}">
     <div class="week-head">
-      <a class="btn btn-ghost btn-sm" href="${q(prev)}" aria-label="Prethodna sedmica">‹ Prethodna</a>
+      <a class="btn btn-ghost btn-sm" href="${q(prev)}" aria-label="${t('week.prevAria')}">${t('week.prev')}</a>
       <div class="week-title">
         ${weekTone
-          ? html`<strong>${weekNo}. sedmica <small class="week-tone-label">${blue ? 'plava sedmica' : 'zelena sedmica'}</small></strong>`
-          : html`<strong>${weekNo}. sedmica</strong>`}
-        <span>${D.formatDate(monday)} – ${D.formatDate(sunday)}</span>
+          ? html`<strong>${t('week.number', { n: weekNo })} <small class="week-tone-label">${blue ? 'plava sedmica' : 'zelena sedmica'}</small></strong>`
+          : html`<strong>${t('week.number', { n: weekNo })}</strong>`}
+        <span>${D.formatDate(monday, lang)} – ${D.formatDate(sunday, lang)}</span>
         ${weekTone
-          ? html`<a class="btn btn-ghost btn-sm week-today-btn" href="${q(thisMonday)}">Ova sedmica</a>`
-          : monday !== thisMonday ? html`<a href="${q(thisMonday)}" class="today-link">Ova sedmica</a>` : ''}
+          ? html`<a class="btn btn-ghost btn-sm week-today-btn" href="${q(thisMonday)}">${t('week.thisWeek')}</a>`
+          : monday !== thisMonday ? html`<a href="${q(thisMonday)}" class="today-link">${t('week.thisWeek')}</a>` : ''}
       </div>
-      <a class="btn btn-ghost btn-sm" href="${q(next)}" aria-label="Sljedeća sedmica">Sljedeća ›</a>
+      <a class="btn btn-ghost btn-sm" href="${q(next)}" aria-label="${t('week.nextAria')}">${t('week.next')}</a>
     </div>
     <div class="week-grid">
       ${days.map((day, i) => {
@@ -228,23 +249,23 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
         return html`
         <div class="day${day === today ? ' is-today' : ''}${i >= 5 ? ' is-weekend' : ''}">
           <div class="day-head">
-            <span class="day-name">${D.DAY_NAMES[i]}</span>
-            <span class="day-date">${D.formatDate(day)}</span>
+            <span class="day-name">${dayNames[i]}</span>
+            <span class="day-date">${D.formatDate(day, lang)}</span>
           </div>
           <div class="day-body">
             ${items.length === 0
-              ? html`<p class="empty">Nema treninga</p>`
+              ? html`<p class="empty">${t('week.noTraining')}</p>`
               : items.map(
                   (l) => html`
               <article class="lesson lesson-card ${l.kind === 'group' ? 'is-group' : 'is-individual'}${l.cancelled ? ' is-cancelled' : ''}">
                 <div class="lesson-time">${lessonTimeRange(l)} h</div>
                 <ul class="lesson-names">${(l.member_names || [l.member_name]).map((n, i) => html`<li title="${n}">${numbered ? html`<span class="lesson-num">${i + 1}.</span> ` : ''}${n}</li>`)}</ul>
                 ${l.names_note ? html`<div class="lesson-meta">${l.names_note}</div>` : ''}
-                ${l.trainer_name ? html`<div class="lesson-meta">Trener: ${l.trainer_name}</div>` : ''}
+                ${l.trainer_name ? html`<div class="lesson-meta">${t('lesson.trainer', { name: l.trainer_name })}</div>` : ''}
                 <div class="lesson-meta">
-                  ${D.formatDateLong(l.date)}${l.court ? html` · Teren ${l.court}` : ''}
+                  ${D.formatDateLong(l.date, lang)}${l.court ? html` · ${t('lesson.court', { court: l.court })}` : ''}
                 </div>
-                ${lessonTags(l)}
+                ${lessonTags(l, lang)}
                 ${l.note ? html`<div class="lesson-note">${l.note}</div>` : ''}
                 ${showPrice ? html`<div class="lesson-meta">${formatMoney(l.price_cents)}${l.kind === 'group' ? ' po osobi' : ''}</div>` : ''}
                 ${actions ? actions(l) : ''}
@@ -299,7 +320,10 @@ function statementTable(statement, {
   showDetails = false,
   // Samo admin (otvoren mjesec): „Uredi“ uz stavku; editId = stavka koja se upravo uređuje u svom redu.
   editId = null, editUrl = null, cancelUrl = null,
+  // Jezik prikaza (članovi i roditelji); admin uvijek bosanski.
+  lang = 'bs',
 } = {}) {
+  const t = (key, vars) => translate(lang, key, vars);
   const det = (content) => (showDetails ? html`<td>${content}</td>` : '');
   const showStatus = attendance && statement.mode !== 'manual';
   const showMarks = billingMarks && statement.mode === 'schedule';
@@ -309,7 +333,7 @@ function statementTable(statement, {
   const rows = [];
   const off = statement.noTraining ? ' is-unbilled' : '';
   if (statement.fee) {
-    rows.push(html`<tr class="${off}"><td>Mjesečna osnovna članarina</td>${det('')}${extra()}<td class="num">${formatMoney(statement.fee)}</td>${del()}</tr>`);
+    rows.push(html`<tr class="${off}"><td>${t('st.fee')}</td>${det('')}${extra()}<td class="num">${formatMoney(statement.fee)}</td>${del()}</tr>`);
   }
   const isDisplay = statement.mode === 'display';
   const hasAmount = (l) => l.display_amount_cents !== null && l.display_amount_cents !== undefined;
@@ -320,7 +344,7 @@ function statementTable(statement, {
     const note = isDisplay && l.display_note ? l.display_note : '';
     rows.push(html`
       <tr${isDisplay ? html` id="termin-${l.id}"` : ''} class="${l.cancelled ? 'is-cancelled' : ''}${showMarks && l.billable === 0 ? ' is-unbilled' : ''}">
-        <td>${lessonKindLabel(l)} ${D.formatDateLong(l.date)}, ${lessonTimeRange(l)} h${l.court ? ` · Teren ${l.court}` : ''}${
+        <td>${lessonKindLabel(l, lang)} ${D.formatDateLong(l.date, lang)}, ${lessonTimeRange(l)} h${l.court ? ` · ${t('lesson.court', { court: l.court })}` : ''}${
           note ? html`<br><span class="lesson-note">📝 ${note}</span>` : ''}</td>
         ${det(`${lessonStatusLabel(l)} · ${l.duration_min} min`)}
         ${showStatus ? html`<td class="attendance">${attendanceLabel(l)}</td>` : ''}
@@ -359,30 +383,30 @@ function statementTable(statement, {
   }
   if (statement.unpublishedCount) {
     rows.push(html`
-      <tr><td>Termini iz sedmica čiji raspored još nije objavljen</td>${det(`Termini: ${statement.unpublishedCount}`)}${extra()}<td class="num"></td>${del()}</tr>`);
+      <tr><td>${t('st.unpublished')}</td>${det(`Termini: ${statement.unpublishedCount}`)}${extra()}<td class="num"></td>${del()}</tr>`);
   }
   if (rows.length === 0) {
-    rows.push(html`<tr><td colspan="${cols}" class="empty">Za ovaj mjesec nema stavki.</td></tr>`);
+    rows.push(html`<tr><td colspan="${cols}" class="empty">${t('st.empty')}</td></tr>`);
   }
 
   return html`
   <div class="table-wrap">
     <table class="statement">
-      <thead><tr><th>Stavka</th>${showDetails ? html`<th>Detalji</th>` : ''}${showStatus ? html`<th>Status</th>` : ''}${showMarks ? html`<th>Obračun</th>` : ''}<th class="num">Iznos</th>${adminDelete ? html`<th></th>` : ''}</tr></thead>
+      <thead><tr><th>${t('st.item')}</th>${showDetails ? html`<th>Detalji</th>` : ''}${showStatus ? html`<th>Status</th>` : ''}${showMarks ? html`<th>Obračun</th>` : ''}<th class="num">${t('field.amount')}</th>${adminDelete ? html`<th></th>` : ''}</tr></thead>
       <tbody>${rows}</tbody>
       <tfoot>
         ${statement.noTraining
-          ? html`<tr class="no-training"><td>Bez treninga u ovom mjesecu</td>${det('Iznos za mjesec: 0 KM')}${extra()}<td class="num">${formatMoney(0)}</td>${del()}</tr>`
+          ? html`<tr class="no-training"><td>${t('st.noTraining')}</td>${det('Iznos za mjesec: 0 KM')}${extra()}<td class="num">${formatMoney(0)}</td>${del()}</tr>`
           : statement.mode === 'manual'
           ? (showManualRow ? html`<tr><td>Treninzi</td>${det('Ručni obračun – vidi stavke')}${extra()}<td class="num"></td>${del()}</tr>` : '')
           : statement.mode === 'display' && statement.display && statement.display.override !== null
-            ? html`<tr><td>Treninzi (ručno određen iznos)</td>${det(`Termini: ${statement.lessonCount} · ${formatHours(statement.hours)} · zbir po terminima: ${formatMoney(statement.display.autoTotal)}`)}${extra()}<td class="num">${formatMoney(statement.lessonsTotal)}</td>${del()}</tr>`
+            ? html`<tr><td>${t('st.trainingsOverride')}</td>${det(`Termini: ${statement.lessonCount} · ${formatHours(statement.hours)} · zbir po terminima: ${formatMoney(statement.display.autoTotal)}`)}${extra()}<td class="num">${formatMoney(statement.lessonsTotal)}</td>${del()}</tr>`
           : statement.mode === 'display' && statement.display && statement.display.amounts > 0
-            ? html`<tr><td>Treninzi (iznosi po terminima)</td>${det(`Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}`)}${extra()}<td class="num">${formatMoney(statement.lessonsTotal)}</td>${del()}</tr>`
+            ? html`<tr><td>${t('st.trainingsPerLesson')}</td>${det(`Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}`)}${extra()}<td class="num">${formatMoney(statement.lessonsTotal)}</td>${del()}</tr>`
           : statement.mode === 'display'
-            ? html`<tr><td>Realizovani treninzi</td>${det(`Termini: ${statement.lessonCount} · ${formatHours(statement.hours)} · samo prikaz, bez obračuna`)}${extra()}<td class="num">–</td>${del()}</tr>`
-            : html`<tr><td>Realizovani treninzi</td>${det(`Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}`)}${extra()}<td class="num">${formatMoney(statement.lessonsTotal)}</td>${del()}</tr>`}
-        <tr class="total"><td>Ukupno ${D.monthLabel(statement.month)}</td>${det('')}${extra()}<td class="num">${formatMoney(statement.total)}</td>${del()}</tr>
+            ? html`<tr><td>${t('st.realized')}</td>${det(`Termini: ${statement.lessonCount} · ${formatHours(statement.hours)} · samo prikaz, bez obračuna`)}${extra()}<td class="num">–</td>${del()}</tr>`
+            : html`<tr><td>${t('st.realized')}</td>${det(`Termini: ${statement.lessonCount} · ${formatHours(statement.hours)}`)}${extra()}<td class="num">${formatMoney(statement.lessonsTotal)}</td>${del()}</tr>`}
+        <tr class="total"><td>${t('st.total', { month: D.monthLabel(statement.month, lang) })}</td>${det('')}${extra()}<td class="num">${formatMoney(statement.total)}</td>${del()}</tr>
       </tfoot>
     </table>
   </div>`;
@@ -427,27 +451,28 @@ function listFilter({ key, action, value = '', clearHref, hidden = {} }) {
 
 // Plaćeno / nije plaćeno – samo informativno. Datum uplate je interna informacija: prikazuje se samo
 // adminu (showDate); članovi i roditeljski računi vide samo „Plaćeno“.
-function paymentBadge(statement, { showDate = false } = {}) {
-  if (statement.noTraining) return html`<span class="tag tag-none">Bez treninga u ovom mjesecu – 0 KM</span>`;
-  if (!statement.paid && statement.total === 0) return html`<span class="tag">Nema obaveze</span>`;
+function paymentBadge(statement, { showDate = false, lang = 'bs' } = {}) {
+  const t = (key) => translate(lang, key);
+  if (statement.noTraining) return html`<span class="tag tag-none">${t('pay.noTraining')}</span>`;
+  if (!statement.paid && statement.total === 0) return html`<span class="tag">${t('pay.nothingDue')}</span>`;
   return statement.paid
-    ? html`<span class="tag tag-done">Plaćeno${showDate && statement.paidAt ? ` (${D.formatDate(statement.paidAt)})` : ''}</span>`
-    : html`<span class="tag tag-cancelled">Nije plaćeno</span>`;
+    ? html`<span class="tag tag-done">${t('pay.paid')}${showDate && statement.paidAt ? ` (${D.formatDate(statement.paidAt)})` : ''}</span>`
+    : html`<span class="tag tag-cancelled">${t('pay.unpaid')}</span>`;
 }
 
 // options.min / options.max (YYYY-MM) ograničavaju navigaciju (npr. članovi vide samo 3 mjeseca unazad).
-function monthNav(baseUrl, month, extraQuery = '', { min = null, max = null } = {}) {
+function monthNav(baseUrl, month, extraQuery = '', { min = null, max = null, lang = 'bs' } = {}) {
   const prev = D.addMonths(month, -1);
   const next = D.addMonths(month, 1);
   return html`
   <div class="month-nav">
     ${min && prev < min
       ? html`<span></span>`
-      : html`<a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${prev}${extraQuery}" aria-label="${D.monthLabel(prev)}">‹ <span class="month-nav-label">${D.monthLabel(prev)}</span></a>`}
-    <strong>${D.monthLabel(month)}</strong>
+      : html`<a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${prev}${extraQuery}" aria-label="${D.monthLabel(prev, lang)}">‹ <span class="month-nav-label">${D.monthLabel(prev, lang)}</span></a>`}
+    <strong>${D.monthLabel(month, lang)}</strong>
     ${max && next > max
       ? html`<span></span>`
-      : html`<a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${next}${extraQuery}" aria-label="${D.monthLabel(next)}"><span class="month-nav-label">${D.monthLabel(next)}</span> ›</a>`}
+      : html`<a class="btn btn-ghost btn-sm" href="${baseUrl}?monat=${next}${extraQuery}" aria-label="${D.monthLabel(next, lang)}"><span class="month-nav-label">${D.monthLabel(next, lang)}</span> ›</a>`}
   </div>`;
 }
 

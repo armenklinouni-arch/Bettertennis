@@ -12,6 +12,7 @@ const {
 const { logActivity } = require('../activity');
 const { verifyTurnstile, SCRIPT_URL: TURNSTILE_SCRIPT } = require('../turnstile');
 const { isPlaceholderEmail, needsEmailPrompt } = require('../db');
+const { LANGS, DEFAULT_LANG, accountLang, t: translate } = require('../i18n');
 
 const LEVELS = ['Početnik', 'Povratnik', 'Napredni', 'Takmičar'];
 
@@ -112,12 +113,13 @@ module.exports = function publicRoutes(db, {
   const router = express.Router();
 
   function homePage(req, { values = {}, errors = [] } = {}) {
+    const t = req.t;
     return layout(req, {
-      title: 'Časovi tenisa',
+      title: t('home.title'),
       fullBleed: true,
       body: html`
       <div class="home">
-      <section class="hero home-hero" aria-label="BetterTennis – teniska škola">
+      <section class="hero home-hero" aria-label="${t('home.heroAria')}">
         <div class="hero-slides" aria-hidden="true">${HERO_SLIDES.map((id, i) => html`
           <img class="hero-photo hero-slide" src="${unsplashLarge(id)}" data-fallback="${HERO_PHOTO_SRC}" alt="" width="1600" height="1067"
             loading="${i === 0 ? 'eager' : 'lazy'}" decoding="async" referrerpolicy="no-referrer"${i === 0 ? raw(' fetchpriority="high"') : ''}>`)}
@@ -125,17 +127,16 @@ module.exports = function publicRoutes(db, {
         <div class="home-hero-shade" aria-hidden="true"></div>
         <div class="home-hero-inner">
           <div class="hero-text">
-            <img class="logo-full hero-logo" src="/static/img/logo.png" alt="BetterTennis – teniska škola" width="96" height="127">
-            <p class="eyebrow">Teniska škola</p>
-            <h1>Igraj <span class="hl">bolji tenis</span> – uz trening koji ti odgovara.</h1>
-            <p class="lead">Individualni i grupni časovi za sve nivoe znanja. Prijavi se bez obaveze
-              i javit ćemo ti se u najkraćem roku.</p>
+            <img class="logo-full hero-logo" src="/static/img/logo.png" alt="${t('home.heroAria')}" width="96" height="127">
+            <p class="eyebrow">${t('site.tagline')}</p>
+            <h1>${t('home.heroBefore')}<span class="hl">${t('home.heroHl')}</span>${t('home.heroAfter')}</h1>
+            <p class="lead">${t('home.lead')}</p>
             <div class="hero-actions">
-              <a class="btn btn-neon btn-lg" href="/login">Već sam član</a>
-              <a class="btn btn-outline-light btn-lg" href="#anmeldung">Prijavi se sada</a>
+              <a class="btn btn-neon btn-lg" href="/login">${t('home.ctaMember')}</a>
+              <a class="btn btn-outline-light btn-lg" href="#anmeldung">${t('home.ctaSignup')}</a>
             </div>
-            <ul class="hero-chips" aria-label="Ukratko">
-              <li>ITF treneri</li><li>Djeca i odrasli</li><li>Video analiza</li>
+            <ul class="hero-chips" aria-label="${t('home.chipsAria')}">
+              <li>${t('home.chip1')}</li><li>${t('home.chip2')}</li><li>${t('home.chip3')}</li>
             </ul>
           </div>
         </div>
@@ -145,18 +146,18 @@ module.exports = function publicRoutes(db, {
       <div class="home-wrap">
       <section class="section" id="programi" aria-labelledby="programi-naslov">
         <div class="section-head reveal">
-          <p class="eyebrow">Naši programi</p>
-          <h2 id="programi-naslov">Trening po tvojoj mjeri</h2>
-          <p class="muted">Biraj između individualnog i grupnog treninga, a uz to nudimo video analizu i konsultacije.</p>
+          <p class="eyebrow">${t('home.programsEyebrow')}</p>
+          <h2 id="programi-naslov">${t('home.programsTitle')}</h2>
+          <p class="muted">${t('home.programsText')}</p>
         </div>
         <div class="program-grid">
           ${PROGRAMS.map((pr, i) => html`
           <article class="program-card lift reveal delay-${i % 4}">
-            ${programMedia(pr)}
+            ${programMedia({ ...pr, alt: t(`program.${pr.slug}.title`) })}
             <div class="program-body">
-              <span class="tag tag-kind is-group">${pr.tag}</span>
-              <h3>${pr.title}</h3>
-              <p>${pr.text}</p>
+              <span class="tag tag-kind is-group">${t(`program.${pr.slug}.tag`)}</span>
+              <h3>${t(`program.${pr.slug}.title`)}</h3>
+              <p>${t(`program.${pr.slug}.text`)}</p>
             </div>
           </article>`)}
         </div>
@@ -165,60 +166,59 @@ module.exports = function publicRoutes(db, {
       </div>
 
       <div class="home-wrap">
-      <section class="section features" aria-label="Zašto BetterTennis">
+      <section class="section features" aria-label="${t('home.featuresAria')}">
         <div class="feature card lift reveal">
           <div class="feature-icon" aria-hidden="true">${ICONS.levels}</div>
-          <h3>Za svaki nivo</h3>
-          <p>Treninzi su prilagođeni svim nivoima – od početnika do naprednih igrača. Nudimo grupne i individualne treninge,
-            video analizu i konsultacije.</p>
+          <h3>${t('home.f1.title')}</h3>
+          <p>${t('home.f1.text')}</p>
         </div>
         <div class="feature card lift reveal delay-1">
           <div class="feature-icon" aria-hidden="true">${ICONS.calendar}</div>
-          <h3>Sedmični raspored</h3>
-          <p>Kao član u svom profilu vidiš sve termine treninga od ponedjeljka do nedjelje.</p>
+          <h3>${t('home.f2.title')}</h3>
+          <p>${t('home.f2.text')}</p>
         </div>
         <div class="feature card lift reveal delay-2">
           <div class="feature-icon" aria-hidden="true">${ICONS.medal}</div>
-          <h3>Treneri</h3>
-          <p>Svi naši treneri su certificirani ITF treneri sa dugogodišnjim iskustvom.</p>
+          <h3>${t('home.f3.title')}</h3>
+          <p>${t('home.f3.text')}</p>
         </div>
       </section>
 
       <section id="anmeldung" class="card form-card reveal">
-        <h2>Zanimaju te časovi tenisa?</h2>
-        <p class="muted">Popuni obrazac – javit ćemo ti se u roku od nekoliko dana.</p>
+        <h2>${t('home.formTitle')}</h2>
+        <p class="muted">${t('home.formIntro')}</p>
         ${errorList(errors)}
         <form method="post" action="/anmeldung" class="form-grid" novalidate>
           ${csrfField(req)}
-          <label>Ime i prezime *
+          <label>${t('home.fName')}
             <input name="name" required maxlength="120" autocomplete="name" value="${values.name || ''}">
           </label>
-          <label>E-mail *
+          <label>${t('home.fEmail')}
             <input name="email" type="email" required maxlength="200" autocomplete="email" value="${values.email || ''}">
           </label>
-          <label>Broj telefona *
-            <input name="phone" type="tel" required maxlength="50" autocomplete="tel" placeholder="npr. 061 123 456" value="${values.phone || ''}">
+          <label>${t('home.fPhone')}
+            <input name="phone" type="tel" required maxlength="50" autocomplete="tel" placeholder="${t('home.fPhonePh')}" value="${values.phone || ''}">
           </label>
-          <label>Nivo znanja
+          <label>${t('home.fLevel')}
             <select name="level">
-              ${LEVELS.map((l) => html`<option${values.level === l ? ' selected' : ''}>${l}</option>`)}
+              ${LEVELS.map((l, i) => html`<option value="${l}"${values.level === l ? ' selected' : ''}>${t(`level.${i}`)}</option>`)}
             </select>
           </label>
-          <label class="span-2">Kada imaš vremena? (dani / sati)
-            <input name="availability" maxlength="300" placeholder="npr. utorkom i četvrtkom od 17 h" value="${values.availability || ''}">
+          <label class="span-2">${t('home.fAvailability')}
+            <input name="availability" maxlength="300" placeholder="${t('home.fAvailabilityPh')}" value="${values.availability || ''}">
           </label>
-          <label class="span-2">Poruka
+          <label class="span-2">${t('home.fMessage')}
             <textarea name="message" rows="4" maxlength="2000">${values.message || ''}</textarea>
           </label>
-          <label class="hp" aria-hidden="true">Molimo ostavite prazno
+          <label class="hp" aria-hidden="true">${t('home.fHoneypot')}
             <input name="website" tabindex="-1" autocomplete="off">
           </label>
           <label class="check span-2">
             <input type="checkbox" name="consent" value="1" required${values.consent ? ' checked' : ''}>
-            <span>Slažem se da se moji podaci sačuvaju radi kontakta. *</span>
+            <span>${t('home.fConsent')}</span>
           </label>
           ${turnstile.siteKey ? html`<div class="span-2 turnstile-box"><div class="cf-turnstile" data-sitekey="${turnstile.siteKey}" data-appearance="interaction-only" data-theme="light"></div></div>` : ''}
-          <div class="span-2"><button class="btn btn-accent btn-lg" type="submit">Prijavi se bez obaveze</button></div>
+          <div class="span-2"><button class="btn btn-accent btn-lg" type="submit">${t('home.fSubmit')}</button></div>
         </form>
         ${turnstile.siteKey ? html`<script src="${TURNSTILE_SCRIPT}" async defer></script>` : ''}
       </section>
@@ -235,7 +235,7 @@ module.exports = function publicRoutes(db, {
   });
 
   // Maksimalne dužine polja javnog obrasca (provjera na serveru – predugo se odbija, ne skraćuje se tiho).
-  const LEAD_LIMITS = [['name', 120, 'Ime'], ['email', 200, 'E-mail'], ['phone', 50, 'Broj telefona'], ['availability', 300, 'Termini'], ['message', 2000, 'Poruka']];
+  const LEAD_LIMITS = [['name', 120], ['email', 200], ['phone', 50], ['availability', 300], ['message', 2000]];
   // E-mail: jedno @, bez razmaka i znakova kao < > " ' ( ) , ; : \ , domen s tačkom.
   const LEAD_EMAIL_RE = /^[^\s@<>"'(),;:\\]+@[^\s@<>"'(),;:\\]+\.[^\s@<>"'(),;:\\]{2,}$/;
   const raw = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -259,18 +259,18 @@ module.exports = function publicRoutes(db, {
       const ipKey = `lead:${req.ip}`;
       if (leadLimiter && leadLimiter.isBlocked(ipKey)) {
         res.status(429);
-        return res.send(String(homePage(req, { values, errors: ['Previše prijava s ove adrese. Molimo pokušajte ponovo za sat vremena.'] })));
+        return res.send(String(homePage(req, { values, errors: [req.t('lead.tooMany')] })));
       }
 
       const errors = [];
-      for (const [field, max, label] of LEAD_LIMITS) {
-        if (values[field].length > max) errors.push(`${label} je predugo (najviše ${max} znakova).`);
+      for (const [field, max] of LEAD_LIMITS) {
+        if (values[field].length > max) errors.push(req.t('lead.tooLong', { label: req.t(`lead.field.${field}`), max }));
       }
-      if (!values.name) errors.push('Molimo upiši svoje ime.');
-      if (!LEAD_EMAIL_RE.test(values.email) || !EMAIL_RE.test(values.email)) errors.push('Molimo upiši ispravnu e-mail adresu.');
-      if (!values.phone) errors.push('Molimo upiši broj telefona.');
-      else if (!isValidPhone(values.phone)) errors.push('Molimo upiši ispravan broj telefona.');
-      if (!values.consent) errors.push('Molimo potvrdi saglasnost za kontakt.');
+      if (!values.name) errors.push(req.t('lead.noName'));
+      if (!LEAD_EMAIL_RE.test(values.email) || !EMAIL_RE.test(values.email)) errors.push(req.t('lead.badEmail'));
+      if (!values.phone) errors.push(req.t('lead.noPhone'));
+      else if (!isValidPhone(values.phone)) errors.push(req.t('lead.badPhone'));
+      if (!values.consent) errors.push(req.t('lead.noConsent'));
       if (errors.length) {
         res.status(400);
         return res.send(String(homePage(req, { values, errors })));
@@ -283,7 +283,7 @@ module.exports = function publicRoutes(db, {
         });
         if (!human) {
           res.status(400);
-          return res.send(String(homePage(req, { values, errors: ['Sigurnosna provjera nije uspjela. Molimo pokušajte ponovo.'] })));
+          return res.send(String(homePage(req, { values, errors: [req.t('lead.captcha')] })));
         }
       }
 
@@ -301,43 +301,44 @@ module.exports = function publicRoutes(db, {
 
   router.get('/danke', (req, res) => {
     res.send(String(layout(req, {
-      title: 'Hvala',
+      title: req.t('thanks.title'),
       body: html`
       <section class="card narrow center">
-        <h1>Hvala na interesovanju!</h1>
-        <p>Primili smo tvoj upit i uskoro ćemo ti se javiti.</p>
-        <a class="btn btn-primary" href="/">Na početnu stranicu</a>
+        <h1>${req.t('thanks.h1')}</h1>
+        <p>${req.t('thanks.text')}</p>
+        <a class="btn btn-primary" href="/">${req.t('thanks.home')}</a>
       </section>`,
     })));
   });
 
   function loginPage(req, { username = '', error = null, next = '', remember = true } = {}) {
+    const t = req.t;
     return layout(req, {
-      title: 'Prijava',
+      title: t('login.title'),
       body: html`
       <section class="card narrow">
         <img class="logo-full login-logo" src="/static/img/logo.png" alt="BetterTennis" width="88" height="117">
-        <h1>Prijava za članove</h1>
-        <p class="muted">Prijavi se da vidiš svoj sedmični raspored i mjesečni iznos.</p>
+        <h1>${t('login.h1')}</h1>
+        <p class="muted">${t('login.intro')}</p>
         ${error ? errorList([error]) : ''}
         <form method="post" action="/login" class="stack">
           ${csrfField(req)}
           <input type="hidden" name="weiter" value="${next}">
-          <label>Korisničko ime
+          <label>${t('field.username')}
             <input name="username" type="text" required maxlength="200" autocomplete="username" autocapitalize="none" spellcheck="false" value="${username}" autofocus>
           </label>
-          <label>Lozinka
+          <label>${t('login.password')}
             <input name="password" type="password" required autocomplete="current-password">
           </label>
           <label class="check remember">
             <input type="checkbox" name="remember" value="1"${remember ? ' checked' : ''}>
-            <span>Ostani prijavljen</span>
+            <span>${t('login.remember')}</span>
           </label>
-          <button class="btn btn-primary" type="submit">Prijavi se</button>
+          <button class="btn btn-primary" type="submit">${t('login.submit')}</button>
         </form>
-        <p class="small"><a href="/zaboravljena-lozinka">Zaboravljena lozinka?</a></p>
-        <p class="muted small">Administrator se prijavljuje svojom e-mail adresom.</p>
-        ${req.app.locals.publicHomepage ? html`<p class="muted small">Još nisi član? <a href="/#anmeldung">Prijavi se ovdje bez obaveze.</a></p>` : ''}
+        <p class="small"><a href="/zaboravljena-lozinka">${t('login.forgot')}</a></p>
+        <p class="muted small">${t('login.adminHint')}</p>
+        ${req.app.locals.publicHomepage ? html`<p class="muted small">${t('login.notMember')} <a href="/#anmeldung">${t('login.signupLink')}</a></p>` : ''}
       </section>`,
     });
   }
@@ -361,7 +362,7 @@ module.exports = function publicRoutes(db, {
 
     if (loginLimiter.isBlocked(key)) {
       res.status(429);
-      return res.send(String(loginPage(req, { username, next, error: 'Previše neuspjelih pokušaja. Molimo sačekaj nekoliko minuta.' })));
+      return res.send(String(loginPage(req, { username, next, error: req.t('login.tooMany') })));
     }
 
     // Prvo članovi, zatim treneri s aktiviranim pristupom, na kraju administrator po e-mail adresi.
@@ -376,14 +377,24 @@ module.exports = function publicRoutes(db, {
     if (!valid) {
       loginLimiter.fail(key);
       res.status(401);
-      return res.send(String(loginPage(req, { username, next, remember: req.body.remember === '1', error: 'Korisničko ime ili lozinka nisu ispravni.' })));
+      return res.send(String(loginPage(req, { username, next, remember: req.body.remember === '1', error: req.t('login.invalid') })));
     }
 
     loginLimiter.reset(key);
     const csrf = crypto.randomBytes(18).toString('base64url');
     // „Ostani prijavljen“ (u obrascu unaprijed označeno): 90 dana; bez kvačice do zatvaranja preglednika.
     const remember = req.body.remember === '1';
+    // Jezik koji je posjetilac izabrao prije prijave: računu bez sačuvanog jezika se zapamti (admin je uvijek bosanski).
+    const visitorLang = LANGS.includes(req.session.lang) ? req.session.lang : null;
     req.session = { csrf };
+    const accountForLang = user ? (user.role === 'admin' ? null : { kind: 'user', id: user.id })
+      : trainer ? { kind: 'trainer', id: trainer.id } : { kind: 'parent', id: parentAccount.id };
+    if (visitorLang && accountForLang) {
+      db.prepare(
+        `INSERT INTO account_prefs (kind, account_id, lang) VALUES (?, ?, ?)
+         ON CONFLICT(kind, account_id) DO UPDATE SET lang = COALESCE(account_prefs.lang, excluded.lang)`
+      ).run(accountForLang.kind, accountForLang.id, visitorLang);
+    }
     if (user) {
       startSession(db, req, { kind: 'user', id: user.id, remember });
       // Prozor za unos e-maila: prikazuje se u ovoj prijavi (najviše kod prve tri prijave bez e-maila).
@@ -409,24 +420,23 @@ module.exports = function publicRoutes(db, {
   );
 
   function forgotPage(req, { sent = false, email = '' } = {}) {
+    const t = req.t;
     return layout(req, {
-      title: 'Zaboravljena lozinka',
+      title: t('forgot.title'),
       body: html`
       <section class="card narrow">
-        <h1>Zaboravljena lozinka</h1>
+        <h1>${t('forgot.title')}</h1>
         ${sent
-          ? html`<p class="notice">Ako je ta e-mail adresa povezana s članskim računom, poslali smo link za novu lozinku.
-              Provjeri svoj e-mail (i folder za neželjenu poštu). Link vrijedi 60 minuta.</p>`
-          : html`<p class="muted">Unesi e-mail adresu koju si sačuvao/la u svom profilu. Poslat ćemo ti link za postavljanje nove lozinke.
-              Tvoje korisničko ime ostaje isto.</p>`}
+          ? html`<p class="notice">${t('forgot.sent')}</p>`
+          : html`<p class="muted">${t('forgot.intro')}</p>`}
         <form method="post" action="/zaboravljena-lozinka" class="stack">
           ${csrfField(req)}
-          <label>E-mail adresa
+          <label>${t('forgot.email')}
             <input name="email" type="email" required maxlength="200" autocomplete="email" value="${email}">
           </label>
-          <button class="btn btn-primary" type="submit">Pošalji link</button>
+          <button class="btn btn-primary" type="submit">${t('forgot.submit')}</button>
         </form>
-        <p class="muted small"><a href="/login">← Nazad na prijavu</a> · Nemaš sačuvan e-mail? Javi se teniskoj školi.</p>
+        <p class="muted small"><a href="/login">${t('forgot.back')}</a> · ${t('forgot.noEmail')}</p>
       </section>`,
     });
   }
@@ -450,18 +460,14 @@ module.exports = function publicRoutes(db, {
         db.prepare('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
           .run(tokenHash(token), member.id, Date.now() + RESET_VALID_MS);
         const link = `${appUrl}/nova-lozinka/${token}`;
+        // E-mail na jeziku člana (sačuvan izbor; inače bosanski).
+        const lang = accountLang(db, 'user', member.id);
+        const vars = { name: member.name, username: member.username, link };
         await mailer.send({
           to: member.email,
-          subject: 'BetterTennis – nova lozinka',
-          text: `Zdravo ${member.name},\n\nzatražena je nova lozinka za tvoj BetterTennis račun.\n`
-            + `Tvoje korisničko ime: ${member.username}\n\n`
-            + `Novu lozinku postavi preko ovog linka (vrijedi 60 minuta):\n${link}\n\n`
-            + 'Ako nisi ti zatražio/la novu lozinku, jednostavno zanemari ovaj e-mail.\n\nBetterTennis',
-          html: String(html`<p>Zdravo ${member.name},</p>
-            <p>zatražena je nova lozinka za tvoj BetterTennis račun.<br>Tvoje korisničko ime: <strong>${member.username}</strong></p>
-            <p><a href="${link}">Postavi novu lozinku</a> (link vrijedi 60 minuta)</p>
-            <p style="color:#666">Ako link ne radi, kopiraj ovu adresu u preglednik:<br>${link}</p>
-            <p>Ako nisi ti zatražio/la novu lozinku, jednostavno zanemari ovaj e-mail.</p><p>BetterTennis</p>`),
+          subject: translate(lang, 'mail.reset.subject'),
+          text: translate(lang, 'mail.reset.text', vars),
+          html: translate(lang, 'mail.reset.html', vars),
         });
       }
       res.send(String(forgotPage(req, { sent: true })));
@@ -471,26 +477,27 @@ module.exports = function publicRoutes(db, {
   });
 
   function resetPage(req, { token, account, errors = [] }) {
+    const t = req.t;
     return layout(req, {
-      title: 'Nova lozinka',
+      title: t('reset.title'),
       body: html`
       <section class="card narrow">
-        <h1>Nova lozinka</h1>
+        <h1>${t('reset.title')}</h1>
         ${account
           ? html`
-            <p class="muted">Korisničko ime: <strong>${account.username}</strong> (ostaje isto).</p>
+            <p class="muted">${t('reset.usernameLabel')} <strong>${account.username}</strong> ${t('reset.stays')}</p>
             ${errorList(errors)}
             <form method="post" action="/nova-lozinka/${token}" class="stack">
               ${csrfField(req)}
-              <label>Nova lozinka (najmanje 8 znakova)
+              <label>${t('pw.new')}
                 <input name="password" type="password" required minlength="8" autocomplete="new-password">
               </label>
-              <label>Ponovi novu lozinku
+              <label>${t('pw.repeat')}
                 <input name="password2" type="password" required minlength="8" autocomplete="new-password">
               </label>
-              <button class="btn btn-primary" type="submit">Sačuvaj novu lozinku</button>
+              <button class="btn btn-primary" type="submit">${t('reset.submit')}</button>
             </form>`
-          : html`<p class="notice">Ovaj link nije važeći ili je istekao. <a href="/zaboravljena-lozinka">Zatraži novi link.</a></p>`}
+          : html`<p class="notice">${t('reset.invalid')} <a href="/zaboravljena-lozinka">${t('reset.requestNew')}</a></p>`}
       </section>`,
     });
   }
@@ -509,8 +516,8 @@ module.exports = function publicRoutes(db, {
     }
     const password = typeof req.body.password === 'string' ? req.body.password : '';
     const errors = [];
-    if (password.length < 8) errors.push('Lozinka mora imati najmanje 8 znakova.');
-    if (password !== req.body.password2) errors.push('Lozinke se ne podudaraju.');
+    if (password.length < 8) errors.push(req.t('pw.min8'));
+    if (password !== req.body.password2) errors.push(req.t('pw.mismatch'));
     if (errors.length) {
       res.status(400);
       return res.send(String(resetPage(req, { token: req.params.token, account, errors })));
@@ -528,7 +535,7 @@ module.exports = function publicRoutes(db, {
       db.exec('ROLLBACK');
       throw err;
     }
-    res.flash('success', `Nova lozinka je sačuvana. Prijavi se korisničkim imenom ${account.username}.`);
+    res.flash('success', req.t('reset.saved', { username: account.username }));
     res.redirect('/login');
   });
 
@@ -551,9 +558,30 @@ module.exports = function publicRoutes(db, {
 
   router.post('/logout', (req, res) => {
     endSession(db, req); // odmah nevažeće – i za kopirani kolačić
-    req.session = { csrf: req.session.csrf };
-    res.flash('success', 'Odjavljen/a si.');
+    // Jezik ostaje i nakon odjave (osim kod admina, čiji je dio uvijek na bosanskom).
+    const keepLang = req.user && req.user.role !== 'admin' && req.lang !== DEFAULT_LANG ? req.lang : null;
+    req.session = { csrf: req.session.csrf, ...(keepLang ? { lang: keepLang } : {}) };
+    res.flash('success', translate(keepLang || DEFAULT_LANG, 'logout.done'));
     res.redirect('/login');
+  });
+
+  // Jezik „BS | EN“: računi (osim admina) ga trajno čuvaju u account_prefs, posjetioci u sesiji.
+  const setLangPref = db.prepare(
+    `INSERT INTO account_prefs (kind, account_id, lang) VALUES (?, ?, ?)
+     ON CONFLICT(kind, account_id) DO UPDATE SET lang = excluded.lang`
+  );
+  router.post('/jezik', (req, res) => {
+    const lang = LANGS.includes(req.body.lang) ? req.body.lang : DEFAULT_LANG;
+    if (req.user) {
+      if (req.user.role !== 'admin') {
+        const key = accountKey(req.user);
+        setLangPref.run(key.kind, key.id, lang);
+      }
+    } else {
+      req.session.lang = lang;
+      res.saveSession();
+    }
+    res.redirect(safeNext(req.body.back, req.user ? homeFor(req.user) : '/'));
   });
 
   return router;

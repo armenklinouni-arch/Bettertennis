@@ -1,5 +1,7 @@
 'use strict';
 
+const { t } = require('./i18n');
+
 const path = require('node:path');
 const express = require('express');
 const { sessionMiddleware, loadSession, loadUser, csrfProtection, createLoginLimiter } = require('./auth');
@@ -86,13 +88,13 @@ function createApp(db, {
   app.use('/admin', adminRoutes(db, { mailer, backupEmail, mailDelayMs }));
 
   app.use((req, res) => {
-    res.status(404).send('Stranica nije pronađena.');
+    res.status(404).send(t(req.lang, 'err.notFound'));
   });
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     console.error(err);
-    res.status(500).send('Došlo je do greške.');
+    res.status(500).send(t(req.lang, 'err.server'));
   });
 
   return app;

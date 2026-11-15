@@ -7,6 +7,7 @@ const path = require('node:path');
 const express = require('express');
 const { html } = require('../html');
 const D = require('../dates');
+const { accountLang, t: translate } = require('../i18n');
 const { formatMoney, centsToInput, parseMoney, lessonPrice, CURRENCY_SYMBOL } = require('../money');
 const {
   monthlyStatement, setPaid, setReleased, setDisplayTotal, setNoTraining, formatHours, BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,
@@ -1203,29 +1204,29 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     const match = listGroupsWithMembers(db).find((g) => g.members.map((m) => m.id).sort((x, y) => x - y).join(',') === ids);
     return match ? match.name : null;
   };
-  const cancelInfo = (lesson, users) => {
+  // lang: jezik primaoca e-maila (pregled za admina je uvijek na bosanskom). Naziv grupe se ne prevodi.
+  const cancelInfo = (lesson, users, lang = 'bs') => {
     const group = groupNameOf(lesson, users);
     return {
-      kind: `${LESSON_KINDS[lesson.kind] || 'Trening'}${group ? ` (${group})` : ''}`,
-      date: D.formatDateLong(lesson.date),
+      kind: `${lessonKindLabel(lesson, lang)}${group ? ` (${group})` : ''}`,
+      date: D.formatDateLong(lesson.date, lang),
       time: lessonTimeRange(lesson),
-      court: lesson.court ? `Teren ${lesson.court}` : '',
+      court: lesson.court ? translate(lang, 'lesson.court', { court: lesson.court }) : '',
     };
   };
   const cancelRef = (lesson) => (lesson.group_id ? `g:${lesson.group_id}` : `l:${lesson.id}`);
 
-  function cancelMail(info, message) {
+  // E-mail o otkazivanju na jeziku svakog primaoca (sačuvan izbor; inače bosanski). Napomena admina se ne prevodi.
+  function cancelMail(lesson, users, message) {
     return (user) => {
-      const what = `${info.kind}, ${info.date} od ${info.time} h${info.court ? `, ${info.court}` : ''}`;
+      const lang = accountLang(db, 'user', user.id);
+      const info = cancelInfo(lesson, users, lang);
+      const what = translate(lang, 'mail.cancel.what', info);
+      const vars = { name: user.name, what, message };
       return {
-        subject: `Otkazan trening – ${info.date} u ${info.time.split('–')[0]}`,
-        text: `Zdravo ${user.name},\n\nobavještavamo te da je sljedeći trening otkazan:\n${what}\n`
-          + `${message ? `\nNapomena: ${message}\n` : ''}`
-          + '\nHvala na razumijevanju – vidimo se na sljedećem treningu!\n\nSportski pozdrav,\nBetterTennis',
-        html: String(html`<p>Zdravo ${user.name},</p>
-          <p>obavještavamo te da je sljedeći trening <strong>otkazan</strong>:<br>${what}</p>
-          ${message ? html`<p><strong>Napomena:</strong> <span style="white-space:pre-line">${message}</span></p>` : ''}
-          <p>Hvala na razumijevanju – vidimo se na sljedećem treningu!</p><p>Sportski pozdrav,<br>BetterTennis</p>`),
+        subject: translate(lang, 'mail.cancel.subject', { date: info.date, start: info.time.split('–')[0] }),
+        text: translate(lang, 'mail.cancel.text', vars),
+        html: translate(lang, 'mail.cancel.html', vars),
       };
     };
   }
@@ -1276,7 +1277,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
       const message = str(req.body.message, 1000);
       const result = await sendToSelected(db, mailer, {
         kind: 'cancel', ref: cancelRef(lesson), users, selected: selectedIds(req.body),
-        build: cancelMail(info, message), delayMs: mailDelayMs,
+        build: cancelMail(lesson, users, message), delayMs: mailDelayMs,
         logLabel: 'E-mail o otkazivanju', logContext: `termin ${info.date} ${info.time}`,
       });
       if (result.sent || result.failed) {
@@ -2066,16 +2067,17 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     })));
   });
 
+  // E-mail s aktuelnošću na jeziku primaoca; naslov i tekst aktuelnosti se ne prevode.
   function newsMail(item) {
-    return (user) => ({
-      subject: `BetterTennis – ${item.title}`,
-      text: `Zdravo ${user.name},\n\n${item.title}\n\n${item.body}\n\n`
-        + 'Ovu obavijest možeš pročitati i u svom profilu pod „Aktuelnosti“ na bettertennis.net.\n\nSportski pozdrav,\nBetterTennis',
-      html: String(html`<p>Zdravo ${user.name},</p><h2 style="margin:16px 0 8px">${item.title}</h2>
-        <p style="white-space:pre-line">${item.body}</p>
-        <p style="color:#666">Ovu obavijest možeš pročitati i u svom profilu pod „Aktuelnosti“ na bettertennis.net.</p>
-        <p>Sportski pozdrav,<br>BetterTennis</p>`),
-    });
+    return (user) => {
+      const lang = accountLang(db, 'user', user.id);
+      const vars = { name: user.name, title: item.title, body: item.body };
+      return {
+        subject: `BetterTennis – ${item.title}`,
+        text: translate(lang, 'mail.news.text', vars),
+        html: translate(lang, 'mail.news.html', vars),
+      };
+    };
   }
 
   router.get('/aktuelnosti/:id/email', (req, res) => {

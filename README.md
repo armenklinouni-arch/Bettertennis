@@ -216,6 +216,18 @@ Tests: `npm test`
   „lozinka promijenjena“. Einträge älter als 12 Monate werden automatisch gelöscht. Tabelle `activity_log`;
   das Protokoll beginnt mit diesem Update (frühere Änderungen werden nicht nachgetragen).
 
+## Sprachen (Bosnisch / Englisch)
+
+- Alle festen Texte für Besucher, Mitglieder, Kinder-Konten, Eltern und Trainer (Menüs, Knöpfe, Überschriften, Hinweise,
+  Fehlermeldungen, Mails) stehen in **`src/i18n/bs.js`** und **`src/i18n/en.js`** (gleiche Schlüssel; ein Test prüft das).
+  Bosnisch ist Standard und unverändert. Texte ändern: nur in diesen Dateien.
+- Oben rechts **„BS | EN“** (aktive Sprache hervorgehoben). Konten speichern die Wahl dauerhaft (`account_prefs.lang`),
+  sie gilt auch beim nächsten Login; ohne Wahl Bosnisch. Besucher können auf Startseite, Login usw. umschalten
+  (gemerkt im Browser; nach dem Login übernimmt ein Konto ohne eigene Wahl diese Sprache).
+- Mails (neues Passwort, Absage, Aktuelnosti) gehen in der gespeicherten Sprache des Empfängers raus.
+- Selbst eingetragene Inhalte (Namen, Stavke, Notizen, Aktuelnosti, Gruppennamen, Admin-Hinweise in Mails) werden nicht übersetzt.
+- Der Admin-Bereich bleibt immer Bosnisch (ohne Umschalter).
+
 ## Treninzi po igraču (nur Admin)
 
 - Menü **„Treninzi po igraču“** (`/admin/treninzi-po-igracu`): für die gewählte Woche (‹ Prethodna / Sljedeća ›,

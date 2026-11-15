@@ -1485,8 +1485,8 @@ test('Elternkonto sieht nur zugeordnete Spieler und kann nichts verändern', asy
   // Die Seiten enthalten keine Formulare zum Ändern (nur die Spieler-Auswahl per GET und Abmelden)
   for (const p of pages) {
     const posts = [...p.text.matchAll(/<form[^>]*method="post"[^>]*action="([^"]+)"/g)].map((m) => m[1]);
-    // Einzige Formulare: Abmelden und die persönliche Einstellung „Maskottchen ausblenden“ (ändert keine Daten)
-    assert.deepEqual([...new Set(posts)], ['/logout', '/maskota/sakrij']);
+    // Einzige Formulare: Abmelden und persönliche Einstellungen (Sprache, „Maskottchen ausblenden“) – ändern keine Daten
+    assert.deepEqual([...new Set(posts)], ['/jezik', '/logout', '/maskota/sakrij']);
   }
   // Admin kann zuordnen ändern: p2 entfernen → sofort nicht mehr sichtbar
   const acc = db.prepare("SELECT id FROM parent_accounts WHERE username = 'roditelj.citaj'").get();
@@ -5400,4 +5400,194 @@ test('Termini (Admin): gerade Woche hellblau „plava sedmica“, ungerade hellg
   const mw = (await mc.request('/mitglied?woche=2026-10-12')).text;
   assert.doesNotMatch(mw, /week-tone|plava sedmica|zelena sedmica|week-today-btn/);
   assert.match(mw, /<section class="week" aria-label="Sedmični pregled">/);
+});
+
+// ---------------------------------------------------------------- Zweisprachig: Bosnisch (Standard) und Englisch
+test('Sprachen: zentrale Sprachdateien bs/en mit denselben Schlüsseln; keine leeren Texte', () => {
+  const bs = require('../src/i18n/bs');
+  const en = require('../src/i18n/en');
+  assert.deepEqual(Object.keys(en).sort(), Object.keys(bs).sort());
+  for (const [k, v] of Object.entries(en)) {
+    assert.ok(typeof v === 'function' || (Array.isArray(v) ? v.length > 0 : typeof v === 'string' && v.trim() !== ''), `en: ${k} leer`);
+    assert.equal(typeof v, typeof bs[k], `Typ ${k}`);
+  }
+  const { t } = require('../src/i18n');
+  assert.equal(t('bs', 'nav.weekly'), 'Sedmični raspored');
+  assert.equal(t('en', 'nav.weekly'), 'Weekly schedule');
+  assert.equal(t('xx', 'nav.weekly'), 'Sedmični raspored'); // unbekannt → Bosnisch
+  assert.equal(D.formatDateLong('2026-11-10', 'en'), 'Tuesday, 10 Nov 2026');
+  assert.equal(D.formatDateLong('2026-11-10'), 'Utorak, 10.11.2026.');
+  assert.equal(D.monthLabel('2026-11', 'en'), 'November 2026');
+});
+
+test('Sprachen: Umschalter BS | EN für Besucher, Mitglieder, Eltern, Kinder, Trainer; Wahl gespeichert; Admin bleibt Bosnisch; Mails in Empfängersprache', async () => {
+  const BOSNIAN = /Sedmični|Mjesečni|Odjava|Lozinka|Ponedjeljak|Nema treninga|Prijava|Zdravo|Ukupno|Plaćeno|Prethodna|Sljedeća|Aktuelnosti|Moji podaci|Djeca|Finansije|Moj raspored|Moj izvještaj|Teniska škola|Realizovan|Planiran|Grupni trening|Individualni trening/;
+  const switcher = (t) => /<form method="post" action="\/jezik" class="lang-switch"[\s\S]*?<\/form>/.exec(t);
+  const active = (t) => /<button type="submit" name="lang" value="(bs|en)" class="is-active" aria-pressed="true">/.exec(switcher(t)[0])[1];
+
+  // Besucher: Login-Seite mit Umschalter, Standard Bosnisch
+  const anon = client();
+  let login = (await anon.request('/login')).text;
+  assert.ok(switcher(login), 'Umschalter fehlt auf der Login-Seite');
+  assert.match(switcher(login)[0], />BS<\/button>\s*<span aria-hidden="true">\|<\/span>\s*<button[^>]*>EN<\/button>/);
+  assert.equal(active(login), 'bs');
+  assert.match(login, /<html lang="bs">/);
+  // Umschalten (zurück auf dieselbe Seite)
+  let r = await anon.post('/jezik', { lang: 'en', back: '/login' }, '/login');
+  assert.equal(r.status, 302);
+  assert.equal(r.location, '/login');
+  login = (await anon.request('/login')).text;
+  assert.equal(active(login), 'en');
+  assert.match(login, /<html lang="en">/);
+  assert.match(login, /<h1>Member login<\/h1>/);
+  assert.match(login, /Keep me logged in/);
+  assert.doesNotMatch(login.replace(/<form method="post" action="\/jezik"[\s\S]*?<\/form>/, ''), BOSNIAN);
+  // Fremde Ziele werden ignoriert (kein Open Redirect)
+  r = await anon.post('/jezik', { lang: 'en', back: '//evil.example/x' }, '/login');
+  assert.equal(r.location, '/');
+  // Ungültige Sprache → Bosnisch bleibt Standard
+  const anon2 = client();
+  await anon2.post('/jezik', { lang: 'de', back: '/login' }, '/login');
+  assert.equal(active((await anon2.request('/login')).text), 'bs');
+  // Fehlermeldung auf Englisch
+  const bad = await anon.post('/login', { username: 'niemand', password: 'falsch-123' }, '/login');
+  assert.match(bad.text, /Incorrect username or password\./);
+  // Weitere Besucherseiten: Startseite (mit Anmeldeformular) und „Passwort vergessen“
+  const strip = (t) => t.replace(/<form method="post" action="\/jezik"[\s\S]*?<\/form>/, '');
+  const homeEn = (await anon.request('/')).text;
+  assert.match(homeEn, /<html lang="en">/);
+  assert.ok(switcher(homeEn), 'Umschalter fehlt auf der Startseite');
+  assert.match(homeEn, /Play <span class="hl">better tennis<\/span>/);
+  assert.match(homeEn, /<option value="Početnik">Beginner<\/option>/); // gespeichert wird weiter der bosnische Wert
+  assert.doesNotMatch(strip(homeEn).replace(/value="[^"]*"/g, ''), BOSNIAN);
+  const lead = await anon.post('/anmeldung', { name: '', email: 'x', phone: '', level: 'Početnik' }, '/');
+  assert.match(lead.text, /Please enter your name\./);
+  assert.match(lead.text, /Please confirm that we may contact you\./);
+  assert.match((await anon.request('/zaboravljena-lozinka')).text, /<h1>Forgot your password\?<\/h1>/);
+  assert.match((await anon.request('/danke')).text, /Thanks for your interest!/);
+  // Bosnische Startseite unverändert
+  assert.match((await client().request('/')).text, /Igraj <span class="hl">bolji tenis<\/span>/);
+
+  // Mitglied: Standard Bosnisch; Wahl EN wird gespeichert und gilt beim nächsten Login
+  const { releaseWeek } = require('../src/weeks');
+  releaseWeek(db, '2027-03-01');
+  const id = makeMember('Lara Jezik', 'lara.jezik', { fee: 1500 });
+  useSchedule(id, ['2026-10']);
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, court, kind, price_cents) VALUES (?, '2027-03-02', '10:40', 60, '3', 'individual', 4000)").run(id);
+  db.prepare("INSERT INTO adjustments (user_id, month, description, amount_cents) VALUES (?, '2026-10', 'Loptice (moja stavka)', 700)").run(id);
+  db.prepare("INSERT INTO payments (user_id, month, released) VALUES (?, '2026-10', 1)").run(id);
+  const m = client();
+  await m.login('lara.jezik', 'memberpass1');
+  let home = (await m.request('/mitglied?woche=2027-03-01')).text;
+  assert.equal(active(home), 'bs');
+  assert.match(home, /Sedmični raspored/);
+  await m.post('/jezik', { lang: 'en', back: '/mitglied?woche=2027-03-01' }, '/mitglied');
+  assert.equal(db.prepare("SELECT lang FROM account_prefs WHERE kind = 'user' AND account_id = ?").get(id).lang, 'en');
+  home = (await m.request('/mitglied?woche=2027-03-01')).text;
+  assert.equal(active(home), 'en');
+  assert.match(home, />Weekly schedule</);
+  assert.match(home, /Tuesday/);
+  assert.match(home, /One-to-one session/);
+  assert.match(home, /Week 9/);
+  assert.doesNotMatch(home.replace(/<form method="post" action="\/jezik"[\s\S]*?<\/form>/, ''), BOSNIAN);
+  const bill = (await m.request('/mitglied/abrechnung?monat=2026-10')).text;
+  assert.match(bill, /<th>Item<\/th><th class="num">Amount<\/th>/);
+  assert.match(bill, /Loptice \(moja stavka\)/); // eigene Inhalte werden nicht übersetzt
+  assert.match(bill, /Total October 2026/);
+  assert.doesNotMatch(bill.replace(/<form method="post" action="\/jezik"[\s\S]*?<\/form>/, '').replace('Loptice (moja stavka)', ''), BOSNIAN);
+  for (const p of ['/mitglied/aktuelnosti', '/mitglied/djeca', '/mitglied/moji-podaci', '/mitglied/passwort', '/mitglied/privatni-cas']) {
+    const page = (await m.request(p)).text;
+    assert.match(page, /<html lang="en">/, p);
+    assert.doesNotMatch(page.replace(/<form method="post" action="\/jezik"[\s\S]*?<\/form>/, '').replace(/Lara Jezik/g, ''), BOSNIAN, p);
+  }
+  // Fehlermeldung beim Passwortändern auf Englisch
+  const pw = await m.post('/mitglied/passwort', { current: 'falsch', password: 'x', password2: 'y' }, '/mitglied/passwort');
+  assert.match(pw.text, /Your current password is incorrect\./);
+  // Abmelden: Besucherseite bleibt in der Sprache; neuer Login → weiterhin Englisch
+  await m.post('/logout', {}, '/mitglied');
+  assert.equal(active((await m.request('/login')).text), 'en');
+  const m2 = client();
+  await m2.login('lara.jezik', 'memberpass1');
+  assert.equal(active((await m2.request('/mitglied')).text), 'en');
+
+  // Kinder-Konto, Elternkonto, Trainer: jeweils eigene Wahl
+  await m2.post('/mitglied/djeca', { name: 'Mali Jezik', username: 'mali.jezik', password: 'mali-pass-12' }, '/mitglied/djeca');
+  const kid = client();
+  await kid.login('mali.jezik', 'mali-pass-12');
+  assert.equal(active((await kid.request('/mitglied')).text), 'bs'); // eigener Standard
+  await kid.post('/jezik', { lang: 'en', back: '/mitglied' }, '/mitglied');
+  const kidPage = (await kid.request('/mitglied?woche=2027-03-01')).text;
+  assert.match(kidPage, />My schedule</);
+  assert.doesNotMatch(kidPage.replace(/<form method="post" action="\/jezik"[\s\S]*?<\/form>/, ''), BOSNIAN);
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await createParentAccount(admin, { name: 'Roditelj Jezik', username: 'roditelj.jezik', password: 'roditelj-pass-1', players: [id] });
+  const p = client();
+  await p.login('roditelj.jezik', 'roditelj-pass-1');
+  await p.post('/jezik', { lang: 'en', back: '/roditelj' }, '/roditelj');
+  const pid = db.prepare("SELECT id FROM parent_accounts WHERE username = 'roditelj.jezik'").get().id;
+  assert.equal(db.prepare("SELECT lang FROM account_prefs WHERE kind = 'parent' AND account_id = ?").get(pid).lang, 'en');
+  for (const path of ['/roditelj?woche=2027-03-01', '/roditelj/finansije?monat=2026-10']) {
+    const page = (await p.request(path)).text;
+    assert.match(page, /<html lang="en">/, path);
+    assert.doesNotMatch(page.replace(/<form method="post" action="\/jezik"[\s\S]*?<\/form>/, '').replace(/Loptice \(moja stavka\)|Roditelj Jezik/g, ''), BOSNIAN, path);
+  }
+  db.prepare("INSERT INTO trainers (name, username, password_hash) VALUES ('Trener Jezik', 'trener.jezik', ?)").run(hashPassword('trener-pass-1'));
+  const tr = client();
+  await tr.login('trener.jezik', 'trener-pass-1');
+  await tr.post('/jezik', { lang: 'en', back: '/trener' }, '/trener');
+  for (const path of ['/trener', '/trener/raspored?woche=2027-03-01', '/trener/lozinka']) {
+    const page = (await tr.request(path)).text;
+    assert.match(page, /<html lang="en">/, path);
+    assert.doesNotMatch(page.replace(/<form method="post" action="\/jezik"[\s\S]*?<\/form>/, '').replace(/Trener Jezik/g, ''), BOSNIAN, path);
+  }
+
+  // Admin-Bereich bleibt Bosnisch, ohne Umschalter – auch wenn vorher Englisch gewählt war
+  const a2 = client();
+  await a2.post('/jezik', { lang: 'en', back: '/login' }, '/login');
+  await a2.login('admin@test.de', 'adminpass123');
+  const adminHome = (await a2.request('/admin')).text;
+  assert.match(adminHome, /<html lang="bs">/);
+  assert.ok(!switcher(adminHome), 'Admin hat keinen Umschalter');
+  assert.match(adminHome, /Odjava/);
+  await a2.post('/jezik', { lang: 'en', back: '/admin' }, '/admin');
+  assert.match((await a2.request('/admin/termine?woche=2027-03-01')).text, /<html lang="bs">[\s\S]*Ponedjeljak/);
+
+  // Mails in der Sprache des Empfängers
+  const bsId = makeMember('Bosa Jezik', 'bosa.jezik');
+  sentMails.length = 0;
+  await client().post('/zaboravljena-lozinka', { email: 'lara.jezik@kids-test.de' }, '/zaboravljena-lozinka');
+  await client().post('/zaboravljena-lozinka', { email: 'bosa.jezik@kids-test.de' }, '/zaboravljena-lozinka');
+  const resetEn = sentMails.find((x) => x.to === 'lara.jezik@kids-test.de');
+  const resetBs = sentMails.find((x) => x.to === 'bosa.jezik@kids-test.de');
+  assert.equal(resetEn.subject, 'BetterTennis – reset your password');
+  assert.match(resetEn.text, /^Hi Lara Jezik,/);
+  assert.equal(resetBs.subject, 'BetterTennis – nova lozinka');
+  // Absage-Mail
+  const g = 'jezik-g1';
+  for (const uid of [id, bsId]) db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, court, kind, group_id, cancelled) VALUES (?, '2027-03-03', '18:40', 60, '1', 'group', ?, 1)").run(uid, g);
+  const lessonId = db.prepare("SELECT id FROM lessons WHERE group_id = ? ORDER BY id LIMIT 1").get(g).id;
+  sentMails.length = 0;
+  await admin.post(`/admin/termine/${lessonId}/obavijest-otkazivanje`, { recipients: [String(id), String(bsId)], message: 'Kiša – teren mokar.' }, `/admin/termine/${lessonId}/obavijest-otkazivanje`);
+  const cEn = sentMails.find((x) => x.to === 'lara.jezik@kids-test.de');
+  const cBs = sentMails.find((x) => x.to === 'bosa.jezik@kids-test.de');
+  assert.match(cEn.subject, /^Session cancelled – Wednesday, 3 Mar 2027 at 18:40$/);
+  assert.match(cEn.text, /Kiša – teren mokar\./); // Admin-Text unverändert
+  assert.match(cEn.text, /Group session, Wednesday, 3 Mar 2027, 18:40–19:40, Court 1/);
+  assert.match(cBs.subject, /^Otkazan trening – Srijeda, 03\.03\.2027\. u 18:40$/);
+  // Aktuelnosti-Mail
+  await admin.post('/admin/aktuelnosti', { title: 'Turnir u subotu', body: 'Prijave do petka.', audience: 'all' }, '/admin/aktuelnosti');
+  const news = db.prepare("SELECT id FROM news WHERE title = 'Turnir u subotu'").get();
+  sentMails.length = 0;
+  await admin.post(`/admin/aktuelnosti/${news.id}/email`, { recipients: [String(id), String(bsId)] }, `/admin/aktuelnosti/${news.id}/email`);
+  const nEn = sentMails.find((x) => x.to === 'lara.jezik@kids-test.de');
+  const nBs = sentMails.find((x) => x.to === 'bosa.jezik@kids-test.de');
+  assert.equal(nEn.subject, 'BetterTennis – Turnir u subotu');
+  assert.match(nEn.text, /^Hi Lara Jezik,\n\nTurnir u subotu\n\nPrijave do petka\./);
+  assert.match(nEn.text, /under “News”/);
+  assert.match(nBs.text, /^Zdravo Bosa Jezik,/);
+  // Aktuelnosti im Postfach: Inhalt unverändert, Rahmen Englisch
+  const inbox = (await m2.request('/mitglied/aktuelnosti')).text;
+  assert.match(inbox, /Turnir u subotu/);
+  assert.match(inbox, /<h1>News<\/h1>/);
 });

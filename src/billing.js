@@ -1,6 +1,7 @@
 'use strict';
 
 const { monthRange, monthOf, addMonths, todayISO } = require('./dates');
+const { t } = require('./i18n');
 
 // Načini obračuna – podešavaju se za svakog člana i svaki mjesec posebno (tabela billing_months):
 //  - schedule: realizovani treninzi iz rasporeda se automatski obračunavaju
@@ -224,8 +225,8 @@ function setReleased(db, userId, month, released) {
   ).run(userId, month, released ? 1 : 0);
 }
 
-function formatHours(hours) {
-  return `${hours.toLocaleString('bs-BA', { maximumFractionDigits: 2 })} h`;
+function formatHours(hours, lang = 'bs') {
+  return `${hours.toLocaleString(t(lang, 'hours.locale'), { maximumFractionDigits: 2 })} h`;
 }
 
 module.exports = {

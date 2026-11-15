@@ -1,5 +1,7 @@
 'use strict';
 
+const { t } = require('./i18n');
+
 // Datumi se obrađuju isključivo kao stringovi u formatu YYYY-MM-DD odnosno YYYY-MM.
 // Interno se koristi UTC da ljetno/zimsko računanje vremena ne pomjera dane.
 
@@ -74,9 +76,11 @@ function isoWeekNumber(iso) {
   return 1 + Math.round(((thursday - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
 }
 
-function formatDate(iso) {
+// lang: 'bs' (standard, „10.11.2026.“) ili 'en' („10 Nov 2026“) – vidi src/i18n.
+function formatDate(iso, lang = 'bs') {
   const [y, m, d] = iso.split('-');
-  return `${d}.${m}.${y}.`;
+  if (lang === 'bs') return `${d}.${m}.${y}.`;
+  return t(lang, 'date.short', { y, m, d });
 }
 
 function formatDateShort(iso) {
@@ -84,8 +88,9 @@ function formatDateShort(iso) {
   return `${d}.${m}.`;
 }
 
-function formatDateLong(iso) {
-  return `${DAY_NAMES[weekdayIndex(iso)]}, ${formatDate(iso)}`;
+function formatDateLong(iso, lang = 'bs') {
+  const days = lang === 'bs' ? DAY_NAMES : t(lang, 'date.days');
+  return `${days[weekdayIndex(iso)]}, ${formatDate(iso, lang)}`;
 }
 
 function monthOf(iso) {
@@ -104,9 +109,15 @@ function addMonths(ym, n) {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;
 }
 
-function monthLabel(ym) {
+function monthLabel(ym, lang = 'bs') {
   const [y, m] = ym.split('-').map(Number);
-  return `${MONTH_NAMES[m - 1]} ${y}`;
+  const months = lang === 'bs' ? MONTH_NAMES : t(lang, 'date.months');
+  return `${months[m - 1]} ${y}`;
+}
+
+// Nazivi dana za jezik (ponedjeljak … nedjelja).
+function dayNames(lang = 'bs') {
+  return lang === 'bs' ? DAY_NAMES : t(lang, 'date.days');
 }
 
 function addMinutes(time, minutes) {
@@ -134,5 +145,6 @@ module.exports = {
   monthRange,
   addMonths,
   monthLabel,
+  dayNames,
   addMinutes,
 };

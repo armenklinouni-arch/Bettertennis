@@ -17,8 +17,8 @@ function isSlotOpen(slot, now = Date.now()) {
   return !!slot && !slot.blocked && slotStartMs(slot) > now;
 }
 
-function slotLabel({ date, start_time: start, end_time: end }) {
-  return `${D.formatDateLong(date)} ${start}–${end}`;
+function slotLabel({ date, start_time: start, end_time: end }, lang = 'bs') {
+  return `${D.formatDateLong(date, lang)} ${start}–${end}`;
 }
 
 // Trenutak (ISO) kao „09.10.2026. u 10:00“ po sarajevskom vremenu.

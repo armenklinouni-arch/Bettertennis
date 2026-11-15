@@ -170,6 +170,8 @@ CREATE TABLE IF NOT EXISTS account_prefs (
   kind          TEXT NOT NULL,
   account_id    INTEGER NOT NULL,
   mascot_hidden INTEGER NOT NULL DEFAULT 0,
+  -- Jezik prikaza i e-mailova: 'bs' ili 'en' (prazno = bosanski)
+  lang          TEXT,
   PRIMARY KEY (kind, account_id)
 );
 CREATE TRIGGER IF NOT EXISTS prefs_users_delete AFTER DELETE ON users
@@ -405,6 +407,8 @@ const NEW_COLUMNS = [
   ['billing_months', 'display_total_cents', 'INTEGER'],
   // „Bez treninga u ovom mjesecu“ (standardno isključeno = kao ranije)
   ['billing_months', 'no_training', 'INTEGER NOT NULL DEFAULT 0'],
+  // Dvojezičnost: izabrani jezik računa (prazno = bosanski).
+  ['account_prefs', 'lang', 'TEXT'],
 ];
 
 function addMissingColumns(db) {
