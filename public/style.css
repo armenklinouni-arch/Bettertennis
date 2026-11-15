@@ -211,6 +211,15 @@ tr.is-inactive td { color: var(--muted); }
 .seen-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .seen-by { color: var(--muted); font-size: 0.85rem; }
 .seen-parents { margin-top: 20px; }
+/* „Treninzi po igraču“: igrači bez treninga u sedmici blago sivi */
+.training-count tr.is-zero td { background: color-mix(in srgb, var(--border) 45%, transparent); color: var(--muted); }
+.training-count td.num a { font-weight: 700; }
+.training-count tr.lesson-detail td { background: var(--bg); }
+.training-count tr.lesson-detail .list { margin: 4px 0 10px; }
+@media (max-width: 700px) {
+  .training-count th, .training-count td { padding: 8px 8px; }
+  .training-count th.num { white-space: normal; width: 4.5em; letter-spacing: 0; font-size: 0.72rem; }
+}
 .tag-none { background: #e7e9ec; color: #4b5563; font-weight: 600; }
 tr.is-no-training td { color: var(--muted); }
 tr.is-no-training td strong { color: var(--muted); }

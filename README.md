@@ -201,6 +201,14 @@ Tests: `npm test`
   „lozinka promijenjena“. Einträge älter als 12 Monate werden automatisch gelöscht. Tabelle `activity_log`;
   das Protokoll beginnt mit diesem Update (frühere Änderungen werden nicht nachgetragen).
 
+## Treninzi po igraču (nur Admin)
+
+- Menü **„Treninzi po igraču“** (`/admin/treninzi-po-igracu`): für die gewählte Woche (‹ Prethodna / Sljedeća ›,
+  Standard: aktuelle Woche) alle Spieler ohne Kinder-Konten, alphabetisch, mit **Grupni trening**, **Individualni trening**
+  und **Ukupno** (Anzahl Termine). Abgesagte Termine zählen nicht. Spieler ohne Training stehen mit 0 und sind grau hinterlegt.
+- Klick auf eine Zahl zeigt direkt unter dem Spieler die einzelnen Termine der Woche (Tag, Uhrzeit, Teren,
+  Grupni/Individualni trening); „Zatvori“ schließt sie. Suchfeld **„Filter“** wie bei Iznosi.
+
 ## Ko je pogledao (nur Admin)
 
 - Menü **„Ko je pogledao“** (`/admin/ko-je-pogledao`) mit zwei Reitern:

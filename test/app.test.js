@@ -5069,3 +5069,92 @@ test('Ko je pogledao: pro Spieler jedes Konto mit Datum/Uhrzeit (sam igrač, rod
   // Weiterhin nur für den Admin
   for (const cl of [me, kid, p]) assert.doesNotMatch((await cl.request(`/admin/ko-je-pogledao?prikaz=raspored&woche=${week}`)).text, /Roditeljski računi|Pogledalo:/);
 });
+
+// ---------------------------------------------------------------- Admin: „Treninzi po igraču“ (Einheiten pro Woche)
+test('Treninzi po igraču: pro Spieler Gruppen-/Individualtrainings der Woche, ohne Absagen und Kinder-Konten; Details per Klick; Filter; nur Admin', async () => {
+  const week = '2027-01-04';
+  const ana = makeMember('Žana Brojanje', 'zana.broj');
+  const bo = makeMember('Bojan Brojanje', 'bojan.broj');
+  const nula = makeMember('Nula Brojanje', 'nula.broj');
+  const kidId = db.prepare("INSERT INTO users (name, username, email, password_hash, parent_id) VALUES ('Dijete Brojanje', 'dijete.broj', 'dijete.broj@x.ba', 'h', ?)").run(ana).lastInsertRowid;
+  const L = (uid, date, time, kind = 'individual', extra = {}) => db.prepare(
+    'INSERT INTO lessons (user_id, date, start_time, duration_min, court, kind, group_id, cancelled) VALUES (?, ?, ?, 60, ?, ?, ?, ?)'
+  ).run(uid, date, time, extra.court || null, kind, kind === 'group' ? (extra.g || 'g-broj') : null, extra.cancelled ? 1 : 0);
+  L(ana, '2027-01-04', '09:10', 'group', { court: '1', g: 'g1' });
+  L(bo, '2027-01-04', '09:10', 'group', { court: '1', g: 'g1' });
+  L(ana, '2027-01-06', '17:30', 'group', { court: '2', g: 'g2' });
+  L(ana, '2027-01-07', '18:00', 'individual', { court: '3' });
+  L(ana, '2027-01-08', '18:00', 'individual', { cancelled: true }); // abgesagt → zählt nicht
+  L(bo, '2027-01-10', '10:00', 'individual');
+  L(bo, '2027-01-11', '10:00', 'individual'); // nächste Woche
+  L(kidId, '2027-01-05', '12:00', 'individual'); // Kinder-Konto → nicht in der Liste
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const url = `/admin/treninzi-po-igracu?woche=${week}`;
+  const res = await admin.request(url);
+  assert.equal(res.status, 200);
+  const t = res.text;
+  assert.match(t, /<h1>Treninzi po igraču<\/h1>/);
+  assert.match(t, /href="\/admin\/treninzi-po-igracu"[^>]*>Treninzi po igraču</); // Menü
+  assert.match(t, /<th>Ime<\/th><th class="num">Grupni trening<\/th><th class="num">Individualni trening<\/th><th class="num">Ukupno<\/th>/);
+  const row = (id) => new RegExp(`<tr id="igrac-${id}"[^>]*>([\\s\\S]*?)</tr>`).exec(t);
+  const nums = (id) => [...row(id)[1].matchAll(/<td class="num">(?:<a [^>]*>)?(\d+)/g)].map((m) => Number(m[1]));
+  assert.deepEqual(nums(ana), [2, 1, 3]);
+  assert.deepEqual(nums(bo), [1, 1, 2]);
+  assert.deepEqual(nums(nula), [0, 0, 0]);
+  // Ohne Training: grau markiert
+  assert.match(new RegExp(`<tr id="igrac-${nula}"[^>]*>`).exec(t)[0], /class="[^"]*is-zero/);
+  assert.doesNotMatch(new RegExp(`<tr id="igrac-${ana}"[^>]*>`).exec(t)[0], /is-zero/);
+  // Kinder-Konten erscheinen nicht
+  assert.doesNotMatch(t, /Dijete Brojanje/);
+  // Alphabetisch (ohne Akzente): Bojan vor Nula vor Žana
+  const order = [...t.matchAll(/<tr id="igrac-(\d+)"/g)].map((m) => Number(m[1]));
+  assert.ok(order.indexOf(bo) < order.indexOf(nula) && order.indexOf(nula) < order.indexOf(ana));
+  // Zahlen sind Links zu den Details; 0 ist kein Link
+  assert.match(row(ana)[1], new RegExp(`href="/admin/treninzi-po-igracu\\?woche=${week}&amp;igrac=${ana}&amp;vrsta=group#igrac-${ana}"`));
+  assert.doesNotMatch(row(nula)[1], /<a /);
+
+  // Wochenwahl wie bei „Ko je pogledao“
+  assert.match(t, /‹ Prethodna/);
+  assert.match(t, /Sljedeća ›/);
+  assert.match(t, /href="\/admin\/treninzi-po-igracu\?woche=2026-12-28"/);
+  assert.match(t, /href="\/admin\/treninzi-po-igracu\?woche=2027-01-11"/);
+  const next = (await admin.request('/admin/treninzi-po-igracu?woche=2027-01-11')).text;
+  assert.deepEqual([...new RegExp(`<tr id="igrac-${bo}"[^>]*>([\\s\\S]*?)</tr>`).exec(next)[1].matchAll(/<td class="num">(?:<a [^>]*>)?(\d+)/g)].map((m) => Number(m[1])), [0, 1, 1]);
+  // Standard: aktuelle Woche
+  assert.match((await admin.request('/admin/treninzi-po-igracu')).text, new RegExp(`${D.formatDate(D.mondayOf(D.todayISO()))} – `));
+
+  // Details: einzelne Termine (Tag, Uhrzeit, Teren, Gruppe/individuell)
+  const det = (await admin.request(`${url}&igrac=${ana}&vrsta=all`)).text;
+  const detail = new RegExp(`<tr class="lesson-detail" data-filter="[^"]*">([\\s\\S]*?)</tr>`).exec(det);
+  assert.ok(detail, 'Detailzeile fehlt');
+  const items = [...detail[1].matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => m[1].replace(/\s+/g, ' ').trim());
+  assert.deepEqual(items, [
+    'Ponedjeljak, 04.01.2027. · 09:10–10:10 h · Teren 1 · Grupni trening',
+    'Srijeda, 06.01.2027. · 17:30–18:30 h · Teren 2 · Grupni trening',
+    'Četvrtak, 07.01.2027. · 18:00–19:00 h · Teren 3 · Individualni trening',
+  ]);
+  assert.match(detail[1], /Zatvori/);
+  const grp = (await admin.request(`${url}&igrac=${ana}&vrsta=group`)).text;
+  assert.equal([...new RegExp('<tr class="lesson-detail"[^>]*>([\\s\\S]*?)</tr>').exec(grp)[1].matchAll(/<li>/g)].length, 2);
+  const ind = (await admin.request(`${url}&igrac=${bo}&vrsta=individual`)).text;
+  assert.match(new RegExp('<tr class="lesson-detail"[^>]*>([\\s\\S]*?)</tr>').exec(ind)[1], /Nedjelja, 10\.01\.2027\. · 10:00–11:00 h · Individualni trening/);
+  // Abgesagt nicht in den Details
+  assert.doesNotMatch(det, /08\.01\.2027/);
+
+  // Filter wie bei Iznosi (ohne Akzente, Name oder Benutzername)
+  assert.match(t, /<form method="get" action="\/admin\/treninzi-po-igracu" class="list-filter" role="search" data-list-filter="treninzi">/);
+  assert.match(t, /<tbody data-filter-list="treninzi">/);
+  const filtered = (await admin.request(`${url}&trazi=zana`)).text;
+  assert.doesNotMatch(new RegExp(`<tr id="igrac-${ana}"[^>]*>`).exec(filtered)[0], / hidden/);
+  assert.match(new RegExp(`<tr id="igrac-${bo}"[^>]*>`).exec(filtered)[0], / hidden/);
+  assert.doesNotMatch(new RegExp(`<tr id="igrac-${bo}"[^>]*>`).exec((await admin.request(`${url}&trazi=bojan.broj`)).text)[0], / hidden/);
+
+  // Nur Admin
+  const m = client();
+  await m.login('bojan.broj', 'memberpass1');
+  const r = await m.request(url);
+  assert.notEqual(r.status, 200);
+  assert.doesNotMatch(r.text, /Treninzi po igraču/);
+  assert.doesNotMatch((await m.request('/mitglied')).text, /treninzi-po-igracu/);
+});

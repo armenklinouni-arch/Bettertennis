@@ -59,6 +59,7 @@ function layout(req, { title, body, wide = false, fullBleed = false }) {
       ${navLink('/admin/treneri', 'Treneri')}
       ${navLink('/admin/roditelji', 'Roditelji')}
       ${navLink('/admin/termine', 'Termini')}
+      ${navLink('/admin/treninzi-po-igracu', 'Treninzi po igraču')}
       ${navLink('/admin/privatni-casovi', 'Privatni časovi')}
       ${navLink('/admin/abrechnung', 'Iznosi')}
       ${navLink('/admin/finansije', 'Finansije')}
