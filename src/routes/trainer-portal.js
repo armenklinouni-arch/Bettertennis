@@ -93,7 +93,7 @@ module.exports = function trainerPortalRoutes(db) {
     const today = D.todayISO();
     const monday = D.mondayOf(D.isValidDate(req.query.woche) ? req.query.woche : today);
     const sessions = trainerSessionsBetween(db, req.user, monday, D.addDays(monday, 6), { includeCancelled: true });
-    const lessons = sessions.map((s) => ({ ...s, member_name: `${s.members.join(', ')} (${playersLabel(s)})` }));
+    const lessons = sessions.map((s) => ({ ...s, member_name: `${s.members.join(', ')} (${playersLabel(s)})`, member_names: s.members, names_note: playersLabel(s) }));
     res.send(String(layout(req, {
       title: 'Moj raspored',
       wide: true,

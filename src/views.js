@@ -191,8 +191,9 @@ function lessonTimeRange(lesson) {
 // Sedmični pregled od ponedjeljka do nedjelje.
 // lessons: termini (s poljem member_name) unutar sedmice.
 // options.baseUrl: cilj za navigaciju po sedmicama; options.actions: funkcija koja vraća dugmad za termin (admin).
-// options.adminCards (samo admin, Termini): termin kao obojena kartica (grupni/individualni), svaki igrač u svom redu.
-function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '', adminCards = false }) {
+// Svaki termin je obojena kartica (grupni/individualni/otkazan), svaki igrač u svom redu (member_names ili member_name);
+// names_note: kratka napomena ispod imena (npr. „3 igrača“ kod trenera).
+function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '' }) {
   const days = D.weekDays(monday);
   const sunday = days[6];
   const prev = D.addDays(monday, -7);
@@ -227,11 +228,10 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
               ? html`<p class="empty">Nema treninga</p>`
               : items.map(
                   (l) => html`
-              <article class="${adminCards ? `lesson lesson-card ${l.kind === 'group' ? 'is-group' : 'is-individual'}` : 'lesson'}${l.cancelled ? ' is-cancelled' : ''}">
+              <article class="lesson lesson-card ${l.kind === 'group' ? 'is-group' : 'is-individual'}${l.cancelled ? ' is-cancelled' : ''}">
                 <div class="lesson-time">${lessonTimeRange(l)} h</div>
-                ${adminCards
-                  ? html`<ul class="lesson-names">${(l.member_names || [l.member_name]).map((n) => html`<li title="${n}">${n}</li>`)}</ul>`
-                  : html`<div class="lesson-name">${l.member_name}</div>`}
+                <ul class="lesson-names">${(l.member_names || [l.member_name]).map((n) => html`<li title="${n}">${n}</li>`)}</ul>
+                ${l.names_note ? html`<div class="lesson-meta">${l.names_note}</div>` : ''}
                 ${l.trainer_name ? html`<div class="lesson-meta">Trener: ${l.trainer_name}</div>` : ''}
                 <div class="lesson-meta">
                   ${D.formatDateLong(l.date)}${l.court ? html` · Teren ${l.court}` : ''}

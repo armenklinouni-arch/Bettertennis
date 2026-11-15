@@ -188,7 +188,15 @@ tr.is-inactive td { color: var(--muted); }
 .week { margin-bottom: 24px; }
 .week-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .week-title { display: flex; flex-direction: column; align-items: center; text-align: center; }
-.week-title span { color: var(--muted); font-size: 0.9rem; }
+.week-title strong { font-size: 1.2rem; font-weight: 800; color: var(--brand-text); }
+.week-title span { color: var(--text); font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.week-title { min-width: 0; }
+@media (max-width: 480px) {
+  /* Schmale Handys: Woche und Datum in eigener Zeile (groß, fett, ohne Umbruch), darunter ‹ Prethodna / Sljedeća › */
+  .week-head { flex-wrap: wrap; row-gap: 8px; }
+  .week-title { order: -1; flex: 1 0 100%; }
+  .week-title span { white-space: nowrap; }
+}
 .today-link { font-size: 0.85rem; }
 .week-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
 .day { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 180px; overflow: hidden; }

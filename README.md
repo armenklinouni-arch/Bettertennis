@@ -148,13 +148,15 @@ Tests: `npm test`
   ohne Groß-/Kleinschreibung und č/ć/š/ž/đ; **×** löscht es) und die Zeile **„Odabrano: N“** mit den Namen der
   angehakten Spieler. Angehakte Spieler bleiben angehakt und werden mitgespeichert, auch wenn der Filter sie ausblendet.
 
-## Wochenübersicht unter Termini (nur Admin)
+## Wochenübersicht (Termini und Sedmični raspored)
 
 - Jeder Termin ist eine eigene, deutlich abgegrenzte Karte: **Gruppentraining hellgrün**, **Individualtraining hellblau**,
   abgesagte Termine grau und durchgestrichen; die Uhrzeit oben ist kräftiger. Im Dunkelmodus gedeckte dunkle Varianten.
 - Jeder Spieler steht in einer eigenen Zeile (Vor- und Nachname zusammen). Ist ein Name in der schmalen Tagesspalte am
   Desktop zu lang, wird er mit „…“ gekürzt – der volle Name erscheint beim Darüberfahren mit der Maus; am Handy ist genug Platz.
-- Der Wochenplan für Mitglieder, Eltern, Kinder und Trainer bleibt unverändert.
+- Dieselbe Darstellung gilt im Wochenplan (Sedmični raspored) für Mitglieder, Kinder-Konten, Eltern und Trainer – jedes Konto
+  sieht dabei nur, was es bisher sah (keine Admin-Knöpfe, keine Beträge pro Person; Trainer sehen zusätzlich „N igrača“).
+- Oben über der Woche stehen Wochennummer und Datum groß und fett; auf schmalen Handys in eigener Zeile über ‹ Prethodna / Sljedeća ›.
 
 ## Status-Anzeige der Termine
 

@@ -475,7 +475,7 @@ test('Trainer-Konto: sieht nur eigene Stunden, Gruppen und Spieler; Rollen sind 
   assert.doesNotMatch(report.text, /Drugi Trener|11:00–12:00/); // fremde Termine nicht sichtbar
   assert.doesNotMatch(report.text, /Vrijednost|Razlika/); // keine Mitgliederpreise
   const plan = await t.request('/trener/raspored?woche=2026-09-07');
-  assert.match(plan.text, /Dino, Edin, Faris \(3 igrača\)/);
+  assert.match(plan.text, /<ul class="lesson-names">\s*<li title="Dino">Dino<\/li>\s*<li title="Edin">Edin<\/li>\s*<li title="Faris">Faris<\/li>\s*<\/ul>\s*<div class="lesson-meta">3 igrača<\/div>/);
   assert.doesNotMatch(plan.text, /11:00–12:00/);
 
   // Rollen getrennt
@@ -5206,14 +5206,76 @@ test('Termini-Wochenübersicht (Admin): jeder Spieler in eigener Zeile; Karten f
   // Dunkelmodus hat eigene (dunkle) Kartenfarben, Text bleibt lesbar
   assert.match(css, /@media \(prefers-color-scheme: dark\) \{\s*:root \{[^}]*--lesson-group-bg:/);
 
-  // Mitglieder-Wochenplan bleibt genau wie bisher
+  // (Die Karten gelten inzwischen auch im Wochenplan der anderen Konten – siehe nächster Test.)
+});
+
+// ---------------------------------------------------------------- Wochenplan aller Konten: Karten wie im Admin; Datum oben größer
+test('Sedmični raspored (Mitglied, Kind, Eltern, Trainer): Karten wie im Admin, Namen untereinander; keine Admin-Knöpfe, keine Beträge; Datum oben größer', async () => {
+  const { releaseWeek } = require('../src/weeks');
+  const week = '2027-02-08';
+  releaseWeek(db, week);
+  const a = makeMember('Sara Kartić', 'plan.sara');
+  const b = makeMember('Tarik Kartić', 'plan.tarik');
+  db.prepare("INSERT INTO trainers (name, username, password_hash) VALUES ('Plan Trener', 'plan.trener', ?)").run(hashPassword('trener-pass-1'));
+  const tid = db.prepare("SELECT id FROM trainers WHERE username = 'plan.trener'").get().id;
+  const ins = (uid, time, kind, g = null, cancelled = 0) => db.prepare(
+    "INSERT INTO lessons (user_id, date, start_time, duration_min, court, kind, group_id, cancelled, trainer_id, price_cents) VALUES (?, '2027-02-09', ?, 60, '2', ?, ?, ?, ?, 3300)"
+  ).run(uid, time, kind, g, cancelled, tid);
+  ins(a, '15:20', 'group', 'plan-g1');
+  ins(b, '15:20', 'group', 'plan-g1');
+  ins(a, '17:20', 'individual');
+  ins(a, '18:20', 'individual', null, 1);
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  await createParentAccount(admin, { name: 'Plan Roditelj', username: 'plan.roditelj', password: 'roditelj-pass-1', players: [a, b] });
   const m = client();
-  await m.login('karta.amra', 'memberpass1');
-  const mw = (await m.request(`/mitglied?woche=${week}`)).text;
-  assert.doesNotMatch(mw, /lesson-card|lesson-names/);
-  assert.match(mw, /<article class="lesson">\s*<div class="lesson-time">16:15–17:15 h<\/div>\s*<div class="lesson-name">Amra Muharemović<\/div>/);
-  await createParentAccount(admin, { name: 'Karta Roditelj', username: 'karta.roditelj', password: 'roditelj-pass-1', players: [a, b] });
+  await m.login('plan.sara', 'memberpass1');
+  await m.post('/mitglied/djeca', { name: 'Plan Dijete', username: 'plan.dijete', password: 'dijete-pass-1' }, '/mitglied/djeca');
+  const kid = client();
+  await kid.login('plan.dijete', 'dijete-pass-1');
   const p = client();
-  await p.login('karta.roditelj', 'roditelj-pass-1');
-  assert.doesNotMatch((await p.request(`/roditelj?woche=${week}`)).text, /lesson-card|lesson-names/);
+  await p.login('plan.roditelj', 'roditelj-pass-1');
+  const tr = client();
+  await tr.login('plan.trener', 'trener-pass-1');
+
+  const pages = {
+    clan: (await m.request(`/mitglied?woche=${week}`)).text,
+    dijete: (await kid.request(`/mitglied?woche=${week}`)).text,
+    roditelj: (await p.request(`/roditelj?woche=${week}`)).text,
+    trener: (await tr.request(`/trener/raspored?woche=${week}`)).text,
+  };
+  const card = (t, time) => new RegExp(`<article class="([^"]*)">\\s*<div class="lesson-time">${time} h</div>([\\s\\S]*?)</article>`).exec(t);
+  const names = (c) => [...c[2].matchAll(/<li title="[^"]*">([^<]*)<\/li>/g)].map((x) => x[1]);
+  for (const [who, t] of Object.entries(pages)) {
+    const g = card(t, '15:20–16:20');
+    assert.ok(g, `${who}: Gruppenkarte fehlt`);
+    assert.equal(g[1], 'lesson lesson-card is-group', who);
+    assert.equal(card(t, '17:20–18:20')[1], 'lesson lesson-card is-individual', who);
+    assert.equal(card(t, '18:20–19:20')[1], 'lesson lesson-card is-individual is-cancelled', who);
+    assert.match(g[2], /<ul class="lesson-names">/, who);
+    assert.doesNotMatch(/<ul class="lesson-names">([\s\S]*?)<\/ul>/.exec(g[2])[1], /,/, who); // keine Komma-Liste
+    // Keine Admin-Knöpfe, keine Beträge pro Person
+    assert.doesNotMatch(t, /lesson-actions|>Uredi<|Označi: |po osobi|33,00/, who);
+    // Datum oben über der Woche unverändert
+    assert.match(t, /<div class="week-title">\s*<strong>6\. sedmica<\/strong>\s*<span>08\.02\.2027\. – 14\.02\.2027\.<\/span>/, who);
+  }
+  // Jedes Konto sieht nur, was es bisher sah: Mitglied/Kind nur Sara, Eltern beide Spieler (je eigene Karte), Trainer alle Spieler der Gruppe
+  assert.deepEqual(names(card(pages.clan, '15:20–16:20')), ['Sara Kartić']);
+  assert.deepEqual(names(card(pages.dijete, '15:20–16:20')), ['Sara Kartić']);
+  assert.doesNotMatch(pages.clan, /Tarik/);
+  assert.match(pages.roditelj, /<li title="Tarik Kartić">Tarik Kartić<\/li>/);
+  assert.deepEqual(names(card(pages.trener, '15:20–16:20')), ['Sara Kartić', 'Tarik Kartić']);
+  assert.match(card(pages.trener, '15:20–16:20')[2], /<div class="lesson-meta">2 igrača<\/div>/);
+  assert.doesNotMatch(pages.trener, /Plan Trener<\/div>|Trener: /); // wie bisher ohne Trainername
+  assert.doesNotMatch(pages.clan, /Trener: |Plan Trener/); // Mitglieder sehen keinen Trainer
+
+  // Admin wie bisher mit Knöpfen und Beträgen
+  const at = (await admin.request(`/admin/termine?woche=${week}`)).text;
+  assert.match(at, /lesson-actions/);
+  assert.match(at, /33,00\sKM po osobi/);
+
+  // Datum oben größer und fett (überall, auch auf dem Handy)
+  const css = (await admin.request('/static/style.css')).text;
+  assert.match(css, /\.week-title span \{[^}]*font-size: 1\.05rem;[^}]*font-weight: 700;[^}]*\}/);
+  assert.match(css, /\.week-title strong \{[^}]*font-size: 1\.2rem;[^}]*font-weight: 800;[^}]*\}/);
 });
