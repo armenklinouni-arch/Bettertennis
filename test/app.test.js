@@ -5591,3 +5591,159 @@ test('Sprachen: Umschalter BS | EN für Besucher, Mitglieder, Eltern, Kinder, Tr
   assert.match(inbox, /Turnir u subotu/);
   assert.match(inbox, /<h1>News<\/h1>/);
 });
+
+// ---------------------------------------------------------------- Admin: „Sedmični draft“ (Wochenvorbereitung)
+test('Sedmični draft: Drafts anlegen/bearbeiten/kopieren/löschen, Woche als Draft speichern, Draft mit Vorschau in eine Woche übernehmen; nichts wird gelöscht; nur Admin', async () => {
+  const { releaseWeek } = require('../src/weeks');
+  const a = makeMember('Draft Amel', 'draft.amel', { rate: 4000 });
+  const b = makeMember('Draft Belma', 'draft.belma', { rate: 3000 });
+  const c = makeMember('Draft Cazim', 'draft.cazim', { rate: 3600 });
+  db.prepare("INSERT INTO trainers (name, username, password_hash) VALUES ('Draft Trener', 'draft.trener', ?)").run(hashPassword('trener-pass-1'));
+  const tid = db.prepare("SELECT id FROM trainers WHERE username = 'draft.trener'").get().id;
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const lessonsCount = () => db.prepare('SELECT COUNT(*) AS n FROM lessons').get().n;
+
+  // Übersicht und Menü
+  let page = await admin.request('/admin/draftovi');
+  assert.equal(page.status, 200);
+  assert.match(page.text, /<h1>Sedmični draft<\/h1>/);
+  assert.match(page.text, /href="\/admin\/draftovi"[^>]*>Sedmični draft</);
+
+  // Neuer Draft mit Namen
+  assert.equal((await admin.post('/admin/draftovi', { name: '' }, '/admin/draftovi')).status, 400);
+  let r = await admin.post('/admin/draftovi', { name: 'Zimska sedmica' }, '/admin/draftovi');
+  const draft = db.prepare("SELECT * FROM week_drafts WHERE name = 'Zimska sedmica'").get();
+  assert.ok(draft);
+  assert.equal(r.location, `/admin/draftovi/${draft.id}`);
+  const editUrl = `/admin/draftovi/${draft.id}`;
+  page = (await admin.request(editUrl)).text;
+  for (const day of D.DAY_NAMES) assert.ok(page.includes(day), `${day} fehlt`);
+  assert.match(page, /<select name="weekday">/);
+  assert.doesNotMatch(page, /name="date"/); // kein festes Datum
+  assert.match(page, /name="trainer_id"/);
+  assert.match(page, /name="member_ids"/);
+  assert.match(page, /name="kind"/);
+
+  // Termine eintragen wie unter Termini (Tag statt Datum)
+  const before = lessonsCount();
+  r = await admin.post(`${editUrl}/termin`, { kind: 'individual', user_id: String(a), weekday: '0', start_time: '17:00', duration_min: '60', court: '1', trainer_id: String(tid), price: '' }, editUrl);
+  assert.equal(r.status, 302);
+  await admin.post(`${editUrl}/termin`, { kind: 'group', member_ids: [String(b), String(c)], weekday: '2', start_time: '18:00', duration_min: '90', court: '2', price: '' }, editUrl);
+  await admin.post(`${editUrl}/termin`, { kind: 'individual', user_id: String(c), weekday: '5', start_time: '09:00', duration_min: '60', price: '25,00' }, editUrl);
+  // Ungültig: Gruppe mit nur einem Spieler, ungültiger Tag
+  await admin.post(`${editUrl}/termin`, { kind: 'group', member_ids: [String(b)], weekday: '1', start_time: '10:00', duration_min: '60' }, editUrl);
+  await admin.post(`${editUrl}/termin`, { kind: 'individual', user_id: String(a), weekday: '9', start_time: '10:00', duration_min: '60' }, editUrl);
+  const dl = () => db.prepare('SELECT * FROM week_draft_lessons WHERE draft_id = ? ORDER BY weekday, start_time').all(draft.id);
+  assert.equal(dl().length, 3);
+  assert.equal(lessonsCount(), before); // Drafts erzeugen keine Termine
+  const players = (lid) => db.prepare('SELECT user_id, price_cents FROM week_draft_players WHERE draft_lesson_id = ? ORDER BY user_id').all(lid);
+  assert.deepEqual(players(dl()[1].id).map((p) => p.user_id), [b, c].sort((x, y) => x - y));
+  assert.equal(players(dl()[2].id)[0].price_cents, 2500);
+  page = (await admin.request(editUrl)).text;
+  assert.match(page, /17:00–18:00 h/);
+  assert.match(page, /Draft Belma/);
+  assert.match(page, /Draft Trener/);
+
+  // Bearbeiten und Löschen eines Draft-Termins
+  const sat = dl()[2];
+  assert.equal((await admin.request(`${editUrl}/termin/${sat.id}`)).status, 200);
+  await admin.post(`${editUrl}/termin/${sat.id}`, { kind: 'individual', user_id: String(c), weekday: '5', start_time: '10:00', duration_min: '60', price: '25,00' }, `${editUrl}/termin/${sat.id}`);
+  assert.equal(db.prepare('SELECT start_time FROM week_draft_lessons WHERE id = ?').get(sat.id).start_time, '10:00');
+  await admin.post(`${editUrl}/termin/${sat.id}/obrisi`, {}, editUrl);
+  assert.equal(dl().length, 2);
+  // Umbenennen
+  await admin.post(`${editUrl}/naziv`, { name: 'Zimska sedmica 2027' }, editUrl);
+  assert.equal(db.prepare('SELECT name FROM week_drafts WHERE id = ?').get(draft.id).name, 'Zimska sedmica 2027');
+
+  // Kopieren: unabhängige Kopie
+  r = await admin.post(`${editUrl}/kopija`, {}, '/admin/draftovi');
+  const copy = db.prepare("SELECT * FROM week_drafts WHERE name = 'Zimska sedmica 2027 (kopija)'").get();
+  assert.ok(copy);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM week_draft_lessons WHERE draft_id = ?').get(copy.id).n, 2);
+  const copyLesson = db.prepare('SELECT id FROM week_draft_lessons WHERE draft_id = ? ORDER BY weekday LIMIT 1').get(copy.id);
+  await admin.post(`/admin/draftovi/${copy.id}/termin/${copyLesson.id}/obrisi`, {}, `/admin/draftovi/${copy.id}`);
+  assert.equal(dl().length, 2); // Original unverändert
+  // Löschen
+  await admin.post(`/admin/draftovi/${copy.id}/obrisi`, {}, '/admin/draftovi');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM week_drafts WHERE id = ?').get(copy.id).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM week_draft_lessons WHERE draft_id = ?').get(copy.id).n, 0);
+  page = (await admin.request('/admin/draftovi')).text;
+  assert.match(page, /Zimska sedmica 2027/);
+  assert.match(page, /Kopiraj/);
+  assert.match(page, /Obriši/);
+
+  // „Spremi sedmicu kao draft“: bestehende Woche aus Termini
+  const srcWeek = '2027-04-05';
+  const ins = (uid, date, time, kind, g, price, cancelled = 0) => db.prepare(
+    "INSERT INTO lessons (user_id, date, start_time, duration_min, court, kind, group_id, price_cents, cancelled, trainer_id) VALUES (?, ?, ?, 60, '3', ?, ?, ?, ?, ?)"
+  ).run(uid, date, time, kind, g, price, cancelled, tid);
+  ins(b, '2027-04-06', '16:00', 'group', 'draft-g1', 1500);
+  ins(c, '2027-04-06', '16:00', 'group', 'draft-g1', 1800);
+  ins(a, '2027-04-08', '19:00', 'individual', null, 4000);
+  ins(a, '2027-04-09', '19:00', 'individual', null, 4000, 1); // abgesagt → nicht im Draft
+  const termini = (await admin.request(`/admin/termine?woche=${srcWeek}`)).text;
+  assert.match(termini, new RegExp(`<a class="btn btn-ghost btn-sm" href="/admin/termine/prema-draftu\\?woche=${srcWeek}">Unesi termine prema draftu</a>`));
+  assert.match(termini, /<form method="post" action="\/admin\/draftovi\/iz-sedmice"/);
+  assert.match(termini, />Spremi sedmicu kao draft</);
+  r = await admin.post('/admin/draftovi/iz-sedmice', { monday: srcWeek, name: 'Sedmica bez subote' }, `/admin/termine?woche=${srcWeek}`);
+  const fromWeek = db.prepare("SELECT * FROM week_drafts WHERE name = 'Sedmica bez subote'").get();
+  assert.ok(fromWeek);
+  assert.equal(r.location, `/admin/draftovi/${fromWeek.id}`);
+  const fwl = db.prepare('SELECT * FROM week_draft_lessons WHERE draft_id = ? ORDER BY weekday').all(fromWeek.id);
+  assert.deepEqual(fwl.map((l) => [l.weekday, l.start_time, l.kind, l.court, l.trainer_id]), [[1, '16:00', 'group', '3', tid], [3, '19:00', 'individual', '3', tid]]);
+  assert.deepEqual(players(fwl[0].id).map((p) => ({ ...p })), [{ user_id: b, price_cents: 1500 }, { user_id: c, price_cents: 1800 }].sort((x, y) => x.user_id - y.user_id));
+
+  // „Unesi termine prema draftu“: Auswahl, Vorschau mit echten Daten
+  const target = '2027-04-12';
+  page = (await admin.request(`/admin/termine/prema-draftu?woche=${target}`)).text;
+  assert.match(page, /<select name="draft">/);
+  assert.match(page, /Zimska sedmica 2027/);
+  page = (await admin.request(`/admin/termine/prema-draftu?woche=${target}&draft=${draft.id}`)).text;
+  assert.match(page, /Ponedjeljak, 12\.04\.2027\./);
+  assert.match(page, /Srijeda, 14\.04\.2027\./);
+  assert.match(page, /17:00–18:00/);
+  assert.match(page, /Draft Belma/);
+  assert.doesNotMatch(page, /već ima/);
+  assert.match(page, />Unesi termine</);
+  const beforeApply = lessonsCount();
+  r = await admin.post('/admin/termine/prema-draftu', { woche: target, draft: String(draft.id) }, `/admin/termine/prema-draftu?woche=${target}&draft=${draft.id}`);
+  assert.equal(r.location, `/admin/termine?woche=${target}`);
+  const applied = db.prepare("SELECT * FROM lessons WHERE date BETWEEN '2027-04-12' AND '2027-04-18' ORDER BY date, start_time, user_id").all();
+  assert.equal(lessonsCount(), beforeApply + 3);
+  assert.deepEqual(applied.map((l) => [l.user_id, l.date, l.start_time, l.duration_min, l.kind, l.price_cents, l.cancelled]), [
+    [a, '2027-04-12', '17:00', 60, 'individual', 4000, 0],
+    ...[[b, 4500], [c, 5400]].sort((x, y) => x[0] - y[0]).map(([u, p]) => [u, '2027-04-14', '18:00', 90, 'group', p, 0]),
+  ]);
+  assert.equal(applied[0].trainer_id, tid);
+  assert.equal(applied[0].court, '1');
+  assert.ok(applied[1].group_id && applied[1].group_id === applied[2].group_id);
+  assert.equal(dl().length, 2); // Draft bleibt unverändert
+  assert.match((await admin.request(`/admin/termine?woche=${target}`)).text, /Termini su uneseni prema draftu „Zimska sedmica 2027“/);
+  // Danach ganz normale Termine
+  assert.equal((await admin.request(`/admin/termine/${applied[0].id}`)).status, 200);
+
+  // Woche hat schon Termine → Warnung, „Dodaj uz postojeće“ oder „Odustani“; nichts wird gelöscht
+  page = (await admin.request(`/admin/termine/prema-draftu?woche=${target}&draft=${draft.id}`)).text;
+  assert.match(page, /Ova sedmica već ima 2 termina/);
+  assert.match(page, />Dodaj uz postojeće</);
+  assert.match(page, new RegExp(`<a class="btn btn-ghost" href="/admin/termine\\?woche=${target}">Odustani</a>`));
+  r = await admin.post('/admin/termine/prema-draftu', { woche: target, draft: String(draft.id) }, `/admin/termine/prema-draftu?woche=${target}&draft=${draft.id}`);
+  assert.equal(lessonsCount(), beforeApply + 3); // ohne Bestätigung nichts
+  await admin.post('/admin/termine/prema-draftu', { woche: target, draft: String(draft.id), add: '1' }, `/admin/termine/prema-draftu?woche=${target}&draft=${draft.id}`);
+  assert.equal(lessonsCount(), beforeApply + 6); // hinzugefügt, alte bleiben
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM lessons WHERE id = ?').get(applied[0].id).n, 1);
+
+  // Sichtbarkeit: Drafts nur für den Admin; übernommene Termine erst nach Freigabe
+  const m = client();
+  await m.login('draft.amel', 'memberpass1');
+  assert.equal((await m.request('/admin/draftovi')).status, 403);
+  assert.equal((await m.request(`/admin/draftovi/${draft.id}`)).status, 403);
+  assert.doesNotMatch((await m.request(`/mitglied?woche=${target}`)).text, /17:00–18:00/);
+  releaseWeek(db, target);
+  assert.match((await m.request(`/mitglied?woche=${target}`)).text, /17:00–18:00/);
+  const tr = client();
+  await tr.login('draft.trener', 'trener-pass-1');
+  assert.equal((await tr.request('/admin/draftovi')).status, 403);
+  assert.doesNotMatch((await tr.request(`/trener/raspored?woche=${srcWeek}`)).text, /Zimska|Sedmica bez subote/);
+});

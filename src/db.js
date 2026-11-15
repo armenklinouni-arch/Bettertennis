@@ -207,6 +207,34 @@ CREATE TABLE IF NOT EXISTS page_views (
 );
 CREATE INDEX IF NOT EXISTS page_views_at ON page_views (at);
 
+-- „Sedmični draft“ (samo admin): sedmica od ponedjeljka do nedjelje bez datuma. Termini se u pravu sedmicu
+-- unose tek kad admin to izabere (tada nastaju obični redovi u lessons); draft ostaje nepromijenjen.
+CREATE TABLE IF NOT EXISTS week_drafts (
+  id         INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS week_draft_lessons (
+  id           INTEGER PRIMARY KEY,
+  draft_id     INTEGER NOT NULL REFERENCES week_drafts(id) ON DELETE CASCADE,
+  weekday      INTEGER NOT NULL CHECK (weekday BETWEEN 0 AND 6), -- 0 = ponedjeljak … 6 = nedjelja
+  start_time   TEXT NOT NULL,
+  duration_min INTEGER NOT NULL,
+  court        TEXT,
+  note         TEXT,
+  kind         TEXT NOT NULL DEFAULT 'individual' CHECK (kind IN ('individual', 'group')),
+  trainer_id   INTEGER REFERENCES trainers(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS week_draft_lessons_draft ON week_draft_lessons (draft_id);
+-- Igrači termina u draftu; price_cents prazno = cijena po satu igrača u trenutku unosa u sedmicu.
+CREATE TABLE IF NOT EXISTS week_draft_players (
+  draft_lesson_id INTEGER NOT NULL REFERENCES week_draft_lessons(id) ON DELETE CASCADE,
+  user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  price_cents     INTEGER,
+  PRIMARY KEY (draft_lesson_id, user_id)
+);
+
 -- Prijave (sesije): kolačić nosi samo nasumični token, ovdje se čuva njegov hash.
 -- Odjava i promjena lozinke brišu redove, pa djeluju odmah. kind: user | trainer | parent.
 CREATE TABLE IF NOT EXISTS sessions (

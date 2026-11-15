@@ -211,6 +211,13 @@ tr.is-inactive td { color: var(--muted); }
 .week-tone.is-green { background: var(--week-green-bg); border-color: var(--week-green-border); }
 .week-tone-label { font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-left: 4px; vertical-align: middle; }
 .week-today-btn { margin-top: 4px; }
+/* Sedmični draft */
+.draft-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.draft-actions .inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; flex: 1 1 24em; min-width: 0; }
+.draft-actions input[name="name"] { flex: 1 1 14em; min-width: 0; width: auto; max-width: 26em; }
+.draft-rename { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.draft-rename input { width: 22em; max-width: 100%; }
+.draft-week .day { min-height: 120px; }
 @media (max-width: 700px) { .week-tone { padding: 8px; } }
 @media (max-width: 480px) {
   /* Schmale Handys: Woche und Datum in eigener Zeile (groß, fett, ohne Umbruch), darunter ‹ Prethodna / Sljedeća › */

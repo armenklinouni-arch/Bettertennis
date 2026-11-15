@@ -228,6 +228,22 @@ Tests: `npm test`
 - Selbst eingetragene Inhalte (Namen, Stavke, Notizen, Aktuelnosti, Gruppennamen, Admin-Hinweise in Mails) werden nicht übersetzt.
 - Der Admin-Bereich bleibt immer Bosnisch (ohne Umschalter).
 
+## Sedmični draft (nur Admin)
+
+- Menü **„Sedmični draft“** (`/admin/draftovi`): mehrere Drafts mit eigenem Namen. Ein Draft ist eine Woche
+  Ponedjeljak–Nedjelja ohne Datum; Termine werden wie unter Termini eingetragen (Tag statt Datum, Uhrzeit, Dauer, Teren,
+  Trainer, Gruppe/Spieler, Gruppen- oder Individualtraining, Preis). Speichern geschieht bei jeder Änderung;
+  Drafts lassen sich umbenennen, weiter bearbeiten, **kopieren** und **löschen** (bereits übernommene Termine bleiben).
+- **„Spremi sedmicu kao draft“** (unter Termini bei jeder Woche oder auf der Draft-Seite): eine bestehende Woche wird zum
+  neuen Draft (ohne abgesagte Termine; Preise pro Spieler bleiben). Die Woche selbst ändert sich nicht.
+- **„Unesi termine prema draftu“** (unter Termini bei jeder Woche): Draft auswählen → Vorschau mit allen Terminen,
+  echten Daten und Preisen → „Unesi termine“. Hat die Woche schon Termine, erscheint eine Warnung mit
+  „Dodaj uz postojeće“ oder „Odustani“ – es wird nie etwas gelöscht oder überschrieben.
+- Danach sind es normale Termine (einzeln bearbeitbar); der Draft bleibt unverändert. Ohne festen Preis gilt der
+  Stundenpreis des Spielers zum Zeitpunkt der Übernahme. Mitglieder, Eltern, Kinder und Trainer sehen Drafts nie,
+  übernommene Termine wie bisher erst nach der Wochenplan-Freigabe.
+- Gespeichert in eigenen Tabellen (`week_drafts`, `week_draft_lessons`, `week_draft_players`).
+
 ## Treninzi po igraču (nur Admin)
 
 - Menü **„Treninzi po igraču“** (`/admin/treninzi-po-igracu`): für die gewählte Woche (‹ Prethodna / Sljedeća ›,
