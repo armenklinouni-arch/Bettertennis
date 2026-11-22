@@ -6030,3 +6030,39 @@ test('Informacije o igračima: Schicht (fest oder wöchentlich wechselnd), Verf�
   await admin.post(editUrl(pop), { shift: '', availability: '', note: '' }, editUrl(pop));
   assert.equal(info(pop).shift, null);
 });
+
+// ---------------------------------------------------------------- Informacije o igračima: Spalte „Smjena naredne sedmice“
+test('Informacije o igračima: zweite Spalte „Smjena naredne sedmice“ zeigt die Schicht der folgenden Woche (bezogen auf die gewählte Woche)', async () => {
+  const fix = makeMember('Naredna Fiksna', 'naredna.fiksna');
+  const alt = makeMember('Naredna Mijenja', 'naredna.mijenja');
+  const none = makeMember('Naredna Prazna', 'naredna.prazna');
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const base = '/admin/informacije-igraci';
+  await admin.post(`${base}/${fix}`, { shift: 'afternoon' }, `${base}/${fix}`);
+  await admin.post(`${base}/${alt}`, { shift: 'alternating', shift_even: 'morning', shift_odd: 'afternoon' }, `${base}/${alt}`);
+  const row = (t, id) => new RegExp(`<tr id="igrac-${id}"[^>]*>([\\s\\S]*?)</tr>`).exec(t)[1];
+  const col = (t, id, cls) => new RegExp(`<td class="${cls}">([\\s\\S]*?)</td>`).exec(row(t, id))[1].replace(/<[^>]+>/g, '').trim();
+
+  // KW 41 (zelena) gewählt → naredna = KW 42 (plava)
+  let t = (await admin.request(`${base}?woche=2026-10-05`)).text;
+  assert.match(t, /<th>Smjena ove sedmice<\/th><th>Smjena naredne sedmice<\/th>/);
+  assert.equal(col(t, alt, 'shift-now'), 'Popodnevna');
+  assert.equal(col(t, alt, 'shift-next'), 'Jutarnja');
+  assert.equal(col(t, fix, 'shift-now'), 'Popodnevna');
+  assert.equal(col(t, fix, 'shift-next'), 'Popodnevna');
+  assert.equal(col(t, none, 'shift-next'), '–');
+  // KW 42 gewählt → beide Spalten verschieben sich mit
+  t = (await admin.request(`${base}?woche=2026-10-12`)).text;
+  assert.equal(col(t, alt, 'shift-now'), 'Jutarnja');
+  assert.equal(col(t, alt, 'shift-next'), 'Popodnevna');
+  // Jahreswechsel: KW 53/2026 (ungerade) → KW 1/2027 (ungerade): gleiche Schicht
+  t = (await admin.request(`${base}?woche=2026-12-28`)).text;
+  assert.match(t, /53\. sedmica/);
+  assert.equal(col(t, alt, 'shift-now'), 'Popodnevna');
+  assert.equal(col(t, alt, 'shift-next'), 'Popodnevna');
+  // Schichtfilter bleibt auf „diese Woche“ bezogen
+  const ids = (x) => [...x.matchAll(/<tr id="igrac-(\d+)"/g)].map((m) => Number(m[1]));
+  t = (await admin.request(`${base}?woche=2026-10-05&smjena=morning`)).text;
+  assert.ok(!ids(t).includes(alt));
+});

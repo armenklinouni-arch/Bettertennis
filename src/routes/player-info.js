@@ -52,10 +52,11 @@ module.exports = function playerInfoRoutes(db) {
     const shiftFilter = FILTERS[req.query.smjena] ? req.query.smjena : '';
     const q = text(req.query.trazi, 100);
     const infos = allInfo();
+    const nextMonday = D.addDays(monday, 7);
     // Aktivni igrači i neaktivni za koje su informacije već unesene.
     const all = sortByName(players.all().filter((p) => p.active || infos.has(p.id))).map((p) => {
       const info = infos.get(p.id) || null;
-      return { player: p, info, now: shiftInWeek(info, monday), text: searchText(p.name, p.username) };
+      return { player: p, info, now: shiftInWeek(info, monday), next: shiftInWeek(info, nextMonday), text: searchText(p.name, p.username) };
     });
     const rows = all.filter((r) => !shiftFilter || (shiftFilter === 'none' ? !r.now : r.now === shiftFilter));
     const blue = isBlueWeek(monday);
@@ -98,12 +99,13 @@ module.exports = function playerInfoRoutes(db) {
       </div>
       <p class="muted">Prikazano: ${rows.length} od ${all.length}</p>
       <div class="table-wrap"><table class="player-info">
-        <thead><tr><th>Ime</th><th>Smjena ove sedmice</th><th>Školska smjena</th><th>Kad može na trening</th><th>Napomena</th><th></th></tr></thead>
+        <thead><tr><th>Ime</th><th>Smjena ove sedmice</th><th>Smjena naredne sedmice</th><th>Školska smjena</th><th>Kad može na trening</th><th>Napomena</th><th></th></tr></thead>
         <tbody data-filter-list="informacije">${rows.length === 0
-          ? html`<tr><td colspan="6" class="empty">Nema igrača za ovaj filter.</td></tr>`
+          ? html`<tr><td colspan="7" class="empty">Nema igrača za ovaj filter.</td></tr>`
           : rows.map((r) => html`<tr id="igrac-${r.player.id}" data-filter="${r.text}" class="${r.player.active ? '' : 'is-inactive'}"${q && !matchesSearch(r.text, q) ? html` hidden` : ''}>
             <td><a href="${BASE}/${r.player.id}?back=${encodeURIComponent(back)}"><strong>${r.player.name}</strong></a></td>
             <td class="shift-now">${r.now ? html`<span class="tag shift-tag is-${r.now}">${SHIFTS[r.now]}</span>` : '–'}</td>
+            <td class="shift-next">${r.next ? html`<span class="tag shift-tag is-${r.next}">${SHIFTS[r.next]}</span>` : '–'}</td>
             <td>${shiftSettingLabel(r.info)}</td>
             <td class="pre">${r.info && r.info.availability ? r.info.availability : ''}</td>
             <td class="pre">${r.info && r.info.note ? r.info.note : ''}</td>

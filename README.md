@@ -263,7 +263,7 @@ Tests: `npm test`
   (dann je eine Schicht für gerade = plave und ungerade = zelene Kalenderwochen), **Kad može na trening** (freier Text)
   und **Napomena**.
 - Oben die Woche wählen (‹ Prethodna / Sljedeća ›): die Spalte „Smjena ove sedmice“ zeigt automatisch die Schicht in
-  dieser Woche. Filter „Smjena u ovoj sedmici“: Jutarnja, Popodnevna oder Nije uneseno.
+  dieser Woche, „Smjena naredne sedmice“ die der Woche danach. Filter „Smjena u ovoj sedmici“: Jutarnja, Popodnevna oder Nije uneseno.
 - Nur für den Admin; nirgends für Mitglieder, Eltern, Kinder oder Trainer sichtbar. Tabelle `player_info`
   (wird beim Löschen eines Spielers mit gelöscht).
 
