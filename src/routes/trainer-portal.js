@@ -9,6 +9,7 @@ const { trainerReport, trainerSessionsBetween, trainerTotalsUntil } = require('.
 const { layout, csrfField, errorList, weekView, monthNav, lessonTimeRange, lessonKindLabel } = require('../views');
 const { requireTrainer, hashPassword, verifyPassword, endSessionsFor } = require('../auth');
 const { logActivity } = require('../activity');
+const { holidaysBetween } = require('../holidays');
 
 // Trenerski dio: svaki trener vidi samo svoje termine, svoje igrače i svoju isplatu.
 // Cijene članova i podaci drugih trenera ovdje se nikad ne prikazuju.
@@ -105,7 +106,7 @@ module.exports = function trainerPortalRoutes(db) {
         <h1>${req.t('nav.mySchedule')}</h1>
         <p class="muted">${req.t('tr.scheduleIntro')}</p>
       </div></div>
-      ${weekView({ monday, lessons, baseUrl: '/trener/raspored', today, lang: req.lang })}`,
+      ${weekView({ monday, lessons, baseUrl: '/trener/raspored', today, lang: req.lang, holidays: holidaysBetween(db, monday, D.addDays(monday, 6)) })}`,
     })));
   });
 

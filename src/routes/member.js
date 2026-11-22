@@ -16,6 +16,7 @@ const {
 const { EMAIL_RE } = require('./public');
 const { logActivity, changes } = require('../activity');
 const { recordView } = require('../page-views');
+const { holidaysBetween } = require('../holidays');
 const {
   isSlotOpen, slotStartMs, slotLabel, formatSarajevo, NOTIFY_EMAIL_DEFAULT,
 } = require('../private-lessons');
@@ -113,7 +114,7 @@ module.exports = function memberRoutes(db, { mailer = null, notifyEmail = NOTIFY
         ? html`<a class="notice notice-link" href="/mitglied/aktuelnosti">📬 ${t('m.unreadBefore')} <strong>${req.unreadNews}</strong> ${t('m.unreadAfter')}</a>`
         : ''}
       ${weekReleased ? '' : html`<p class="notice">${t('week.notPublished')}</p>`}
-      ${weekView({ monday, lessons, baseUrl: '/mitglied', today, lang })}
+      ${weekView({ monday, lessons, baseUrl: '/mitglied', today, lang, holidays: weekReleased ? holidaysBetween(db, monday, D.addDays(monday, 6)) : new Map() })}
       <section class="card">
         <h2>${t('m.upcoming')}</h2>
         ${upcoming.length === 0

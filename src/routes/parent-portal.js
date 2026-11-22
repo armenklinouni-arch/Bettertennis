@@ -12,6 +12,7 @@ const { layout, weekView, monthNav, paymentBadge, statementTable } = require('..
 const { requireParentAccount } = require('../auth');
 const { isWeekReleased } = require('../weeks');
 const { recordView } = require('../page-views');
+const { holidaysBetween } = require('../holidays');
 
 module.exports = function parentPortalRoutes(db) {
   const router = express.Router();
@@ -56,7 +57,7 @@ module.exports = function parentPortalRoutes(db) {
         </div>
       </div>
       ${released ? '' : html`<p class="notice">${t('week.notPublished')}</p>`}
-      ${weekView({ monday, lessons, baseUrl: '/roditelj', today, lang })}`,
+      ${weekView({ monday, lessons, baseUrl: '/roditelj', today, lang, holidays: released ? holidaysBetween(db, monday, D.addDays(monday, 6)) : new Map() })}`,
     })));
   });
 

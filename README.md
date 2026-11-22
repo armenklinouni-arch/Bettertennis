@@ -228,6 +228,17 @@ Tests: `npm test`
 - Selbst eingetragene Inhalte (Namen, Stavke, Notizen, Aktuelnosti, Gruppennamen, Admin-Hinweise in Mails) werden nicht übersetzt.
 - Der Admin-Bereich bleibt immer Bosnisch (ohne Umschalter).
 
+## Praznik / trainingsfreier Tag
+
+- Unter **Termini** hat jeder Tag ein kleines Feld **„Označi kao praznik“**: Name bzw. Grund eintragen (z. B. „Nova godina“,
+  „Bajram“, „Dan državnosti“) → „Spremi“. Danach **„Uredi praznik“** zum Ändern und **„Ukloni praznik“** zum Entfernen.
+  Funktioniert auch für künftige Wochen (z. B. vor der Freigabe am Sonntag).
+- Mitglieder, Kinder-Konten, Eltern und Trainer sehen den Tag farbig hervorgehoben mit **„Praznik: [Name] – nema treninga“**
+  (Englisch: „Holiday: [Name] – no training“); die Termine des Tages sind ausgegraut und durchgestrichen.
+  Mitglieder, Kinder und Eltern sehen das wie den übrigen Plan erst nach der Wochenplan-Freigabe.
+- **Nur Anzeige:** keine Änderung an Terminen, Abrechnung oder Anwesenheit, keine Mails. Gespeichert in der Tabelle
+  `holidays` (damit auch im wöchentlichen Backup); Einträge im Dnevnik aktivnosti.
+
 ## Sedmični draft (nur Admin)
 
 - Menü **„Sedmični draft“** (`/admin/draftovi`): mehrere Drafts mit eigenem Namen. Ein Draft ist eine Woche

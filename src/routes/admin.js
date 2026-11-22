@@ -8,6 +8,7 @@ const express = require('express');
 const { html } = require('../html');
 const D = require('../dates');
 const { accountLang, t: translate } = require('../i18n');
+const { holidaysBetween } = require('../holidays');
 const { formatMoney, centsToInput, parseMoney, lessonPrice, CURRENCY_SYMBOL } = require('../money');
 const {
   monthlyStatement, setPaid, setReleased, setDisplayTotal, setNoTraining, formatHours, BILLING_MODES, BILLING_MODE_SHORT, MEMBER_MONTHS_BACK,
@@ -895,7 +896,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
           <button class="btn btn-ghost btn-sm" type="submit">Spremi sedmicu kao draft</button>
         </form>
       </section>
-      ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, actions, showPrice: true, extraQuery, numbered: true, weekTone: true })}
+      ${weekView({ monday, lessons, baseUrl: '/admin/termine', today, actions, showPrice: true, extraQuery, numbered: true, weekTone: true, holidays: holidaysBetween(db, monday, D.addDays(monday, 6)), dayTools: holidayTools(req, back) })}
       <section class="card">
         <h2>Novi termin</h2>
         ${members.length === 0
@@ -1377,6 +1378,7 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
             };
           }),
           baseUrl: '/admin/termine/prema-draftu', today: D.todayISO(), showPrice: true, extraQuery: `&draft=${d.id}`, numbered: true, weekTone: true,
+          holidays: holidaysBetween(db, monday, D.addDays(monday, 6)),
         })}
         ${existing ? html`<p class="notice">⚠️ Ova sedmica već ima ${existing} ${existing === 1 ? 'termin' : 'termina'}. Postojeći termini se ne brišu i ne mijenjaju –
           termini iz drafta se samo dodaju.</p>` : ''}
@@ -1414,6 +1416,60 @@ module.exports = function adminRoutes(db, { mailer = null, backupEmail = BACKUP_
     log(req, 'Termini', `termini uneseni prema draftu „${d.name}“ – sedmica ${D.formatDate(monday)} – ${D.formatDate(D.addDays(monday, 6))}: ${plan.length} termina`);
     res.flash('success', `Termini su uneseni prema draftu „${d.name}“ (${plan.length} termina). Možeš ih sada pojedinačno uređivati.`);
     res.redirect(`/admin/termine?woche=${monday}`);
+  });
+
+  // ---------------------------------------------------------------- Praznik / dan bez treninga (samo prikaz)
+  // Oznaka dana u rasporedu. Ne mijenja termine, obračun ni prisustvo i ne šalje e-mailove.
+  const getHoliday = db.prepare('SELECT * FROM holidays WHERE date = ?');
+  const HOLIDAY_PLACEHOLDER = 'npr. Nova godina, Bajram, Dan državnosti';
+  function holidayTools(req, back) {
+    return (day, name) => html`
+      <details class="holiday-edit"><summary>${name ? 'Uredi praznik' : 'Označi kao praznik'}</summary>
+        <form method="post" action="/admin/termine/praznik" class="holiday-form">
+          ${csrfField(req)}<input type="hidden" name="date" value="${day}"><input type="hidden" name="back" value="${back}">
+          <label>Naziv / razlog
+            <input name="name" required maxlength="80" placeholder="${HOLIDAY_PLACEHOLDER}" value="${name || ''}">
+          </label>
+          <button class="btn btn-primary btn-sm" type="submit">Spremi</button>
+        </form>
+        ${name ? html`<form method="post" action="/admin/termine/praznik/ukloni" class="holiday-form">
+          ${csrfField(req)}<input type="hidden" name="date" value="${day}"><input type="hidden" name="back" value="${back}">
+          <button class="btn btn-ghost btn-sm" type="submit">Ukloni praznik</button>
+        </form>` : ''}
+      </details>`;
+  }
+  const holidayBack = (req, date) => (typeof req.body.back === 'string' && /^\/admin\/termine(?![^?])/.test(req.body.back)
+    ? req.body.back : `/admin/termine?woche=${D.mondayOf(date)}`);
+
+  router.post('/termine/praznik', (req, res) => {
+    const date = str(req.body.date, 10);
+    if (!D.isValidDate(date)) return res.status(400).send('Neispravan datum.');
+    const name = str(req.body.name, 80);
+    if (!name) {
+      res.flash('error', 'Unesi naziv ili razlog praznika.');
+      return res.redirect(holidayBack(req, date));
+    }
+    const old = getHoliday.get(date);
+    db.prepare(
+      `INSERT INTO holidays (date, name) VALUES (?, ?)
+       ON CONFLICT(date) DO UPDATE SET name = excluded.name`
+    ).run(date, name);
+    if (!old) log(req, 'Termini', `praznik označen – ${D.formatDateLong(date)}: ${name}`);
+    else if (old.name !== name) log(req, 'Termini', `praznik izmijenjen – ${D.formatDateLong(date)}: ${old.name} → ${name}`);
+    res.flash('success', `${D.formatDateLong(date)} je označen kao praznik („${name}“). Termini, obračun i prisustvo se ne mijenjaju.`);
+    res.redirect(holidayBack(req, date));
+  });
+
+  router.post('/termine/praznik/ukloni', (req, res) => {
+    const date = str(req.body.date, 10);
+    if (!D.isValidDate(date)) return res.status(400).send('Neispravan datum.');
+    const old = getHoliday.get(date);
+    if (old) {
+      db.prepare('DELETE FROM holidays WHERE date = ?').run(date);
+      log(req, 'Termini', `praznik uklonjen – ${D.formatDateLong(date)} (${old.name})`);
+      res.flash('success', `Oznaka praznika za ${D.formatDateLong(date)} je uklonjena.`);
+    }
+    res.redirect(holidayBack(req, date));
   });
 
   function lessonFormValues(rows) {

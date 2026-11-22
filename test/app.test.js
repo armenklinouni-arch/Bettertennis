@@ -5808,3 +5808,115 @@ test('Sedmični draft: Vorschau und Draft-Ansicht als Wochenübersicht mit farbi
   assert.match(dc[0].body, /Obriši/);
   assert.doesNotMatch(dc[0].body, /Planiran|Realizovan/); // kein Status im Draft
 });
+
+// ---------------------------------------------------------------- Termini: Feiertag / trainingsfreier Tag (nur Anzeige)
+test('Praznik: Admin markiert Tag als Feiertag (bearbeiten/entfernen); Mitglieder/Eltern/Kinder/Trainer sehen „Praznik: … – nema treninga“ bzw. Englisch; Termine/Abrechnung/Mails unverändert; im Backup', async () => {
+  const { releaseWeek } = require('../src/weeks');
+  const { monthlyStatement } = require('../src/billing');
+  const week = '2027-06-07';
+  const day = '2027-06-09'; // Mittwoch
+  const a = makeMember('Praznik Alma', 'praznik.alma', { rate: 4000 });
+  useSchedule(a, ['2027-06']);
+  db.prepare("INSERT INTO trainers (name, username, password_hash) VALUES ('Praznik Trener', 'praznik.trener', ?)").run(hashPassword('trener-pass-1'));
+  const tid = db.prepare("SELECT id FROM trainers WHERE username = 'praznik.trener'").get().id;
+  const lid = db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, court, kind, price_cents, trainer_id) VALUES (?, ?, '17:15', 60, '1', 'individual', 4000, ?)").run(a, day, tid).lastInsertRowid;
+  db.prepare("INSERT INTO lessons (user_id, date, start_time, duration_min, kind, price_cents, trainer_id) VALUES (?, '2027-06-10', '17:15', 60, 'individual', 4000, ?)").run(a, tid);
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const termini = `/admin/termine?woche=${week}`;
+  const dayBox = (t, iso) => new RegExp(`<div class="day[^"]*" data-day="${iso}">([\\s\\S]*?)<div class="day-body">([\\s\\S]*?)</div>\\s*</div>\\s*(?=<div class="day|</div>\\s*</section>)`).exec(t);
+
+  // Jeder Tag hat den kleinen Knopf mit kurzem Feld
+  let t = (await admin.request(termini)).text;
+  assert.equal([...t.matchAll(/<details class="holiday-edit"><summary>Označi kao praznik<\/summary>/g)].length, 7);
+  assert.match(dayBox(t, day)[1], /<form method="post" action="\/admin\/termine\/praznik" class="holiday-form">[\s\S]*name="date" value="2027-06-09"[\s\S]*<input name="name" required maxlength="80" placeholder="npr. Nova godina, Bajram, Dan državnosti"/);
+
+  // Vorher: Abrechnung, Termine, Mails merken
+  const user = () => db.prepare('SELECT * FROM users WHERE id = ?').get(a);
+  const totalBefore = monthlyStatement(db, user(), '2027-06').total;
+  const lessonsBefore = JSON.stringify(db.prepare('SELECT * FROM lessons WHERE user_id = ? ORDER BY id').all(a));
+  const mailsBefore = sentMails.length;
+
+  // Ungültig: ohne Namen / ungültiges Datum → nichts gespeichert
+  await admin.post('/admin/termine/praznik', { date: day, name: '  ', back: termini }, termini);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM holidays').get().n, 0);
+  assert.equal((await admin.post('/admin/termine/praznik', { date: '2027-13-40', name: 'X', back: termini }, termini)).status, 400);
+  // Speichern
+  let r = await admin.post('/admin/termine/praznik', { date: day, name: 'Bajram', back: termini }, termini);
+  assert.equal(r.location, termini);
+  assert.equal(db.prepare('SELECT name FROM holidays WHERE date = ?').get(day).name, 'Bajram');
+  t = (await admin.request(termini)).text;
+  const box = dayBox(t, day);
+  assert.match(box[0], /<div class="day is-holiday" data-day="2027-06-09">/);
+  assert.match(box[2], /<p class="holiday-banner" role="note"><span aria-hidden="true">🎉<\/span> Praznik: Bajram – nema treninga<\/p>/);
+  assert.match(box[2], /<article class="lesson lesson-card is-individual is-holiday-off">/);
+  assert.match(box[1], /<summary>Uredi praznik<\/summary>[\s\S]*value="Bajram"/);
+  assert.match(box[1], /action="\/admin\/termine\/praznik\/ukloni"[\s\S]*>Ukloni praznik<\/button>/);
+  assert.doesNotMatch(dayBox(t, '2027-06-10')[2], /holiday-banner|is-holiday-off/);
+  // Nur Anzeige: Termine, Status, Abrechnung unverändert, keine Mails
+  assert.equal(JSON.stringify(db.prepare('SELECT * FROM lessons WHERE user_id = ? ORDER BY id').all(a)), lessonsBefore);
+  assert.equal(db.prepare('SELECT cancelled FROM lessons WHERE id = ?').get(lid).cancelled, 0);
+  assert.equal(monthlyStatement(db, user(), '2027-06').total, totalBefore);
+  assert.equal(sentMails.length, mailsBefore);
+
+  // Mitglied: vor der Freigabe keine Anzeige, danach hervorgehoben; Englisch
+  const m = client();
+  await m.login('praznik.alma', 'memberpass1');
+  assert.doesNotMatch((await m.request(`/mitglied?woche=${week}`)).text, /holiday-banner/);
+  releaseWeek(db, week);
+  let mw = (await m.request(`/mitglied?woche=${week}`)).text;
+  assert.match(dayBox(mw, day)[0], /class="day is-holiday"/);
+  assert.match(dayBox(mw, day)[2], /Praznik: Bajram – nema treninga/);
+  assert.match(dayBox(mw, day)[2], /is-holiday-off/);
+  assert.doesNotMatch(mw, /holiday-edit|Ukloni praznik/); // keine Admin-Knöpfe
+  await m.post('/jezik', { lang: 'en', back: '/mitglied' }, '/mitglied');
+  mw = (await m.request(`/mitglied?woche=${week}`)).text;
+  assert.match(dayBox(mw, day)[2], /Holiday: Bajram – no training/);
+  // Eltern, Kind, Trainer
+  await createParentAccount(admin, { name: 'Praznik Roditelj', username: 'praznik.roditelj', password: 'roditelj-pass-1', players: [a] });
+  const p = client();
+  await p.login('praznik.roditelj', 'roditelj-pass-1');
+  assert.match((await p.request(`/roditelj?woche=${week}`)).text, /Praznik: Bajram – nema treninga/);
+  await m.post('/mitglied/djeca', { name: 'Praznik Dijete', username: 'praznik.dijete', password: 'dijete-pass-1' }, '/mitglied/djeca');
+  const kid = client();
+  await kid.login('praznik.dijete', 'dijete-pass-1');
+  assert.match((await kid.request(`/mitglied?woche=${week}`)).text, /Praznik: Bajram – nema treninga/);
+  const tr = client();
+  await tr.login('praznik.trener', 'trener-pass-1');
+  assert.match((await tr.request(`/trener/raspored?woche=${week}`)).text, /Praznik: Bajram – nema treninga/);
+
+  // Auch für die Zukunft (z. B. nächste Woche vor der Freigabe) und im Backup enthalten
+  await admin.post('/admin/termine/praznik', { date: '2027-06-15', name: 'Dan državnosti', back: '/admin/termine?woche=2027-06-14' }, '/admin/termine?woche=2027-06-14');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { backupBuffer } = require('../src/backup');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bt-praznik-')), 'b.db');
+  fs.writeFileSync(file, backupBuffer(db));
+  const { DatabaseSync } = require('node:sqlite');
+  const copy = new DatabaseSync(file);
+  assert.deepEqual(copy.prepare('SELECT date, name FROM holidays ORDER BY date').all().map((x) => `${x.date} ${x.name}`), ['2027-06-09 Bajram', '2027-06-15 Dan državnosti']);
+  copy.close();
+
+  // Bearbeiten und entfernen
+  await admin.post('/admin/termine/praznik', { date: day, name: 'Kurban-bajram', back: termini }, termini);
+  assert.equal(db.prepare('SELECT name FROM holidays WHERE date = ?').get(day).name, 'Kurban-bajram');
+  r = await admin.post('/admin/termine/praznik/ukloni', { date: day, back: termini }, termini);
+  assert.equal(r.location, termini);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM holidays WHERE date = ?').get(day).n, 0);
+  assert.doesNotMatch(dayBox((await admin.request(termini)).text, day)[2], /holiday-banner/);
+  assert.equal(JSON.stringify(db.prepare('SELECT * FROM lessons WHERE user_id = ? ORDER BY id').all(a)), lessonsBefore);
+  // Dnevnik
+  assert.match(db.prepare("SELECT text FROM activity_log WHERE area = 'Termini' ORDER BY id DESC LIMIT 3").all().map((x) => x.text).join('\n'), /praznik uklonjen – Srijeda, 09\.06\.2027\./);
+
+  // Nur Admin darf markieren
+  const mc = client();
+  await mc.login('praznik.alma', 'memberpass1');
+  assert.equal((await mc.post('/admin/termine/praznik', { date: day, name: 'Hack' }, '/mitglied')).status, 403);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM holidays WHERE date = ?').get(day).n, 0);
+  // Gut bedienbar am Handy: eigene Stile
+  const css = (await admin.request('/static/style.css')).text;
+  assert.match(css, /\.day\.is-holiday \{/);
+  assert.match(css, /\.holiday-banner \{/);
+  assert.match(css, /\.lesson-card\.is-holiday-off \{[^}]*opacity/);
+});

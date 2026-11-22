@@ -77,6 +77,7 @@ module.exports = {
   'week.number': '{n}. sedmica',
   'week.thisWeek': 'Ova sedmica',
   'week.noTraining': 'Nema treninga',
+  'holiday.banner': 'Praznik: {name} – nema treninga',
   'week.notPublished': 'Raspored za ovu sedmicu još nije objavljen. Bit će vidljiv čim ga teniska škola objavi.',
 
   // ---------------------------------------------------------------- Mjesečni obračun

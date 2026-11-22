@@ -129,5 +129,5 @@ function startBackupScheduler(db, mailer, { to = BACKUP_EMAIL_DEFAULT, intervalM
 }
 
 module.exports = {
-  sendBackupMail, runScheduledBackup, startBackupScheduler, backupSlot, BACKUP_EMAIL_DEFAULT,
+  sendBackupMail, runScheduledBackup, startBackupScheduler, backupSlot, BACKUP_EMAIL_DEFAULT, backupBuffer,
 };

@@ -79,6 +79,7 @@ module.exports = {
   'week.number': 'Week {n}',
   'week.thisWeek': 'This week',
   'week.noTraining': 'No training',
+  'holiday.banner': 'Holiday: {name} – no training',
   'week.notPublished': 'The schedule for this week hasn’t been published yet. You’ll see it as soon as the tennis school publishes it.',
 
   // ---------------------------------------------------------------- Monthly statement

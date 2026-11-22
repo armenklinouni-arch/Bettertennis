@@ -207,6 +207,13 @@ CREATE TABLE IF NOT EXISTS page_views (
 );
 CREATE INDEX IF NOT EXISTS page_views_at ON page_views (at);
 
+-- Praznik / dan bez treninga (samo prikaz u rasporedu): ne mijenja termine, obračun ni prisustvo i ne šalje e-mailove.
+CREATE TABLE IF NOT EXISTS holidays (
+  date       TEXT PRIMARY KEY, -- YYYY-MM-DD
+  name       TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- „Sedmični draft“ (samo admin): sedmica od ponedjeljka do nedjelje bez datuma. Termini se u pravu sedmicu
 -- unose tek kad admin to izabere (tada nastaju obični redovi u lessons); draft ostaje nepromijenjen.
 CREATE TABLE IF NOT EXISTS week_drafts (

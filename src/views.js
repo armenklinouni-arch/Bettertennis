@@ -217,7 +217,9 @@ function lessonTimeRange(lesson) {
 // options.lang: jezik prikaza (standard bosanski; admin uvijek bosanski).
 // options.undated (samo admin, „Sedmični draft“): dani bez datuma i bez navigacije; termini dobijaju polje date
 //   prema danu (monday + weekday); na kartici trajanje i teren umjesto datuma, bez statusa.
-function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '', numbered = false, weekTone = false, lang = 'bs', undated = false }) {
+// options.holidays: Map datum → naziv praznika (samo prikaz: istaknut dan, termini posivljeni i precrtani).
+// options.dayTools(day, holidayName): dodatni elementi ispod naslova dana (admin: „Označi kao praznik“).
+function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, showPrice = false, extraQuery = '', numbered = false, weekTone = false, lang = 'bs', undated = false, holidays = new Map(), dayTools = null }) {
   const t = (key, vars) => translate(lang, key, vars);
   const dayNames = D.dayNames(lang);
   const days = D.weekDays(monday);
@@ -249,18 +251,21 @@ function weekView({ monday, lessons, baseUrl, today = D.todayISO(), actions, sho
     <div class="week-grid">
       ${days.map((day, i) => {
         const items = byDay.get(day);
+        const holiday = undated ? null : holidays.get(day) || null;
         return html`
-        <div class="day${!undated && day === today ? ' is-today' : ''}${i >= 5 ? ' is-weekend' : ''}">
+        <div class="day${!undated && day === today ? ' is-today' : ''}${i >= 5 ? ' is-weekend' : ''}${holiday ? ' is-holiday' : ''}"${undated ? '' : html` data-day="${day}"`}>
           <div class="day-head">
             <span class="day-name">${dayNames[i]}</span>
             ${undated ? '' : html`<span class="day-date">${D.formatDate(day, lang)}</span>`}
           </div>
+          ${dayTools ? dayTools(day, holiday) : ''}
           <div class="day-body">
+            ${holiday ? html`<p class="holiday-banner" role="note"><span aria-hidden="true">🎉</span> ${t('holiday.banner', { name: holiday })}</p>` : ''}
             ${items.length === 0
-              ? html`<p class="empty">${t('week.noTraining')}</p>`
+              ? (holiday ? '' : html`<p class="empty">${t('week.noTraining')}</p>`)
               : items.map(
                   (l) => html`
-              <article class="lesson lesson-card ${l.kind === 'group' ? 'is-group' : 'is-individual'}${l.cancelled ? ' is-cancelled' : ''}">
+              <article class="lesson lesson-card ${l.kind === 'group' ? 'is-group' : 'is-individual'}${l.cancelled ? ' is-cancelled' : ''}${holiday ? ' is-holiday-off' : ''}">
                 <div class="lesson-time">${lessonTimeRange(l)} h</div>
                 <ul class="lesson-names">${(l.member_names || [l.member_name]).map((n, i) => html`<li title="${n}">${numbered ? html`<span class="lesson-num">${i + 1}.</span> ` : ''}${n}</li>`)}</ul>
                 ${l.names_note ? html`<div class="lesson-meta">${l.names_note}</div>` : ''}
