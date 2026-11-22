@@ -5920,3 +5920,113 @@ test('Praznik: Admin markiert Tag als Feiertag (bearbeiten/entfernen); Mitgliede
   assert.match(css, /\.holiday-banner \{/);
   assert.match(css, /\.lesson-card\.is-holiday-off \{[^}]*opacity/);
 });
+
+// ---------------------------------------------------------------- Admin: „Informacije o igračima“ (Schulschicht, Verfügbarkeit, Notiz)
+test('Informacije o igračima: Schicht (fest oder wöchentlich wechselnd), Verfügbarkeit, Notiz; Schicht der gewählten Woche; Filter nach Schicht und Name; nur Admin', async () => {
+  const jut = makeMember('Info Jutarnji', 'info.jutarnji');
+  const pop = makeMember('Info Popodnevni', 'info.popodnevni');
+  const mij = makeMember('Info Mijenja', 'info.mijenja');
+  const nic = makeMember('Info Nepoznat', 'info.nepoznat');
+  db.prepare("INSERT INTO users (name, username, email, password_hash, parent_id) VALUES ('Info Dijete', 'info.dijete', 'info.dijete@x.ba', 'h', ?)").run(jut);
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const base = '/admin/informacije-igraci';
+
+  // Liste, Menü, keine Kinder-Konten, alphabetisch
+  let page = await admin.request(`${base}?woche=2026-10-05`);
+  assert.equal(page.status, 200);
+  assert.match(page.text, /<h1>Informacije o igračima<\/h1>/);
+  assert.match(page.text, /href="\/admin\/informacije-igraci"[^>]*>Informacije o igračima</);
+  assert.doesNotMatch(page.text, /Info Dijete/);
+  const order = [...page.text.matchAll(/<tr id="igrac-(\d+)"/g)].map((m) => Number(m[1]));
+  assert.ok(order.indexOf(jut) < order.indexOf(mij) && order.indexOf(mij) < order.indexOf(nic) && order.indexOf(nic) < order.indexOf(pop));
+  assert.match(page.text, /<form method="get" action="\/admin\/informacije-igraci" class="list-filter" role="search" data-list-filter="informacije">/);
+
+  // Bearbeiten
+  const editUrl = (id) => `${base}/${id}`;
+  let form = (await admin.request(editUrl(mij))).text;
+  assert.match(form, /<select name="shift">/);
+  assert.match(form, /<option value="morning">Jutarnja<\/option>/);
+  assert.match(form, /<option value="alternating">Mijenja se sedmično<\/option>/);
+  assert.match(form, /name="shift_even"/);
+  assert.match(form, /name="shift_odd"/);
+  assert.match(form, /plava sedmica/);
+  assert.match(form, /zelena sedmica/);
+  assert.match(form, /<textarea name="availability"/);
+  assert.match(form, /<textarea name="note"/);
+  await admin.post(editUrl(jut), { shift: 'morning', availability: 'radnim danima od 17 h, subotom ne', note: 'Voli <b>servis</b>' }, editUrl(jut));
+  await admin.post(editUrl(pop), { shift: 'afternoon', availability: '', note: '' }, editUrl(pop));
+  // Wechselnd: beide Schichten nötig
+  let r = await admin.post(editUrl(mij), { shift: 'alternating', shift_even: 'morning', shift_odd: '' }, editUrl(mij));
+  assert.equal(r.status, 400);
+  assert.match(r.text, /Odaberi smjenu za plavu i za zelenu sedmicu\./);
+  r = await admin.post(editUrl(mij), { shift: 'alternating', shift_even: 'morning', shift_odd: 'afternoon', availability: 'samo vikendom' }, editUrl(mij));
+  assert.equal(r.status, 302);
+  const info = (id) => db.prepare('SELECT * FROM player_info WHERE user_id = ?').get(id);
+  assert.equal(info(jut).shift, 'morning');
+  assert.equal(info(mij).shift_even, 'morning');
+  assert.equal(info(mij).shift_odd, 'afternoon');
+  assert.equal(info(nic), undefined);
+  form = (await admin.request(editUrl(mij))).text;
+  assert.match(form, /<option value="alternating" selected>/);
+
+  // Schicht der gewählten Woche: KW 41 (ungerade, zelena) / KW 42 (gerade, plava)
+  const cell = (t, id) => new RegExp(`<tr id="igrac-${id}"[^>]*>([\\s\\S]*?)</tr>`).exec(t)[1];
+  const thisWeek = (t, id) => /<td class="shift-now">([\s\S]*?)<\/td>/.exec(cell(t, id))[1].replace(/<[^>]+>/g, '').trim();
+  page = await admin.request(`${base}?woche=2026-10-05`);
+  assert.match(page.text, /41\. sedmica/);
+  assert.match(page.text, /zelena sedmica/);
+  assert.equal(thisWeek(page.text, jut), 'Jutarnja');
+  assert.equal(thisWeek(page.text, pop), 'Popodnevna');
+  assert.equal(thisWeek(page.text, mij), 'Popodnevna');
+  assert.equal(thisWeek(page.text, nic), '–');
+  assert.match(cell(page.text, mij), /Mijenja se sedmično \(plava: Jutarnja, zelena: Popodnevna\)/);
+  assert.match(cell(page.text, jut), /radnim danima od 17 h, subotom ne/);
+  assert.match(cell(page.text, jut), /Voli &lt;b&gt;servis&lt;\/b&gt;/);
+  page = await admin.request(`${base}?woche=2026-10-14`);
+  assert.match(page.text, /42\. sedmica/);
+  assert.match(page.text, /plava sedmica/);
+  assert.equal(thisWeek(page.text, mij), 'Jutarnja');
+  // Wochenwechsel
+  assert.match(page.text, /href="\/admin\/informacije-igraci\?woche=2026-10-05"/);
+  assert.match(page.text, /href="\/admin\/informacije-igraci\?woche=2026-10-19"/);
+
+  // Filter nach Schicht (für die gewählte Woche)
+  const ids = (t) => [...t.matchAll(/<tr id="igrac-(\d+)"/g)].map((m) => Number(m[1]));
+  let f = (await admin.request(`${base}?woche=2026-10-12&smjena=morning`)).text;
+  assert.ok(ids(f).includes(jut) && ids(f).includes(mij));
+  assert.ok(!ids(f).includes(pop) && !ids(f).includes(nic));
+  assert.match(f, /<option value="morning" selected>Jutarnja<\/option>/);
+  f = (await admin.request(`${base}?woche=2026-10-05&smjena=morning`)).text;
+  assert.ok(ids(f).includes(jut) && !ids(f).includes(mij));
+  f = (await admin.request(`${base}?woche=2026-10-05&smjena=afternoon`)).text;
+  assert.ok(ids(f).includes(pop) && ids(f).includes(mij) && !ids(f).includes(jut));
+  f = (await admin.request(`${base}?woche=2026-10-05&smjena=none`)).text;
+  assert.ok(ids(f).includes(nic) && !ids(f).includes(jut));
+  assert.match(f, /Prikazano: \d+ od \d+/);
+  // Wochenlinks behalten den Schichtfilter
+  assert.match(f, /href="\/admin\/informacije-igraci\?woche=2026-10-12&amp;smjena=none"/);
+  // Namensfilter wie bei Iznosi
+  f = (await admin.request(`${base}?woche=2026-10-05&trazi=mijenja`)).text;
+  assert.doesNotMatch(new RegExp(`<tr id="igrac-${mij}"[^>]*>`).exec(f)[0], / hidden/);
+  assert.match(new RegExp(`<tr id="igrac-${jut}"[^>]*>`).exec(f)[0], / hidden/);
+
+  // Nur Admin – nirgends für Mitglieder, Eltern, Kinder, Trainer sichtbar
+  const m = client();
+  await m.login('info.jutarnji', 'memberpass1');
+  assert.equal((await m.request(base)).status, 403);
+  assert.equal((await m.request(editUrl(jut))).status, 403);
+  assert.equal((await m.post(editUrl(jut), { shift: 'afternoon' }, '/mitglied')).status, 403);
+  assert.equal(info(jut).shift, 'morning');
+  for (const p of ['/mitglied', '/mitglied/moji-podaci', '/mitglied/abrechnung']) {
+    assert.doesNotMatch((await m.request(p)).text, /radnim danima od 17 h|Voli|Jutarnja|smjena/i, p);
+  }
+  db.prepare("INSERT INTO trainers (name, username, password_hash) VALUES ('Info Trener', 'info.trener', ?)").run(hashPassword('trener-pass-1'));
+  const tr = client();
+  await tr.login('info.trener', 'trener-pass-1');
+  assert.equal((await tr.request(base)).status, 403);
+  // Spieler gelöscht → Infos ebenfalls weg
+  await admin.post(`/admin/mitglieder/${nic}/loeschen`, {}, `/admin/mitglieder/${nic}`);
+  await admin.post(editUrl(pop), { shift: '', availability: '', note: '' }, editUrl(pop));
+  assert.equal(info(pop).shift, null);
+});

@@ -256,6 +256,17 @@ Tests: `npm test`
   übernommene Termine wie bisher erst nach der Wochenplan-Freigabe.
 - Gespeichert in eigenen Tabellen (`week_drafts`, `week_draft_lessons`, `week_draft_players`).
 
+## Informacije o igračima (nur Admin)
+
+- Menü **„Informacije o igračima“** (`/admin/informacije-igraci`): alle Spieler ohne Kinder-Konten, alphabetisch, mit „Filter“.
+- Pro Spieler (Klick auf Namen oder „Uredi“): **Školska smjena** – „Jutarnja“, „Popodnevna“ oder „Mijenja se sedmično“
+  (dann je eine Schicht für gerade = plave und ungerade = zelene Kalenderwochen), **Kad može na trening** (freier Text)
+  und **Napomena**.
+- Oben die Woche wählen (‹ Prethodna / Sljedeća ›): die Spalte „Smjena ove sedmice“ zeigt automatisch die Schicht in
+  dieser Woche. Filter „Smjena u ovoj sedmici“: Jutarnja, Popodnevna oder Nije uneseno.
+- Nur für den Admin; nirgends für Mitglieder, Eltern, Kinder oder Trainer sichtbar. Tabelle `player_info`
+  (wird beim Löschen eines Spielers mit gelöscht).
+
 ## Treninzi po igraču (nur Admin)
 
 - Menü **„Treninzi po igraču“** (`/admin/treninzi-po-igracu`): für die gewählte Woche (‹ Prethodna / Sljedeća ›,

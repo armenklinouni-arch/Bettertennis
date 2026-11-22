@@ -207,6 +207,19 @@ CREATE TABLE IF NOT EXISTS page_views (
 );
 CREATE INDEX IF NOT EXISTS page_views_at ON page_views (at);
 
+-- „Informacije o igračima“ (samo admin): školska smjena, kad može na trening, napomena.
+-- shift: 'morning' (jutarnja), 'afternoon' (popodnevna), 'alternating' (mijenja se sedmično) ili prazno.
+-- Kod 'alternating': shift_even = smjena u parnim (plavim), shift_odd = u neparnim (zelenim) sedmicama.
+CREATE TABLE IF NOT EXISTS player_info (
+  user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  shift        TEXT CHECK (shift IN ('morning', 'afternoon', 'alternating')),
+  shift_even   TEXT CHECK (shift_even IN ('morning', 'afternoon')),
+  shift_odd    TEXT CHECK (shift_odd IN ('morning', 'afternoon')),
+  availability TEXT,
+  note         TEXT,
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Praznik / dan bez treninga (samo prikaz u rasporedu): ne mijenja termine, obračun ni prisustvo i ne šalje e-mailove.
 CREATE TABLE IF NOT EXISTS holidays (
   date       TEXT PRIMARY KEY, -- YYYY-MM-DD

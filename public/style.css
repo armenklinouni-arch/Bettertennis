@@ -235,6 +235,14 @@ tr.is-inactive td { color: var(--muted); }
   .day > .holiday-edit { order: 3; flex: 1 0 100%; padding: 6px 12px 8px; border-top: 1px solid var(--border); }
   .holiday-form { max-width: 420px; }
 }
+/* Informacije o igračima */
+.info-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 20px; margin-bottom: 8px; }
+.info-filters .list-filter { flex: 1 1 260px; margin: 0; }
+.shift-filter { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 0; }
+.shift-tag.is-morning { background: #fff1c9; color: #6b4a00; font-weight: 600; }
+.shift-tag.is-afternoon { background: #e3ecfb; color: #1d3f73; font-weight: 600; }
+.player-info td.pre { white-space: pre-line; max-width: 22em; }
+.shift-alternating { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
 /* Sedmični draft */
 .draft-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
 .draft-actions .inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; flex: 1 1 24em; min-width: 0; }
