@@ -6066,3 +6066,34 @@ test('Informacije o igračima: zweite Spalte „Smjena naredne sedmice“ zeigt 
   t = (await admin.request(`${base}?woche=2026-10-05&smjena=morning`)).text;
   assert.ok(!ids(t).includes(alt));
 });
+
+// ---------------------------------------------------------------- Informacije o igračima: Kopfzeile, Woche und Filter bleiben oben
+test('Informacije o igračima: Wochenauswahl und Filter in klebender Leiste (wie Iznosi), Tabellenkopf bleibt sichtbar – auch am Handy kompakt', async () => {
+  const admin = client();
+  await admin.login('admin@test.de', 'adminpass123');
+  const t = (await admin.request('/admin/informacije-igraci?woche=2026-10-05')).text;
+  // Klebende Leiste mit Woche, Schichtfilter und Namensfilter
+  const bar = /<div class="sticky-bar info-bar" data-sticky-bar>([\s\S]*?)<\/div>\s*<p class="muted">Prikazano:/.exec(t);
+  assert.ok(bar, 'klebende Leiste fehlt');
+  assert.match(bar[1], /<div class="week-head seen-nav">/);
+  assert.match(bar[1], /41\. sedmica/);
+  assert.match(bar[1], /<form method="get" action="\/admin\/informacije-igraci" class="inline-form shift-filter" data-autosubmit>/);
+  assert.match(bar[1], /data-list-filter="informacije"/);
+  // Am Handy nur Pfeile (Wörter ausgeblendet), Beschriftungen bleiben für Screenreader
+  assert.match(bar[1], /‹ <span class="nav-word">Prethodna<\/span>/);
+  assert.match(bar[1], /<span class="nav-word">Sljedeća<\/span> ›/);
+  assert.match(bar[1], /<span class="filter-label">Smjena u ovoj sedmici<\/span>/);
+  // Tabelle mit eigenem Rahmen für den klebenden Kopf; Spaltennamen unverändert
+  assert.match(t, /<div class="table-wrap info-table-wrap" data-sticky-head><table class="player-info">\s*<thead><tr><th>Ime<\/th><th>Smjena ove sedmice<\/th><th>Smjena naredne sedmice<\/th><th>Školska smjena<\/th><th>Kad može na trening<\/th><th>Napomena<\/th><th><\/th><\/tr><\/thead>/);
+
+  const css = (await admin.request('/static/style.css')).text;
+  // Kopf wird per JavaScript direkt unter der Leiste gehalten (Desktop und Handy; Tabelle bleibt seitlich wischbar)
+  assert.match(css, /\.info-table-wrap thead th \{[^}]*position: relative;[^}]*background: var\(--surface\)/);
+  // Handy: kompakte Leiste
+  assert.match(css, /\.info-bar \.nav-word \{ display: none; \}/);
+  assert.match(css, /\.info-bar \.filter-label, \.info-bar \.list-filter > label \{[^}]*clip/);
+  const js = (await admin.request('/static/app.js')).text;
+  assert.match(js, /--sticky-bar-h/);
+  assert.match(js, /\[data-sticky-head\]/);
+  assert.match(js, /translateY/);
+});

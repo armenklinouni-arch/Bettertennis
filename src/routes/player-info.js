@@ -74,21 +74,22 @@ module.exports = function playerInfoRoutes(db) {
         <p class="muted">Školska smjena, kad igrač može na trening i napomene – samo za admina. Za odabranu sedmicu
           prikazuje se smjena koju igrač tada ima (parna sedmica = plava, neparna = zelena).</p>
       </div></div>
+      <div class="sticky-bar info-bar" data-sticky-bar>
       <div class="week-head seen-nav">
-        <a class="btn btn-ghost btn-sm" href="${weekUrl(D.addDays(monday, -7))}" aria-label="Prethodna sedmica">‹ Prethodna</a>
+        <a class="btn btn-ghost btn-sm" href="${weekUrl(D.addDays(monday, -7))}" aria-label="Prethodna sedmica">‹ <span class="nav-word">Prethodna</span></a>
         <div class="week-title">
           <strong>${D.isoWeekNumber(monday)}. sedmica <small class="week-tone-label">${blue ? 'plava sedmica' : 'zelena sedmica'}</small></strong>
           <span>${D.formatDate(monday)} – ${D.formatDate(D.addDays(monday, 6))}</span>
           ${monday !== thisMonday ? html`<a href="${weekUrl(thisMonday)}" class="today-link">Ova sedmica</a>` : ''}
         </div>
-        <a class="btn btn-ghost btn-sm" href="${weekUrl(D.addDays(monday, 7))}" aria-label="Sljedeća sedmica">Sljedeća ›</a>
+        <a class="btn btn-ghost btn-sm" href="${weekUrl(D.addDays(monday, 7))}" aria-label="Sljedeća sedmica"><span class="nav-word">Sljedeća</span> ›</a>
       </div>
       <div class="info-filters">
-        <form method="get" action="${BASE}" class="inline-form shift-filter">
+        <form method="get" action="${BASE}" class="inline-form shift-filter" data-autosubmit>
           <input type="hidden" name="woche" value="${monday}">
           ${q ? html`<input type="hidden" name="trazi" value="${q}">` : ''}
-          <label>Smjena u ovoj sedmici
-            <select name="smjena">
+          <label><span class="filter-label">Smjena u ovoj sedmici</span>
+            <select name="smjena" aria-label="Smjena u ovoj sedmici">
               <option value="">Sve</option>
               ${Object.entries(FILTERS).map(([k, label]) => html`<option value="${k}"${shiftFilter === k ? ' selected' : ''}>${label}</option>`)}
             </select>
@@ -97,8 +98,9 @@ module.exports = function playerInfoRoutes(db) {
         </form>
         ${listFilter({ key: 'informacije', action: BASE, value: q, clearHref: back, hidden: { woche: monday, ...(shiftFilter ? { smjena: shiftFilter } : {}) } })}
       </div>
+      </div>
       <p class="muted">Prikazano: ${rows.length} od ${all.length}</p>
-      <div class="table-wrap"><table class="player-info">
+      <div class="table-wrap info-table-wrap" data-sticky-head><table class="player-info">
         <thead><tr><th>Ime</th><th>Smjena ove sedmice</th><th>Smjena naredne sedmice</th><th>Školska smjena</th><th>Kad može na trening</th><th>Napomena</th><th></th></tr></thead>
         <tbody data-filter-list="informacije">${rows.length === 0
           ? html`<tr><td colspan="7" class="empty">Nema igrača za ovaj filter.</td></tr>`

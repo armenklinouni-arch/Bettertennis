@@ -264,6 +264,9 @@ Tests: `npm test`
   und **Napomena**.
 - Oben die Woche wählen (‹ Prethodna / Sljedeća ›): die Spalte „Smjena ove sedmice“ zeigt automatisch die Schicht in
   dieser Woche, „Smjena naredne sedmice“ die der Woche danach. Filter „Smjena u ovoj sedmici“: Jutarnja, Popodnevna oder Nije uneseno.
+- Beim Runterscrollen bleiben Wochenauswahl und Filter oben (wie die Monatsleiste unter Iznosi) und darunter die
+  Kopfzeile der Tabelle – auch am Handy (kompakte Leiste: Pfeile statt „Prethodna/Sljedeća“, beide Filter in einer Zeile;
+  die Tabelle bleibt seitlich wischbar, die Kopfzeile wandert mit).
 - Nur für den Admin; nirgends für Mitglieder, Eltern, Kinder oder Trainer sichtbar. Tabelle `player_info`
   (wird beim Löschen eines Spielers mit gelöscht).
 

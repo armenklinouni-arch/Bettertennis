@@ -243,6 +243,36 @@ tr.is-inactive td { color: var(--muted); }
 .shift-tag.is-afternoon { background: #e3ecfb; color: #1d3f73; font-weight: 600; }
 .player-info td.pre { white-space: pre-line; max-width: 22em; }
 .shift-alternating { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+/* Informacije o igračima: traka (sedmica + filteri) i naslov tabele ostaju vidljivi pri skrolanju */
+.sticky-bar.info-bar { padding: 6px 0 8px; gap: 6px 20px; align-items: center; }
+.info-bar .week-head { flex: 1 1 380px; margin: 0; }
+.info-bar .info-filters { flex: 1 1 440px; margin: 0; align-items: center; gap: 8px 16px; }
+.info-bar .shift-filter label { display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 0; white-space: nowrap; }
+.info-bar .shift-filter select { width: auto; }
+.info-bar .shift-filter { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
+.info-bar .list-filter { display: flex; align-items: center; gap: 8px; }
+.info-bar .list-filter > label { margin: 0; }
+/* Naslov tabele: JavaScript ga pomjera (translateY) tačno ispod trake, tabela ostaje vodoravno skrolabilna (i na mobitelu) */
+.info-table-wrap thead th { position: relative; z-index: 5; background: var(--surface); box-shadow: inset 0 -1px 0 var(--border); will-change: transform; }
+.info-table-wrap.head-stuck thead th { box-shadow: inset 0 -1px 0 var(--border), 0 6px 10px -8px rgba(17, 48, 76, 0.35); }
+@media (max-width: 700px) {
+  /* Handy: kompaktna traka – samo strelice, sedmica u jednom redu, oba filtera u jednom redu */
+  .sticky-bar.info-bar { padding: 4px 0 6px; gap: 6px; }
+  .info-bar .nav-word { display: none; }
+  .info-bar .week-head { flex: 1 1 100%; flex-wrap: nowrap; gap: 6px; }
+  .info-bar .week-head .btn { min-width: 40px; justify-content: center; padding-left: 8px; padding-right: 8px; }
+  .info-bar .week-title { order: 0; flex: 1 1 auto; }
+  .info-bar .week-title strong { font-size: 1rem; }
+  .info-bar .week-title span { font-size: 0.82rem; }
+  .info-bar .week-title .today-link { font-size: 0.78rem; }
+  .info-bar .info-filters { flex: 1 1 100%; flex-wrap: nowrap; gap: 8px; align-items: center; }
+  .info-bar .shift-filter { flex: 0 0 auto; }
+  .info-bar .shift-filter button { display: none; }
+  .info-bar .shift-filter select { padding-top: 6px; padding-bottom: 6px; max-width: 9.5em; }
+  .info-bar .list-filter { flex: 1 1 auto; min-width: 0; }
+  .info-bar .filter-box input { padding-top: 6px; padding-bottom: 6px; }
+  .info-bar .filter-label, .info-bar .list-filter > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
 /* Sedmični draft */
 .draft-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
 .draft-actions .inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; flex: 1 1 24em; min-width: 0; }

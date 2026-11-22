@@ -241,9 +241,12 @@ document.addEventListener('change', (event) => {
       const top = parseFloat(window.getComputedStyle(bar).top) || 0;
       bar.classList.toggle('is-stuck', window.scrollY > 0 && bar.getBoundingClientRect().top <= top + 1);
     };
+    // Visina trake (npr. za klebende naslove tabele ispod nje – „Informacije o igračima“).
+    const setBarHeight = () => document.documentElement.style.setProperty('--sticky-bar-h', `${bar.offsetHeight}px`);
     setTop();
+    setBarHeight();
     markStuck();
-    window.addEventListener('resize', () => { setTop(); markStuck(); });
+    window.addEventListener('resize', () => { setTop(); setBarHeight(); markStuck(); });
     window.addEventListener('scroll', markStuck, { passive: true });
 
     const visibleRows = () => Array.from(document.querySelectorAll('tbody[data-filter-list] tr[data-filter]')).filter((r) => !r.hidden);
@@ -495,6 +498,37 @@ window.btMascotNext = function btMascotNext(state, names, random = Math.random) 
       window.scrollTo(0, Math.max(0, target.getBoundingClientRect().top + window.scrollY - offset - 12));
       const input = edit && edit.querySelector('input[name="description"]');
       if (input) { input.focus({ preventScroll: true }); input.setSelectionRange(input.value.length, input.value.length); }
+    });
+  });
+})();
+
+// Naslov tabele ostaje vidljiv ispod klebende trake (npr. „Informacije o igračima“), i kad je tabela
+// šira od ekrana i skrolabilna vodoravno: zaglavlje se pomjera (translateY) samo unutar tabele.
+(() => {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-sticky-head]').forEach((wrap) => {
+      const head = wrap.querySelector('thead');
+      if (!head) return;
+      const cells = Array.from(head.querySelectorAll('th'));
+      let queued = false;
+      const update = () => {
+        queued = false;
+        const root = window.getComputedStyle(document.documentElement);
+        const line = (parseFloat(root.getPropertyValue('--sticky-top')) || 0) + (parseFloat(root.getPropertyValue('--sticky-bar-h')) || 0);
+        const box = wrap.getBoundingClientRect();
+        const max = Math.max(0, box.height - head.offsetHeight);
+        const y = Math.round(Math.min(max, Math.max(0, line - box.top)));
+        cells.forEach((c) => { c.style.transform = y ? `translateY(${y}px)` : ''; });
+        wrap.classList.toggle('head-stuck', y > 0);
+      };
+      const queue = () => {
+        if (queued) return;
+        queued = true;
+        window.requestAnimationFrame(update);
+      };
+      window.addEventListener('scroll', queue, { passive: true });
+      window.addEventListener('resize', queue);
+      update();
     });
   });
 })();
